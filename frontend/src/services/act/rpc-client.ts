@@ -3,6 +3,7 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import { v4 as uuidv4 } from "uuid";
 
 import { ActService, ActType, type RunActEvent, type PatchOp as RpcPatchOp } from "@/gen/act/v1/act_pb";
+import { getFirebaseIdToken } from "@/features/auth/session";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import type { ActPort, PatchOp } from "./port";
 
@@ -31,7 +32,7 @@ function buildHeaders(): HeadersInit {
   const headers: Record<string, string> = {};
 
   // If auth token is preloaded by auth flow, forward it to act-api.
-  const idToken = typeof window !== "undefined" ? window.localStorage.getItem("firebase_id_token") : null;
+  const idToken = getFirebaseIdToken();
   if (idToken) {
     headers.Authorization = `Bearer ${idToken}`;
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { ReactNode, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AppHeader } from './AppHeader';
 import { LeftRail } from './LeftRail';
 import { RightPanelRouter } from './RightPanelRouter';
@@ -11,6 +11,7 @@ import { Menu, PanelRightClose } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AskForm } from '@/components/ui/AskForm';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { emitAuthContext, setFirebaseIdToken } from '@/features/auth/session';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -18,8 +19,37 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
     const { isOpen, openPanel } = usePanelStore();
+    const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
     const { workspaceId, topicId, setContext } = useRunContextStore();
+
+    useEffect(() => {
+        const idToken = searchParams.get('id_token')?.trim();
+        const authWorkspaceId = searchParams.get('authWorkspaceId')?.trim();
+        const authTopicId = searchParams.get('authTopicId')?.trim();
+
+        const params = new URLSearchParams(searchParams.toString());
+        let needsCleanup = false;
+
+        if (idToken) {
+            setFirebaseIdToken(idToken);
+            params.delete('id_token');
+            needsCleanup = true;
+        }
+
+        if (authWorkspaceId && authTopicId) {
+            emitAuthContext({ workspaceId: authWorkspaceId, topicId: authTopicId });
+            params.delete('authWorkspaceId');
+            params.delete('authTopicId');
+            needsCleanup = true;
+        }
+
+        if (needsCleanup) {
+            const next = params.toString();
+            router.replace(next ? `${pathname}?${next}` : pathname);
+        }
+    }, [pathname, router, searchParams]);
 
     useEffect(() => {
         const urlWorkspaceId = searchParams.get('workspaceId')?.trim();

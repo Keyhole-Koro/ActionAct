@@ -6,6 +6,7 @@ Next.js frontend です。
 
 ```bash
 npm install
+make -C /home/unix/Action frontend-env
 npm run dev
 npm run lint
 npm run build
@@ -14,6 +15,8 @@ npm run build
 ## Environment
 
 起動時に `src/lib/env.ts` が `NEXT_PUBLIC_*` を検証します。missing や空文字では起動しません。
+ローカル開発用の正本は [config/local/frontend.env](/home/unix/Action/config/local/frontend.env) です。
+`npm run dev` / `npm run build` / `npm run start` は起動前にこの内容を `.env.local` へ自動同期します。
 
 Required:
 
@@ -28,12 +31,9 @@ Required:
 Example:
 
 ```bash
-NEXT_PUBLIC_USE_MOCKS=true \
-NEXT_PUBLIC_RPC_BASE_URL=http://localhost:8080 \
-NEXT_PUBLIC_ACT_API_BASE_URL=http://localhost:8080 \
-NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=localhost:9099 \
-NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST=localhost:8081 \
-NEXT_PUBLIC_GCLOUD_PROJECT=local-dev \
+cd /home/unix/Action
+make frontend-env
+cd ActionAct/frontend
 npm run dev
 ```
 
