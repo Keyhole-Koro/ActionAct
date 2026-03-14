@@ -92,6 +92,7 @@ export function GraphCanvas() {
 
     // Canvas double-click → create empty node
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
+        console.log("handlePaneDoubleClick called!", event.clientX, event.clientY);
         const position = reactFlowInstance.screenToFlowPosition({
             x: event.clientX,
             y: event.clientY,
@@ -115,6 +116,7 @@ export function GraphCanvas() {
                     openPanel('node-detail', node.id);
                 }}
                 onPaneClick={(event) => {
+                    console.log("onPaneClick fired. Detail:", event.detail);
                     if (event.detail === 2) {
                         handlePaneDoubleClick(event);
                     } else {
