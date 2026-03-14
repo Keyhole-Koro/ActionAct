@@ -1,4 +1,4 @@
-"""Vertex AI Gemini LLM adapter — used when VERTEX_USE_REAL_API=true."""
+"""Gemini LLM adapter — supports Vertex AI and Developer API."""
 
 from __future__ import annotations
 
@@ -14,14 +14,19 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiLLM:
-    """Calls Vertex AI Gemini via the google-genai SDK with streaming."""
+    """Calls Gemini via the google-genai SDK with streaming."""
 
-    def __init__(self, project: str, location: str = "us-central1"):
-        self._client = genai.Client(
-            vertexai=True,
-            project=project,
-            location=location,
-        )
+    def __init__(self, project: str, location: str = "us-central1", api_key: str | None = None):
+        if api_key:
+            self._client = genai.Client(api_key=api_key)
+            self._backend = "developer-api"
+        else:
+            self._client = genai.Client(
+                vertexai=True,
+                project=project,
+                location=location,
+            )
+            self._backend = "vertex"
 
     async def generate(
         self,
@@ -42,6 +47,7 @@ class GeminiLLM:
         )
 
         try:
+            logger.info("Gemini generate start", extra={"backend": self._backend, "model": model_name})
             async for response in self._client.aio.models.generate_content_stream(
                 model=model_name,
                 contents=contents,

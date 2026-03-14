@@ -15,17 +15,20 @@ class TestConfig:
             assert cfg.port == "8000"
             assert cfg.google_cloud_project == "local-dev"
             assert cfg.vertex_use_real_api is False
+            assert cfg.google_api_key is None
 
     def test_custom_values(self):
         with mock.patch.dict(os.environ, {
             "PORT": "9000",
             "GOOGLE_CLOUD_PROJECT": "my-project",
             "VERTEX_USE_REAL_API": "true",
+            "GOOGLE_API_KEY": "test-key",
         }):
             cfg = Config()
             assert cfg.port == "9000"
             assert cfg.google_cloud_project == "my-project"
             assert cfg.vertex_use_real_api is True
+            assert cfg.google_api_key == "test-key"
 
     def test_vertex_case_insensitive(self):
         """VERTEX_USE_REAL_API should be case-insensitive."""
@@ -39,3 +42,8 @@ class TestConfig:
             with mock.patch.dict(os.environ, {"VERTEX_USE_REAL_API": value}):
                 cfg = Config()
                 assert cfg.vertex_use_real_api is False, f"failed for {value!r}"
+
+    def test_google_api_key_optional(self):
+        with mock.patch.dict(os.environ, {"GOOGLE_API_KEY": "abc123"}):
+            cfg = Config()
+            assert cfg.google_api_key == "abc123"

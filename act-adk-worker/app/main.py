@@ -29,12 +29,15 @@ config = Config()
 # Assembly adapter (stub for now)
 assembly = StubAssembly()
 
-# LLM adapter (mock or real Gemini)
-if config.vertex_use_real_api:
+# LLM adapter (mock, Gemini Developer API, or Vertex AI Gemini)
+if config.google_api_key:
+    logger.info("Using REAL Gemini Developer API")
+    llm = GeminiLLM(project=config.google_cloud_project, api_key=config.google_api_key)
+elif config.vertex_use_real_api:
     logger.info("Using REAL Vertex AI Gemini")
     llm = GeminiLLM(project=config.google_cloud_project)
 else:
-    logger.info("Using MOCK LLM (set VERTEX_USE_REAL_API=true for real API)")
+    logger.info("Using MOCK LLM (set GOOGLE_API_KEY or VERTEX_USE_REAL_API=true for real API)")
     llm = MockLLM()
 
 # Usecase
