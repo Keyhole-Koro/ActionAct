@@ -20,7 +20,6 @@ import { GraphNodeCard } from './GraphNodeCard';
 import { organizeService } from '@/services/organize';
 import { TopicNode } from '@/services/organize/port';
 import { useGraphStore } from '@/features/graph/store';
-import { usePanelStore } from '@/features/layout/store/panel-store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 import { SelectionGroupHeader } from './SelectionGroupHeader';
@@ -64,7 +63,6 @@ function deserializePersistedGraph(rawValue: string | null): { nodes: Node[]; ed
 }
 
 export function GraphCanvas() {
-    const { setMode, openPanel } = usePanelStore();
     const {
         persistedNodes,
         persistedEdges,
@@ -404,10 +402,13 @@ export function GraphCanvas() {
                 }}
                 onNodeClick={(_event: React.MouseEvent, node: Node) => {
                     setActiveNode(node.id);
-                    if (editingNodeId !== node.id) {
-                        setMode('node-detail');
-                        openPanel('node-detail', node.id);
-                    }
+                }}
+                onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
+                    reactFlowInstance.setCenter(
+                        node.position.x + 170,
+                        node.position.y + 90,
+                        { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
+                    );
                 }}
                 onPaneClick={(event) => {
                     const now = Date.now();

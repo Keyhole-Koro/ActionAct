@@ -4,15 +4,17 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Sparkles, FileText, Search, MessageSquare, Pencil } from 'lucide-react';
+import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, PanelRightOpen } from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useGraphStore } from '@/features/graph/store';
+import { usePanelStore } from '@/features/layout/store/panel-store';
 
 type CustomNode = Node<{
     label: string;
     type: string;
     actions?: { label: string, execute: string }[];
     contentMd?: string;
+    contextSummary?: string;
 }, 'customTask'>;
 
 const typeConfig: Record<string, { icon: React.ElementType; gradient: string; accent: string; glow: string }> = {
@@ -26,9 +28,11 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
 
 export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
     const { startStream, isStreaming } = useActStream();
-    const { setSelectedNodes, editingNodeId, setEditingNode, updateNodeLabel, removeNode } = useGraphStore();
+    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, activeNodeId } = useGraphStore();
+    const { openPanel } = usePanelStore();
     const cfg = typeConfig[data.type] || typeConfig.default;
     const TypeIcon = cfg.icon;
+    const isExpanded = activeNodeId === id;
 
     const isEditing = editingNodeId === id;
     const [editValue, setEditValue] = useState(data.label);
@@ -62,10 +66,8 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             commitEdit();
-        } else if (e.key === 'Escape') {
-            setEditingNode(null);
         }
-    }, [commitEdit, setEditingNode]);
+    }, [commitEdit]);
 
     return (
         <div className="relative group">
@@ -75,7 +77,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 group relative w-[340px] rounded-2xl transition-all duration-300
                 bg-background border border-border/40
                 shadow-md hover:shadow-xl
-                ${selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
+                ${selected || isExpanded ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
                 ${isStreaming ? 'animate-pulse-subtle' : ''}
             `}
             >
@@ -135,12 +137,36 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 {/* Content preview */}
                 {data.contentMd && (
                     <div className="relative px-4 pt-3 pb-4">
-                        <p className="text-sm text-foreground/80 leading-relaxed line-clamp-3 font-medium">
+                        <p className={`text-sm text-foreground/80 leading-relaxed font-medium ${isExpanded ? '' : 'line-clamp-3'}`}>
                             {data.contentMd}
                         </p>
                     </div>
                 )}
                 {!data.contentMd && <div className="h-4"></div>}
+
+                {isExpanded && (
+                    <div className="relative px-4 pb-4 pt-2 border-t border-border/20 bg-muted/10">
+                        {data.contextSummary ? (
+                            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                                {data.contextSummary}
+                            </p>
+                        ) : null}
+                        <div className="flex justify-end">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg"
+                                onClick={(event: React.MouseEvent) => {
+                                    event.stopPropagation();
+                                    openPanel('node-detail', id);
+                                }}
+                            >
+                                <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
+                                Details
+                            </Button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Actions Area */}
                 {data.actions && data.actions.length > 0 && (
