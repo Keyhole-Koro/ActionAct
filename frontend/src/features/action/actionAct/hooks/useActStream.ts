@@ -1,17 +1,15 @@
 import { useState, useCallback } from 'react';
 import { actService } from '@/services/act';
-import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
+import { useGraphStore } from '@/features/graph/store';
 import { PatchOp } from '@/services/act/port';
 
 export function useActStream() {
     const [isStreaming, setIsStreaming] = useState(false);
-    const { addOrUpdateNode, appendContent, clearNodes } = useKnowledgeTreeStore();
+    const { addOrUpdateNode, appendContent } = useGraphStore();
 
-    const startStream = useCallback((query: string, options?: { clear?: boolean }) => {
+    const startStream = useCallback((query: string, _options?: { clear?: boolean }) => {
         setIsStreaming(true);
-        if (options?.clear !== false) {
-            clearNodes(); // For demo purposes, clear before new query
-        }
+        // Never clear existing nodes — always append new ones
 
         const cancel = actService.streamAct(
             query,
@@ -32,7 +30,7 @@ export function useActStream() {
         );
 
         return cancel;
-    }, [addOrUpdateNode, appendContent, clearNodes]);
+    }, [addOrUpdateNode, appendContent]);
 
     return { isStreaming, startStream };
 }

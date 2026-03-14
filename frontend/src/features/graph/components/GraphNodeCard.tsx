@@ -1,12 +1,12 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Sparkles, FileText, Search, MessageSquare } from 'lucide-react';
+import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
-import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
+import { useGraphStore } from '@/features/graph/store';
 
 type CustomNode = Node<{
     label: string;
@@ -19,18 +19,47 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
     explore: { icon: Search, gradient: 'from-violet-500/10 via-indigo-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     consult: { icon: MessageSquare, gradient: 'from-sky-500/10 via-cyan-500/5 to-transparent', accent: 'text-sky-500', glow: 'shadow-sky-500/20' },
     investigate: { icon: FileText, gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent', accent: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
+    note: { icon: Pencil, gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent', accent: 'text-amber-500', glow: 'shadow-amber-500/20' },
     default: { icon: Sparkles, gradient: 'from-slate-500/10 via-slate-400/5 to-transparent', accent: 'text-slate-500', glow: 'shadow-slate-500/20' },
 };
 
 export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
     const { startStream, isStreaming } = useActStream();
-    const { setSelectedNodes } = useKnowledgeTreeStore();
+    const { setSelectedNodes, editingNodeId, setEditingNode, updateNodeLabel, removeNode } = useGraphStore();
     const cfg = typeConfig[data.type] || typeConfig.default;
     const TypeIcon = cfg.icon;
 
+    const isEditing = editingNodeId === id;
+    const [editValue, setEditValue] = useState(data.label);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isEditing && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [isEditing]);
+
+    const commitEdit = useCallback(() => {
+        const trimmed = editValue.trim();
+        if (trimmed) {
+            updateNodeLabel(id, trimmed);
+        } else {
+            // Empty label → remove the node
+            removeNode(id);
+        }
+    }, [id, editValue, updateNodeLabel, removeNode]);
+
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            commitEdit();
+        } else if (e.key === 'Escape') {
+            setEditingNode(null);
+        }
+    }, [commitEdit, setEditingNode]);
+
     return (
         <>
-            {/* Top handle — pulsing dot */}
             <Handle
                 type="target"
                 position={Position.Top}
@@ -48,7 +77,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                         : 'shadow-md border-border/60 hover:border-border',
                 ].join(' ')}
             >
-                {/* Gradient accent strip */}
                 <div className={`absolute inset-0 rounded-xl bg-gradient-to-b ${cfg.gradient} pointer-events-none`} />
 
                 {/* Header */}
@@ -57,9 +85,28 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                         <TypeIcon className="w-3.5 h-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold leading-tight truncate text-foreground">
-                            {data.label}
-                        </h3>
+                        {isEditing ? (
+                            <input
+                                ref={inputRef}
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={commitEdit}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Enter node title..."
+                                className="w-full text-sm font-semibold bg-transparent border-b border-primary/40 outline-none text-foreground placeholder:text-muted-foreground/50 pb-0.5"
+                            />
+                        ) : (
+                            <h3
+                                className="text-sm font-semibold leading-tight truncate text-foreground cursor-text"
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditValue(data.label);
+                                    setEditingNode(id);
+                                }}
+                            >
+                                {data.label || 'Untitled'}
+                            </h3>
+                        )}
                         <Badge
                             variant="secondary"
                             className="mt-1 text-[9px] px-1.5 py-0 uppercase tracking-wider font-medium opacity-70"
@@ -72,7 +119,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 {/* Content preview */}
                 <div className="relative px-3 pb-2">
                     <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                        {data.contentMd || 'Click to explore this node...'}
+                        {data.contentMd || 'Double-click to edit...'}
                     </p>
                 </div>
 
@@ -87,8 +134,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 className={[
                                     'h-7 text-[10px] px-2.5 rounded-lg font-medium',
                                     'bg-primary/5 hover:bg-primary/10 text-primary',
-                                    'transition-all duration-200',
-                                    'hover:shadow-sm',
+                                    'transition-all duration-200 hover:shadow-sm',
                                     isStreaming ? 'opacity-50' : '',
                                 ].join(' ')}
                                 disabled={isStreaming}
@@ -113,7 +159,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 )}
             </div>
 
-            {/* Bottom handle */}
             <Handle
                 type="source"
                 position={Position.Bottom}

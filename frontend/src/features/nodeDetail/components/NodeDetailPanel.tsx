@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
+import { useGraphStore } from '@/features/graph/store';
 import { MarkdownPane } from '@/features/nodeMarkdown/components/MarkdownPane';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Node } from '@xyflow/react';

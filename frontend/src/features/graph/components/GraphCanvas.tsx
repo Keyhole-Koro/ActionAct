@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
 import {
     ReactFlow,
     Controls,
     Background,
+    MiniMap,
     Node,
     Edge,
     useNodesState,
     useEdgesState,
+    useReactFlow,
     SelectionMode
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -16,7 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { GraphNodeCard } from './GraphNodeCard';
 import { organizeService } from '@/services/organize';
 import { TopicNode } from '@/services/organize/port';
-import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
+import { useGraphStore } from '@/features/graph/store';
 import { usePanelStore } from '@/features/layout/store/panel-store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 
@@ -33,20 +35,18 @@ const nodeTypes = {
 
 export function GraphCanvas() {
     const { setMode, openPanel } = usePanelStore();
-    const { nodes: actNodes, edges: actEdges, setSelectedNodes, setActiveNode } = useKnowledgeTreeStore();
+    const { nodes: actNodes, edges: actEdges, setSelectedNodes, setActiveNode, addEmptyNode, editingNodeId } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const reactFlowInstance = useReactFlow();
 
     useEffect(() => {
-        // Subscribe to our organize service Mock data
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes: TopicNode[]) => {
-
-            // Transform mock data to ReactFlow structure
             const rfNodes: Node[] = topicNodes.map((n, i) => ({
                 id: n.id,
                 type: 'customTask',
-                position: { x: 100 + (Math.random() * 200), y: i * 150 + 50 }, // Random/Naive positioning for phase 1 mock
+                position: { x: 100 + (Math.random() * 200), y: i * 150 + 50 },
                 data: { label: n.title, type: n.type },
             }));
 
@@ -67,13 +67,20 @@ export function GraphCanvas() {
     }, [setNodes, setEdges, workspaceId, topicId]);
 
     const { groups } = useAgentInteractionStore();
-
-    // Generate selection node flow
     const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, nodes);
 
-    // Combine organize nodes & edges with dynamically streamed Act nodes & edges & selection nodes
+    // Combine all node sources
     const combinedNodes = [...nodes, ...actNodes, ...selectionNodes];
     const combinedEdges = [...edges, ...actEdges, ...selectionEdges];
+
+    // Canvas double-click → create empty node
+    const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
+        const position = reactFlowInstance.screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+        });
+        addEmptyNode(position);
+    }, [reactFlowInstance, addEmptyNode]);
 
     return (
         <div className="w-full h-full pb-20">
@@ -90,15 +97,25 @@ export function GraphCanvas() {
                     setMode('node-detail');
                     openPanel('node-detail', node.id);
                 }}
+                onPaneClick={() => {
+                    // Deselect on empty canvas click
+                    setActiveNode(null);
+                }}
+                onDoubleClick={handlePaneDoubleClick}
                 nodeTypes={nodeTypes}
                 panOnScroll={true}
                 selectionOnDrag={true}
-                panOnDrag={[1, 2]} // Middle mouse and right click pan (Left click dragging will select nodes)
+                panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}
                 fitView
             >
                 <Background />
                 <Controls />
+                <MiniMap
+                    className="!bg-card/80 !border-border/40 !rounded-xl"
+                    maskColor="rgba(0,0,0,0.08)"
+                    nodeColor={() => 'hsl(var(--primary))'}
+                />
             </ReactFlow>
         </div>
     );
