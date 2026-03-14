@@ -40,6 +40,29 @@ export function AppShell({ children }: AppShellProps) {
         }
     }, [searchParams, setContext, topicId, workspaceId]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const onAuthContext = (event: Event) => {
+            const customEvent = event as CustomEvent<{ workspaceId?: string; topicId?: string }>;
+            const nextWorkspaceId = customEvent.detail?.workspaceId?.trim();
+            const nextTopicId = customEvent.detail?.topicId?.trim();
+
+            if (!nextWorkspaceId || !nextTopicId) {
+                return;
+            }
+
+            setContext(nextWorkspaceId, nextTopicId);
+            window.localStorage.setItem('run_context.workspaceId', nextWorkspaceId);
+            window.localStorage.setItem('run_context.topicId', nextTopicId);
+        };
+
+        window.addEventListener('action:auth-context', onAuthContext);
+        return () => window.removeEventListener('action:auth-context', onAuthContext);
+    }, [setContext]);
+
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
             <AppHeader />

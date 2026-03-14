@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"github.com/redis/go-redis/v9"
@@ -13,8 +12,10 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"act-api/gen/act/v1/actv1connect"
+	"act-api/internal/adapter"
 	"act-api/internal/config"
 	"act-api/internal/handler"
+	"act-api/internal/usecase"
 )
 
 func main() {
@@ -23,8 +24,7 @@ func main() {
 	cfg := config.MustLoad()
 	ctx := context.Background()
 
-	// Firebase Admin SDK の初期化。
-	// FIREBASE_AUTH_EMULATOR_HOST が設定されていれば自動的にエミュレーターを使う。
+	// ── Firebase ──
 	app, err := firebase.NewApp(ctx, &firebase.Config{
 		ProjectID: cfg.GCloudProject,
 	})
@@ -38,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Redis クライアントの初期化。接続失敗は起動時に即 exit。
+	// ── Redis ──
 	rdb := redis.NewClient(&redis.Options{
 		Addr: cfg.RedisAddr,
 		DB:   cfg.RedisDB,
@@ -48,14 +48,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := handler.NewRunActHandler(handler.Config{
-		FirebaseAuth:      authClient,
-		Redis:             rdb,
-		ADKWorkerURL:      cfg.ADKWorkerURL,
-		SIDStrict:         cfg.SIDStrict,
-		SIDReqTTL:         time.Duration(cfg.SIDReqTTLSeconds) * time.Second,
-		SIDLockTTL:        time.Duration(cfg.SIDLockTTLSeconds) * time.Second,
-	})
+	// ── Adapter layer (DI) ──
+	authVerifier := adapter.NewFirebaseAuthVerifier(authClient)
+	sessionValidator := adapter.NewRedisSessionValidator(rdb, cfg.SIDStrict)
+	csrfValidator := adapter.NewDoubleSubmitCSRFValidator()
+	actExecutor := adapter.NewStubActExecutor(cfg.ADKWorkerURL)
+
+	// ── Usecase layer ──
+	uc := usecase.NewRunActUsecase(authVerifier, sessionValidator, csrfValidator, actExecutor)
+
+	// ── Handler layer ──
+	h := handler.NewRunActHandler(uc)
 
 	mux := http.NewServeMux()
 	path, connectHandler := actv1connect.NewActServiceHandler(h)

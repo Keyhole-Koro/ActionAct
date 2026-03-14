@@ -102,7 +102,7 @@ func (uc *RunActUsecase) Execute(
 		TopicID:     msg.GetTopicId(),
 		WorkspaceID: msg.GetWorkspaceId(),
 		UserMessage: msg.GetUserMessage(),
-		ActType:     msg.GetActType(),
+		ActType:     msg.GetActType().String(),
 		AnchorID:    msg.GetAnchorNodeId(),
 		ContextIDs:  msg.GetContextNodeIds(),
 	}

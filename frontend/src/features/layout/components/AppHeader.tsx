@@ -2,17 +2,26 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { env } from '@/lib/env';
+import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 export function AppHeader() {
     const isMock = env.NEXT_PUBLIC_USE_MOCKS;
+    const { workspaceId, topicId } = useRunContextStore();
 
     return (
         <header className="flex items-center h-14 px-4 border-b bg-background shrink-0 w-full z-10">
             <div className="flex items-center space-x-4 flex-1">
                 <h1 className="text-sm font-semibold tracking-tight">Act & Organize</h1>
                 <Separator orientation="vertical" className="h-6" />
-                <div className="text-sm text-muted-foreground flex items-center space-x-2">
-                    <span>Workspace</span>
+                <div className="text-sm text-muted-foreground flex items-center space-x-2 min-w-0">
+                    <span className="shrink-0">Workspace</span>
+                    <Badge variant="outline" className="max-w-44 truncate" title={workspaceId}>
+                        {workspaceId}
+                    </Badge>
+                    <span className="shrink-0 text-xs">Topic</span>
+                    <Badge variant="outline" className="max-w-44 truncate" title={topicId}>
+                        {topicId}
+                    </Badge>
                 </div>
             </div>
 
