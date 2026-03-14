@@ -48,11 +48,12 @@ class GeminiLLM:
 
         try:
             logger.info("Gemini generate start", extra={"backend": self._backend, "model": model_name})
-            async for response in self._client.aio.models.generate_content_stream(
+            stream = await self._client.aio.models.generate_content_stream(
                 model=model_name,
                 contents=contents,
                 config=gen_config,
-            ):
+            )
+            async for response in stream:
                 if response.text:
                     # google-genai doesn't expose thought vs. answer natively
                     # in the basic streaming API — all chunks are answer
