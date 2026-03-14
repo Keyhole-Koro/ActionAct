@@ -10,6 +10,7 @@ import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 export function AskForm() {
     const [query, setQuery] = useState('');
+    const [enableGrounding, setEnableGrounding] = useState(false);
     const { workspaceId, topicId, setContext } = useRunContextStore();
     const workspaceInputRef = useRef<HTMLInputElement>(null);
     const topicInputRef = useRef<HTMLInputElement>(null);
@@ -37,7 +38,7 @@ export function AskForm() {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!query.trim() || isStreaming) return;
-        startStream(query);
+        startStream(query, { enableGrounding });
         setQuery(''); // clear after submit
     };
 
@@ -72,6 +73,15 @@ export function AskForm() {
                 onSubmit={handleSubmit}
                 className="bg-background border shadow-lg rounded-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-shadow"
             >
+                <label className="flex items-center gap-2 px-2 text-xs text-muted-foreground whitespace-nowrap">
+                    <input
+                        type="checkbox"
+                        checked={enableGrounding}
+                        onChange={(e) => setEnableGrounding(e.target.checked)}
+                        disabled={isStreaming}
+                    />
+                    Web
+                </label>
                 <input
                     type="text"
                     value={query}

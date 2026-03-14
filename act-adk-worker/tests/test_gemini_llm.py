@@ -26,7 +26,11 @@ class _FakeAsyncStream:
 
 
 class _FakeModels:
+    def __init__(self):
+        self.calls = []
+
     async def generate_content_stream(self, **kwargs):
+        self.calls.append(kwargs)
         return _FakeAsyncStream([
             SimpleNamespace(text="hello "),
             SimpleNamespace(text="world"),
@@ -42,7 +46,8 @@ class _FakeAioClient:
 @pytest.mark.asyncio
 async def test_gemini_llm_awaits_async_stream_before_iteration():
     llm = GeminiLLM(project="local-dev", api_key="test-key")
-    llm._client = SimpleNamespace(aio=_FakeAioClient())
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
 
     chunks = []
     async for chunk in llm.generate(
@@ -53,4 +58,37 @@ async def test_gemini_llm_awaits_async_stream_before_iteration():
 
     assert [chunk.text for chunk in chunks[:-1]] == ["hello ", "world"]
     assert chunks[-1].is_done is True
+    assert fake_aio.models.calls[0]["config"].tools is None
 
+
+@pytest.mark.asyncio
+async def test_gemini_llm_enables_google_search_tool_for_grounding():
+    llm = GeminiLLM(project="local-dev", api_key="test-key")
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
+
+    async for _ in llm.generate(
+        PromptBundle(user_prompt="latest AI news"),
+        LLMConfig(enable_grounding=True),
+    ):
+        pass
+
+    config = fake_aio.models.calls[0]["config"]
+    assert config.tools is not None
+    assert config.model_dump(by_alias=True, exclude_none=True)["tools"] == [{"googleSearch": {}}]
+
+
+@pytest.mark.asyncio
+async def test_gemini_llm_enables_thinking_config():
+    llm = GeminiLLM(project="local-dev", api_key="test-key")
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
+
+    async for _ in llm.generate(
+        PromptBundle(user_prompt="reason step by step"),
+        LLMConfig(enable_thinking=True),
+    ):
+        pass
+
+    config = fake_aio.models.calls[0]["config"]
+    assert config.model_dump(by_alias=True, exclude_none=True)["thinkingConfig"]["includeThoughts"] is True

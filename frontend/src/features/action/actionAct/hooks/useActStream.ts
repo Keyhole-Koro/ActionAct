@@ -1,13 +1,13 @@
 import { useState, useCallback } from 'react';
 import { actService } from '@/services/act';
 import { useGraphStore } from '@/features/graph/store';
-import { PatchOp } from '@/services/act/port';
+import { PatchOp, StreamActOptions } from '@/services/act/port';
 
 export function useActStream() {
     const [isStreaming, setIsStreaming] = useState(false);
     const { addOrUpdateNode, appendContent } = useGraphStore();
 
-    const startStream = useCallback((query: string, _options?: { clear?: boolean }) => {
+    const startStream = useCallback((query: string, options?: StreamActOptions & { clear?: boolean }) => {
         setIsStreaming(true);
         // Never clear existing nodes — always append new ones
 
@@ -26,7 +26,8 @@ export function useActStream() {
             (error) => {
                 console.error("Stream error:", error);
                 setIsStreaming(false);
-            }
+            },
+            options,
         );
 
         return cancel;

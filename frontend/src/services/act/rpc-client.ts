@@ -7,7 +7,7 @@ import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
 import { getCSRFToken } from "@/services/firebase/csrf";
 import { getFirebaseIdToken } from "@/services/firebase/token";
-import type { ActPort, PatchOp } from "./port";
+import type { ActPort, PatchOp, StreamActOptions } from "./port";
 
 function getBaseUrl(): string {
   return config.rpcBaseUrl;
@@ -104,7 +104,7 @@ export function createRpcActService(): ActPort {
   const client = createClient(ActService, transport);
 
   return {
-    streamAct(query, onPatch, onDone, onError) {
+    streamAct(query, onPatch, onDone, onError, options?: StreamActOptions) {
       const abortController = new AbortController();
 
       void (async () => {
@@ -118,6 +118,9 @@ export function createRpcActService(): ActPort {
               requestId: uuidv4(),
               actType: ActType.EXPLORE,
               userMessage: query,
+              llmConfig: {
+                enableGrounding: options?.enableGrounding ?? false,
+              },
             },
             {
               signal: abortController.signal,
