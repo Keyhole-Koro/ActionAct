@@ -47,6 +47,19 @@ export const mockOrganizeService: OrganizePort = {
         };
     },
 
+    upsertNode: async (workspaceId, topicId, node) => {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const existing = mockNodes.find((currentNode) => currentNode.id === node.id);
+        if (existing) {
+            mockNodes = mockNodes.map((currentNode) =>
+                currentNode.id === node.id ? { ...currentNode, ...node } : currentNode,
+            );
+        } else {
+            mockNodes = [...mockNodes, node];
+        }
+        notifySubscribers();
+    },
+
     renameNode: async (workspaceId, topicId, nodeId, newTitle) => {
         await new Promise(resolve => setTimeout(resolve, 300)); // fake network
         mockNodes = mockNodes.map(n => n.id === nodeId ? { ...n, title: newTitle } : n);

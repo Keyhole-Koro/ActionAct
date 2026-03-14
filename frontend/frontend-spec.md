@@ -205,7 +205,7 @@ upload 処理は internal event の列を、ユーザー向けの段階へ写像
 MVP の SPA は、1画面の中で次の領域に責務を分ける。
 
 1. App header
-* auth 状態、Mock/Real バッジ、workspace 名、review inbox 導線を置く
+* auth 状態、Mock/Real バッジ、workspace 名、workspace 作成導線、review inbox 導線を置く
 * 開発時のみ inspector への導線を出してよい
 
 2. Left rail

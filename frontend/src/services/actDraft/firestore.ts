@@ -2,7 +2,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -61,7 +60,6 @@ export const actDraftService = {
       const nextNodes = snapshot.docs.flatMap((draftSnapshot) => {
         const data = draftSnapshot.data();
         if (expiredAt(data)) {
-          void deleteDoc(draftSnapshot.ref);
           return [];
         }
         return [toTopicNode(draftSnapshot.id, data)];
@@ -71,44 +69,41 @@ export const actDraftService = {
     });
   },
 
+  async saveDraftSnapshot(
+    workspaceId: string,
+    topicId: string,
+    nodeId: string,
+    draft: { title?: string; kind?: string; contentMd?: string },
+  ) {
+    await setDoc(
+      draftDoc(workspaceId, topicId, nodeId),
+      {
+        nodeId,
+        title: draft.title ?? nodeId,
+        kind: draft.kind ?? "act",
+        contentMd: draft.contentMd ?? "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastTouchedAt: serverTimestamp(),
+        expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
+        pinned: false,
+      },
+      { merge: true },
+    );
+  },
+
   async applyPatch(workspaceId: string, topicId: string, patch: PatchOp, queryText: string) {
-    const basePayload = {
+    const payload = {
       nodeId: patch.nodeId,
       title: patch.data?.label ?? queryText,
       kind: patch.data?.type ?? "act",
+      contentMd: patch.data?.contentMd ?? "",
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
       pinned: false,
     };
-
-    if (patch.type === "upsert") {
-      await setDoc(
-        draftDoc(workspaceId, topicId, patch.nodeId),
-        {
-          ...basePayload,
-          contentMd: patch.data?.contentMd ?? "",
-          createdAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      return;
-    }
-
-    if (patch.type === "append_md") {
-      const ref = draftDoc(workspaceId, topicId, patch.nodeId);
-      const snapshot = await getDoc(ref);
-      const existing = snapshot.exists() ? readString(snapshot.data().contentMd) ?? "" : "";
-      await setDoc(
-        ref,
-        {
-          ...basePayload,
-          contentMd: existing + (patch.data?.contentMd ?? ""),
-          createdAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-    }
+    await setDoc(draftDoc(workspaceId, topicId, patch.nodeId), payload, { merge: true });
   },
 
   async touchDraft(workspaceId: string, topicId: string, nodeId: string) {

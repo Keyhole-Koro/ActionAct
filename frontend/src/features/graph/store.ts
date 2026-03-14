@@ -35,6 +35,20 @@ function sameIds(left: string[], right: string[]) {
     return left.every((id, index) => id === right[index]);
 }
 
+function preserveNodePositions(previousNodes: Node[], nextNodes: Node[]) {
+    const previousById = new Map(previousNodes.map((node) => [node.id, node]));
+    return nextNodes.map((node) => {
+        const previous = previousById.get(node.id);
+        if (!previous) {
+            return node;
+        }
+        return {
+            ...node,
+            position: previous.position,
+        };
+    });
+}
+
 let _nodeCounter = 0;
 
 export const useGraphStore = create<GraphState>((set) => ({
@@ -51,8 +65,14 @@ export const useGraphStore = create<GraphState>((set) => ({
     setSelectedNodes: (ids) => set((state) => (
         sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
     )),
-    setPersistedGraph: (nodes, edges) => set({ persistedNodes: nodes, persistedEdges: edges }),
-    setDraftGraph: (nodes, edges) => set({ draftNodes: nodes, draftEdges: edges }),
+    setPersistedGraph: (nodes, edges) => set((state) => ({
+        persistedNodes: preserveNodePositions(state.persistedNodes, nodes),
+        persistedEdges: edges,
+    })),
+    setDraftGraph: (nodes, edges) => set((state) => ({
+        draftNodes: preserveNodePositions(state.draftNodes, nodes),
+        draftEdges: edges,
+    })),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),

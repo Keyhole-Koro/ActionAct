@@ -22,6 +22,7 @@ export interface OrganizePort {
     subscribeTree: (workspaceId: string, topicId: string, callback: (nodes: TopicNode[]) => void) => () => void;
 
     // Mutating actions
+    upsertNode: (workspaceId: string, topicId: string, node: TopicNode) => Promise<void>;
     renameNode: (workspaceId: string, topicId: string, nodeId: string, newTitle: string) => Promise<void>;
     deleteNode: (workspaceId: string, topicId: string, nodeId: string) => Promise<void>;
     moveNode: (workspaceId: string, topicId: string, nodeId: string, newParentId: string | null) => Promise<void>;

@@ -12,7 +12,6 @@ import {
     useEdgesState,
     useReactFlow,
     SelectionMode,
-    ReactFlowProvider
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -28,7 +27,6 @@ import { SelectionNodeCard } from './SelectionNodeCard';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
 import { toSelectionFlow } from '../selectors/toSelectionFlow';
 import { getLayoutedElements } from '../utils/layout';
-import { actDraftService } from '@/services/actDraft/firestore';
 
 const nodeTypes = {
     customTask: GraphNodeCard,
@@ -41,8 +39,6 @@ export function GraphCanvas() {
     const {
         persistedNodes,
         persistedEdges,
-        draftNodes,
-        draftEdges,
         nodes: actNodes,
         edges: actEdges,
         setSelectedNodes,
@@ -62,7 +58,7 @@ export function GraphCanvas() {
             const rfNodes: Node[] = topicNodes.map((n, i) => ({
                 id: n.id,
                 type: 'customTask',
-                position: { x: 100 + (Math.random() * 200), y: i * 150 + 50 },
+                position: { x: 120, y: i * 180 + 80 },
                 data: {
                     label: n.title,
                     type: n.type,
@@ -89,44 +85,70 @@ export function GraphCanvas() {
     }, [setPersistedGraph, workspaceId, topicId]);
 
     useEffect(() => {
-        const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (topicNodes: TopicNode[]) => {
-            const rfNodes: Node[] = topicNodes.map((n, i) => ({
-                id: n.id,
-                type: 'customTask',
-                position: { x: 420 + (Math.random() * 120), y: i * 180 + 80 },
-                data: {
-                    label: n.title,
-                    type: n.type,
-                    contentMd: n.contentMd,
-                    contextSummary: n.contextSummary,
-                    detailHtml: n.detailHtml,
-                    evidenceRefs: n.evidenceRefs,
-                    isActDraft: true,
-                },
-            }));
-
-            setDraftGraph(rfNodes, []);
-        });
-
-        return () => unsubscribe();
+        setDraftGraph([], []);
     }, [setDraftGraph, topicId, workspaceId]);
 
     const { groups } = useAgentInteractionStore();
-    const selectionBaseNodes = [...persistedNodes, ...draftNodes];
+    const selectionBaseNodes = [...persistedNodes];
     const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, selectionBaseNodes);
+    const lastDebugSignature = useRef<string>('');
 
     // Combine all node sources
-    const dedupedPersistedAndDraft = [
-        ...persistedNodes,
-        ...draftNodes.filter((draftNode) => !persistedNodes.some((persistedNode) => persistedNode.id === draftNode.id)),
-    ];
-    const dedupedActNodes = actNodes.filter((actNode) => !dedupedPersistedAndDraft.some((node) => node.id === actNode.id));
-    const rawCombinedNodes = [...dedupedPersistedAndDraft, ...dedupedActNodes, ...selectionNodes];
-    const rawCombinedEdges = [...persistedEdges, ...draftEdges, ...actEdges, ...selectionEdges];
+    const dedupedActNodes = actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id));
+    const rawCombinedNodes = [...persistedNodes, ...dedupedActNodes, ...selectionNodes];
+    const rawCombinedEdges = [...persistedEdges, ...actEdges, ...selectionEdges];
 
     // State for auto-layouted nodes/edges
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
+
+    useEffect(() => {
+        const nodes = [
+            ...persistedNodes.map((node) => ({
+                id: node.id,
+                source: 'persisted',
+                label: typeof node.data?.label === 'string' ? node.data.label : '',
+                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
+            })),
+            ...actNodes.map((node) => ({
+                id: node.id,
+                source: 'act',
+                label: typeof node.data?.label === 'string' ? node.data.label : '',
+                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
+            })),
+            ...selectionNodes.map((node) => ({
+                id: node.id,
+                source: 'selection',
+                label: typeof node.data?.label === 'string' ? node.data.label : '',
+                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
+            })),
+        ];
+
+        const signature = JSON.stringify({
+            workspaceId,
+            topicId,
+            nodes,
+        });
+
+        if (signature === lastDebugSignature.current) {
+            return;
+        }
+        lastDebugSignature.current = signature;
+
+        console.info('[GraphCanvas] node sources', {
+            workspaceId,
+            topicId,
+            persistedCount: persistedNodes.length,
+            draftCount: 0,
+            actCount: actNodes.length,
+            selectionCount: selectionNodes.length,
+            nodes,
+        });
+    }, [actNodes, persistedNodes, selectionNodes, topicId, workspaceId]);
+
     // Apply auto-layout asynchronously
     useEffect(() => {
         let mounted = true;
@@ -141,7 +163,6 @@ export function GraphCanvas() {
 
     // Canvas double-click → create empty node
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
-        console.log("handlePaneDoubleClick called!", event.clientX, event.clientY);
         const position = reactFlowInstance.screenToFlowPosition({
             x: event.clientX,
             y: event.clientY,
@@ -168,9 +189,6 @@ export function GraphCanvas() {
                         setMode('node-detail');
                         openPanel('node-detail', node.id);
                     }
-                    if (node.data?.isActDraft) {
-                        void actDraftService.touchDraft(workspaceId, topicId, node.id);
-                    }
                 }}
                 onPaneClick={(event) => {
                     const now = Date.now();
@@ -193,11 +211,11 @@ export function GraphCanvas() {
                 selectionMode={SelectionMode.Partial}
                 fitView
             >
-                <Background color="hsl(var(--primary) / 0.3)" gap={32} size={1.5} />
-                <Controls className="!bg-card/90 !border-primary/30 !rounded-none !shadow-[0_0_15px_rgba(0,255,255,0.15)] backdrop-blur-md" />
+                <Background color="hsl(var(--primary) / 0.1)" gap={24} size={1} />
+                <Controls className="!bg-white !border-border/40 !rounded-md !shadow-sm" />
                 <MiniMap
-                    className="!bg-card/90 !border-primary/30 !rounded-none !shadow-[0_0_15px_rgba(0,255,255,0.15)] backdrop-blur-md"
-                    maskColor="rgba(0,255,255,0.05)"
+                    className="!bg-white !border-border/40 !rounded-md !shadow-sm"
+                    maskColor="rgba(0,0,0,0.05)"
                     nodeColor={() => 'hsl(var(--primary))'}
                 />
             </ReactFlow>

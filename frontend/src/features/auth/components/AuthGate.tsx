@@ -7,7 +7,6 @@ import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
-import { getFirebaseIdToken } from "@/services/firebase/token";
 
 type AuthGateProps = {
   children: ReactNode;
@@ -34,7 +33,7 @@ export function AuthGate({ children }: AuthGateProps) {
       try {
         await ensureLocalWorkspaceAccess(user, workspaceId, topicId);
 
-        const idToken = await getFirebaseIdToken();
+        const idToken = await user.getIdToken();
         if (!idToken) {
           throw new Error("Firebase ID token is missing");
         }

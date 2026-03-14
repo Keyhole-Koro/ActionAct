@@ -72,23 +72,23 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             {/* Main Card Container */}
             <div
                 className={`
-                    group relative w-[340px] rounded-sm transition-all duration-300
-                    bg-white/95 backdrop-blur-md border border-primary/20
-                    shadow-[0_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0_4px_25px_rgba(0,255,255,0.2)]
-                    ${selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-[0_0_30px_rgba(0,255,255,0.4)] scale-[1.02] border-primary/50' : 'hover:border-primary/40'}
-                    ${isStreaming ? 'animate-pulse-subtle' : ''}
-                `}
+                group relative w-[340px] rounded-2xl transition-all duration-300
+                bg-background border border-border/40
+                shadow-md hover:shadow-xl
+                ${selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
+                ${isStreaming ? 'animate-pulse-subtle' : ''}
+            `}
             >
-                {/* Inner top glow accent based on node type */}
-                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${cfg.gradient} opacity-70`} />
+                {/* Subtle top primary line accent */}
+                <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r ${cfg.gradient} opacity-80`} />
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
                 <div className="relative p-4 pb-0 flex gap-3">
-                    {/* Icon Container with active glow */}
+                    {/* Icon Container with active styling */}
                     {data.type !== 'act' && (
                         <div className="relative shrink-0 mt-0.5 group">
-                            <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-0 group-hover:opacity-100 blur-sm transition-opacity duration-300`} />
-                            <div className={`relative flex items-center justify-center w-10 h-10 rounded-sm bg-white border-2 border-primary/30 shadow-[0_0_10px_rgba(0,255,255,0.15)] group-hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] transition-shadow ${cfg.accent}`}>
+                            <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-10 group-hover:opacity-20 blur-sm transition-opacity duration-300`} />
+                            <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background border border-border/50 shadow-sm group-hover:shadow transition-shadow ${cfg.accent}`}>
                                 <TypeIcon className="w-5 h-5" />
                             </div>
                         </div>
