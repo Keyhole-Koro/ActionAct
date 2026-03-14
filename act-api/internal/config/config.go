@@ -22,12 +22,18 @@ type Config struct {
 }
 
 func MustLoad() *Config {
+	pubsubTopic := os.Getenv("PUBSUB_TOPIC")
+	if pubsubTopic == "" {
+		pubsubTopic = "mind-events"
+	}
 	return &Config{
 		Port:              mustEnv("PORT"),
 		RedisAddr:         mustEnv("REDIS_ADDR"),
 		RedisDB:           mustIntEnv("REDIS_DB"),
 		ADKWorkerURL:      mustEnv("ACT_ADK_WORKER_URL"),
 		GCloudProject:     mustEnv("GOOGLE_CLOUD_PROJECT"),
+		GCSBucket:         mustEnv("GCS_BUCKET"),
+		PubSubTopic:       pubsubTopic,
 		SIDStrict:         mustBoolEnv("SID_STRICT"),
 		SIDTTLSeconds:     mustIntEnv("SID_TTL_SECONDS"),
 		CSRFTTLSeconds:    mustIntEnv("CSRF_TTL_SECONDS"),

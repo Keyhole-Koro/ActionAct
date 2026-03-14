@@ -26,6 +26,7 @@ interface GraphState {
 
     addOrUpdateNode: (nodeId: string, label: string, type: string) => void;
     addEmptyNode: (position: { x: number; y: number }) => string;
+    addQueryNode: (position: { x: number; y: number }, initialLabel: string) => string;
     updateNodeLabel: (nodeId: string, label: string) => void;
     appendContent: (nodeId: string, content: string) => void;
     removeNode: (nodeId: string) => void;
@@ -135,6 +136,32 @@ export const useGraphStore = create<GraphState>((set) => ({
             }],
             editingNodeId: id,
             activeNodeId: id,
+        }));
+        return id;
+    },
+
+    addQueryNode: (position, initialLabel) => {
+        const id = `act-node-${++_nodeCounter}-${Date.now()}`;
+        set((state) => ({
+            nodes: [...state.nodes, {
+                id,
+                type: 'customTask',
+                position,
+                data: { label: initialLabel, type: 'act', contentMd: '', isManualPosition: true }
+            }],
+            edges: [
+                ...state.edges,
+                ...state.selectedNodeIds.map((targetId) => ({
+                    id: `edge-ctx-${targetId}-${id}`,
+                    source: targetId,
+                    target: id,
+                    animated: true,
+                    style: { stroke: '#888', strokeDasharray: '5,5' }
+                })),
+            ],
+            editingNodeId: id,
+            activeNodeId: id,
+            selectedNodeIds: [],
         }));
         return id;
     },

@@ -6,6 +6,7 @@ import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
 import { Sparkles, FolderKanban, LogOut, Settings } from 'lucide-react';
+import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -53,6 +54,7 @@ export function AppHeader() {
                 {/* Status & User */}
                 <div className="flex items-center gap-4">
                     {!isMock ? <CreateWorkspaceControl /> : null}
+                    <UploadButton />
 
                     {isMock && (
                         <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-100 border-0 font-semibold tracking-wide">

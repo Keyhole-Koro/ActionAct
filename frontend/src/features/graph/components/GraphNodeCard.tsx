@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, Trash2 } from 'lucide-react';
+import { Play, Sparkles, FileText, Search, MessageSquare, Pencil } from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useGraphStore } from '@/features/graph/store';
 
@@ -124,12 +124,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                             />
                         ) : (
                             <h3
-                                className="text-base font-bold leading-snug text-foreground cursor-text line-clamp-2 mt-0.5 hover:text-primary transition-colors duration-300 font-heading"
-                                onDoubleClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingNode(id);
-                                    setEditValue(data.label || '');
-                                }}
+                                className="text-base font-bold leading-snug text-foreground line-clamp-2 mt-0.5 font-heading"
                             >
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>

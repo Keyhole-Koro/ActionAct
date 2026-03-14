@@ -73,10 +73,12 @@ export function GraphCanvas() {
         setSelectedNodes,
         setActiveNode,
         addEmptyNode,
+        addQueryNode,
         setPersistedGraph,
         setDraftGraph,
         setActGraph,
         editingNodeId,
+        selectedNodeIds,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const [, , reactFlowOnNodesChange] = useNodesState<Node>([]);
@@ -329,6 +331,40 @@ export function GraphCanvas() {
         addEmptyNode(position);
     }, [reactFlowInstance, addEmptyNode]);
 
+    const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
+        if (selectedNodeIds.length === 0 || editingNodeId) {
+            return;
+        }
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+        }
+        if (event.key.length !== 1 || /\s/.test(event.key)) {
+            return;
+        }
+
+        const target = event.target;
+        if (
+            target instanceof HTMLElement
+            && (
+                target.tagName === 'INPUT'
+                || target.tagName === 'TEXTAREA'
+                || target.isContentEditable
+            )
+        ) {
+            return;
+        }
+
+        const selectedNodes = displayNodes.filter((node) => selectedNodeIds.includes(node.id));
+        if (selectedNodes.length === 0) {
+            return;
+        }
+
+        const averageX = selectedNodes.reduce((sum, node) => sum + node.position.x, 0) / selectedNodes.length;
+        const maxY = selectedNodes.reduce((max, node) => Math.max(max, node.position.y), selectedNodes[0].position.y);
+        addQueryNode({ x: averageX, y: maxY + 240 }, event.key);
+        event.preventDefault();
+    }, [addQueryNode, displayNodes, editingNodeId, selectedNodeIds]);
+
     // Track last click time for manual double-click detection
     const lastClickTime = useRef<number>(0);
     const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
@@ -350,6 +386,11 @@ export function GraphCanvas() {
             return [...nextIds];
         });
     }, [reactFlowOnNodesChange]);
+
+    useEffect(() => {
+        window.addEventListener('keydown', handleSelectionTyping);
+        return () => window.removeEventListener('keydown', handleSelectionTyping);
+    }, [handleSelectionTyping]);
 
     return (
         <div className="w-full h-full pb-20">
@@ -387,6 +428,7 @@ export function GraphCanvas() {
                 selectionOnDrag={true}
                 panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}
+                multiSelectionKeyCode="Shift"
                 fitView
             >
                 <Background color="hsl(var(--primary) / 0.1)" gap={24} size={1} />

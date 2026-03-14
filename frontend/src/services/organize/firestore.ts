@@ -161,4 +161,31 @@ export const firestoreOrganizeService: OrganizePort = {
       parentId: newParentId ?? null,
     });
   },
+
+  uploadInput: async (workspaceId, file) => {
+    const { getFirebaseIdToken } = await import("@/services/firebase/token");
+    const token = await getFirebaseIdToken();
+
+    const formData = new FormData();
+    formData.append("workspace_id", workspaceId);
+    formData.append("file", file);
+
+    const apiBase = process.env.NEXT_PUBLIC_ACT_API_URL || "http://localhost:8080";
+    const res = await fetch(`${apiBase}/api/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: "include",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Upload failed: ${res.status} ${text}`);
+    }
+
+    const json = (await res.json()) as { input_id: string };
+    return { inputId: json.input_id };
+  },
 };

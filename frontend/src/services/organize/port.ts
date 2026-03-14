@@ -26,4 +26,7 @@ export interface OrganizePort {
     renameNode: (workspaceId: string, topicId: string, nodeId: string, newTitle: string) => Promise<void>;
     deleteNode: (workspaceId: string, topicId: string, nodeId: string) => Promise<void>;
     moveNode: (workspaceId: string, topicId: string, nodeId: string, newParentId: string | null) => Promise<void>;
+
+    // Upload
+    uploadInput: (workspaceId: string, file: File) => Promise<{ inputId: string }>;
 }
