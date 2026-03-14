@@ -6,6 +6,8 @@ import json
 import logging
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from starlette.responses import StreamingResponse
 
 from app.domain.models import RunActInput
@@ -28,7 +30,10 @@ def set_usecase(uc: RunActUsecase) -> None:
 async def run_act(request: Request):
     """Accept JSON, run the pipeline, return ndjson SSE stream."""
     body = await request.json()
-    input_data = RunActInput(**body)
+    try:
+        input_data = RunActInput(**body)
+    except ValidationError as e:
+        return JSONResponse(status_code=422, content={"detail": e.errors()})
 
     logger.info(
         "run_act called",
