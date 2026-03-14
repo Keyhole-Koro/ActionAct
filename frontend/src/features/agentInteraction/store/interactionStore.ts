@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { SelectionGroup, SelectionStatus } from '../types';
+import { SelectionGroup } from '../types';
 
 interface AgentInteractionState {
     groups: Record<string, SelectionGroup>;
@@ -15,7 +15,7 @@ interface AgentInteractionState {
     toggleOptionSelection: (groupId: string, optionId: string) => void;
 }
 
-export const useAgentInteractionStore = create<AgentInteractionState>((set, get) => ({
+export const useAgentInteractionStore = create<AgentInteractionState>((set) => ({
     groups: {},
 
     createGroup: (group) => set((state) => {

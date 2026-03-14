@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
     ReactFlow,
     Controls,
@@ -85,7 +85,7 @@ export function GraphCanvas() {
                 onSelectionChange={({ nodes }: { nodes: Node[] }) => {
                     setSelectedNodes(nodes.map((n: Node) => n.id));
                 }}
-                onNodeClick={(event: React.MouseEvent, node: Node) => {
+                onNodeClick={(_event: React.MouseEvent, node: Node) => {
                     setActiveNode(node.id);
                     setMode('node-detail');
                     openPanel('node-detail', node.id);

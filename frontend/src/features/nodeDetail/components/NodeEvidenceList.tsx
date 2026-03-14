@@ -34,7 +34,7 @@ export function NodeEvidenceList({ evidenceRefs }: NodeEvidenceListProps) {
                                 </h4>
                                 {ref.snippet && (
                                     <p className="text-xs text-muted-foreground italic border-l-2 border-muted-foreground/30 pl-2">
-                                        "{ref.snippet}"
+                                        &quot;{ref.snippet}&quot;
                                     </p>
                                 )}
                             </div>

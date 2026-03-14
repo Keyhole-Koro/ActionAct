@@ -16,7 +16,7 @@ type SelectionNodeData = UiSelectionOption & {
 
 export type SelectionNode = Node<Record<string, unknown>, 'selectionNode'>;
 
-export function SelectionNodeCard({ id, data, isConnectable }: NodeProps<Node>) {
+export function SelectionNodeCard({ data, isConnectable }: NodeProps<Node>) {
     const nodeData = data as unknown as SelectionNodeData;
     const { toggleOptionSelection } = useAgentInteractionStore();
     const isReadOnly = nodeData.groupStatus !== 'pending';

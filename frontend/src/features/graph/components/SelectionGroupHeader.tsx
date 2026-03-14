@@ -7,11 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
-import { SelectionStatus, SelectionGroup, SelectionHeaderData, SelectionOption } from '@/features/agentInteraction/types';
+import { SelectionStatus, SelectionHeaderData, SelectionOption } from '@/features/agentInteraction/types';
 
 export type SelectionHeaderNode = Node<Record<string, unknown>, 'selectionHeader'>;
 
-export function SelectionGroupHeader({ id, data }: NodeProps<Node>) {
+export function SelectionGroupHeader({ data }: NodeProps<Node>) {
     const nodeData = data as unknown as SelectionHeaderData;
     const { confirmSelection, clearSelection, cancelGroup } = useAgentInteractionStore();
 

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { NodeDetailPanel } from '@/features/nodeDetail/components/NodeDetailPanel';
 
 export function RightPanelRouter() {
-    const { isOpen, mode: panelMode, closePanel, selectedNodeId } = usePanelStore();
+    const { isOpen, mode: panelMode, closePanel } = usePanelStore();
 
     if (!isOpen) return null;
 
