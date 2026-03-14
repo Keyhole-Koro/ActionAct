@@ -53,6 +53,44 @@ func (m *mockExecutor) Execute(
 	return m.err
 }
 
+type mockActRunRecorder struct {
+	startCalled bool
+}
+
+func (m *mockActRunRecorder) Start(ctx context.Context, input domain.RunActInput) error {
+	m.startCalled = true
+	return nil
+}
+
+func (m *mockActRunRecorder) AppendEvent(ctx context.Context, input domain.RunActInput, seq int, evt *actv1.RunActEvent) error {
+	return nil
+}
+
+func (m *mockActRunRecorder) Finish(ctx context.Context, input domain.RunActInput, status string, terminal *actv1.Terminal) error {
+	return nil
+}
+
+type mockIdempotencyGate struct {
+	result        domain.IdempotencyResult
+	err           error
+	beginCalled   bool
+	releaseCalled bool
+}
+
+func (m *mockIdempotencyGate) Begin(ctx context.Context, uid, workspaceID, requestID string) (domain.IdempotencyResult, error) {
+	m.beginCalled = true
+	return m.result, m.err
+}
+
+func (m *mockIdempotencyGate) Complete(ctx context.Context, uid, workspaceID, requestID string, terminal *actv1.Terminal) error {
+	return nil
+}
+
+func (m *mockIdempotencyGate) Release(ctx context.Context, uid, workspaceID, requestID string) error {
+	m.releaseCalled = true
+	return nil
+}
+
 // ── Tests ──
 
 func newTestMsg() *actv1.RunActRequest {
@@ -71,6 +109,8 @@ func TestRunActUsecase_AuthFailure(t *testing.T) {
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
 	)
 
 	err := uc.Execute(
@@ -96,6 +136,8 @@ func TestRunActUsecase_SessionFailure(t *testing.T) {
 		&mockSession{err: domain.ErrSessionInvalid},
 		&mockCSRF{},
 		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
 	)
 
 	err := uc.Execute(
@@ -121,6 +163,8 @@ func TestRunActUsecase_CSRFFailure(t *testing.T) {
 		&mockSession{},
 		&mockCSRF{err: domain.ErrCSRFMismatch},
 		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
 	)
 
 	err := uc.Execute(
@@ -146,6 +190,8 @@ func TestRunActUsecase_ValidationFailure_MissingTopicID(t *testing.T) {
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
 	)
 
 	msg := newTestMsg()
@@ -174,6 +220,8 @@ func TestRunActUsecase_UIDMismatch(t *testing.T) {
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
 	)
 
 	msg := newTestMsg()
@@ -201,11 +249,15 @@ func TestRunActUsecase_UIDMismatch(t *testing.T) {
 
 func TestRunActUsecase_HappyPath_CallsExecutor(t *testing.T) {
 	exec := &mockExecutor{}
+	recorder := &mockActRunRecorder{}
+	idem := &mockIdempotencyGate{}
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "user-1"},
 		&mockSession{},
 		&mockCSRF{},
 		exec,
+		recorder,
+		idem,
 	)
 
 	err := uc.Execute(
@@ -221,5 +273,47 @@ func TestRunActUsecase_HappyPath_CallsExecutor(t *testing.T) {
 	}
 	if !exec.called {
 		t.Error("expected executor to be called")
+	}
+	if !recorder.startCalled {
+		t.Error("expected act run recorder to start")
+	}
+	if !idem.beginCalled {
+		t.Error("expected idempotency begin to be called")
+	}
+}
+
+func TestRunActUsecase_IdempotencyInFlight(t *testing.T) {
+	uc := usecase.NewRunActUsecase(
+		&mockAuth{uid: "user-1"},
+		&mockSession{},
+		&mockCSRF{},
+		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{result: domain.IdempotencyResult{
+			Status:       domain.IdempotencyInFlight,
+			RetryAfterMs: 3000,
+		}},
+	)
+
+	err := uc.Execute(
+		context.Background(),
+		usecase.RequestContext{AuthHeader: "Bearer ok"},
+		newTestMsg(),
+		nil,
+		"trace-1",
+	)
+
+	var stageErr *domain.StageError
+	if !errors.As(err, &stageErr) {
+		t.Fatalf("expected StageError, got %T: %v", err, err)
+	}
+	if stageErr.Stage != "IDEMPOTENCY_CHECK" {
+		t.Errorf("stage = %q, want IDEMPOTENCY_CHECK", stageErr.Stage)
+	}
+	if !errors.Is(stageErr.Err, domain.ErrAlreadyExists) {
+		t.Errorf("err = %v, want ErrAlreadyExists", stageErr.Err)
+	}
+	if stageErr.RetryAfterMs != 3000 {
+		t.Errorf("retryAfterMs = %d, want 3000", stageErr.RetryAfterMs)
 	}
 }

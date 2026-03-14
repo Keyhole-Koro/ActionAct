@@ -54,11 +54,18 @@ func main() {
 	authVerifier := adapter.NewFirebaseAuthVerifier(authClient)
 	sessionValidator := adapter.NewRedisSessionValidator(rdb, cfg.SIDStrict)
 	sessionIssuer := adapter.NewRedisSessionIssuer(rdb, cfg.SIDTTLSeconds, cfg.CSRFTTLSeconds)
+	idempotencyGate := adapter.NewRedisIdempotencyGate(rdb, cfg.SIDLockTTLSeconds, cfg.SIDReqTTLSeconds)
 	csrfValidator := adapter.NewDoubleSubmitCSRFValidator()
-	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL)
+	actRunRecorder, err := adapter.NewFirestoreActRunRecorder(ctx, cfg.GCloudProject)
+	if err != nil {
+		slog.Error("firestore actRuns recorder init failed", "err", err)
+		os.Exit(1)
+	}
+	defer actRunRecorder.Close()
+	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
 
 	// ── Usecase layer ──
-	uc := usecase.NewRunActUsecase(authVerifier, sessionValidator, csrfValidator, actExecutor)
+	uc := usecase.NewRunActUsecase(authVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)

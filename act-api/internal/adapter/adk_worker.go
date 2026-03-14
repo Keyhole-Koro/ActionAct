@@ -22,29 +22,33 @@ import (
 type ADKWorkerExecutor struct {
 	workerURL  string
 	httpClient *http.Client
+	recorder   domain.ActRunRecorder
+	idem       domain.IdempotencyGate
 }
 
-func NewADKWorkerExecutor(workerURL string) *ADKWorkerExecutor {
+func NewADKWorkerExecutor(workerURL string, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
 	return &ADKWorkerExecutor{
 		workerURL: workerURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute, // generous timeout for streaming
 		},
+		recorder: recorder,
+		idem:     idem,
 	}
 }
 
 // workerRequest is the JSON body sent to the ADK Worker.
 type workerRequest struct {
-	TraceID        string            `json:"trace_id"`
-	UID            string            `json:"uid"`
-	TopicID        string            `json:"topic_id"`
-	WorkspaceID    string            `json:"workspace_id"`
-	RequestID      string            `json:"request_id"`
-	ActType        string            `json:"act_type"`
-	UserMessage    string            `json:"user_message"`
-	AnchorNodeID   string            `json:"anchor_node_id,omitempty"`
-	ContextNodeIDs []string          `json:"context_node_ids,omitempty"`
-	LLMConfig      *workerLLMConfig  `json:"llm_config,omitempty"`
+	TraceID        string           `json:"trace_id"`
+	UID            string           `json:"uid"`
+	TopicID        string           `json:"topic_id"`
+	WorkspaceID    string           `json:"workspace_id"`
+	RequestID      string           `json:"request_id"`
+	ActType        string           `json:"act_type"`
+	UserMessage    string           `json:"user_message"`
+	AnchorNodeID   string           `json:"anchor_node_id,omitempty"`
+	ContextNodeIDs []string         `json:"context_node_ids,omitempty"`
+	LLMConfig      *workerLLMConfig `json:"llm_config,omitempty"`
 }
 
 type workerLLMConfig struct {
@@ -55,12 +59,12 @@ type workerLLMConfig struct {
 
 // workerEvent is a single ndjson line from the ADK Worker response.
 type workerEvent struct {
-	Type      string         `json:"type"`
-	Ops       []workerPatch  `json:"ops,omitempty"`
-	Text      *string        `json:"text,omitempty"`
-	IsThought *bool          `json:"is_thought,omitempty"`
-	Done      *bool          `json:"done,omitempty"`
-	Error     *workerError   `json:"error,omitempty"`
+	Type      string        `json:"type"`
+	Ops       []workerPatch `json:"ops,omitempty"`
+	Text      *string       `json:"text,omitempty"`
+	IsThought *bool         `json:"is_thought,omitempty"`
+	Done      *bool         `json:"done,omitempty"`
+	Error     *workerError  `json:"error,omitempty"`
 }
 
 type workerPatch struct {
@@ -116,6 +120,7 @@ func (e *ADKWorkerExecutor) Execute(
 	resp, err := e.httpClient.Do(httpReq)
 	if err != nil {
 		log.Error("ADK Worker request failed", "err", err)
+		e.finishWithWorkerError(ctx, input, "UNAVAILABLE", "ADK Worker unreachable: "+err.Error(), true, "GENERATE_WITH_MODEL")
 		return sendWorkerError(stream, "UNAVAILABLE", "ADK Worker unreachable: "+err.Error(), true, "GENERATE_WITH_MODEL", input.TraceID)
 	}
 	defer resp.Body.Close()
@@ -123,6 +128,14 @@ func (e *ADKWorkerExecutor) Execute(
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		log.Error("ADK Worker returned error", "status", resp.StatusCode, "body", string(body))
+		e.finishWithWorkerError(
+			ctx,
+			input,
+			"UNAVAILABLE",
+			fmt.Sprintf("ADK Worker returned %d: %s", resp.StatusCode, string(body)),
+			true,
+			"GENERATE_WITH_MODEL",
+		)
 		return sendWorkerError(stream, "UNAVAILABLE",
 			fmt.Sprintf("ADK Worker returned %d: %s", resp.StatusCode, string(body)),
 			true, "GENERATE_WITH_MODEL", input.TraceID)
@@ -131,6 +144,7 @@ func (e *ADKWorkerExecutor) Execute(
 	// Stream ndjson line by line
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1MB lines
+	seq := 0
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -150,25 +164,38 @@ func (e *ADKWorkerExecutor) Execute(
 		}
 
 		if err := stream.Send(protoEvt); err != nil {
+			e.finishWithWorkerError(ctx, input, "INTERNAL", "send to client: "+err.Error(), false, "EMIT_STREAM")
 			return fmt.Errorf("send to client: %w", err)
 		}
+		seq++
+		e.appendEvent(ctx, input, seq, protoEvt)
 
 		if done {
+			e.finishFromTerminal(ctx, input, protoEvt.GetTerminal())
 			return nil
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Error("reading worker response stream", "err", err)
+		e.finishWithWorkerError(ctx, input, "UNAVAILABLE", "stream read error: "+err.Error(), true, "EMIT_STREAM")
 		return sendWorkerError(stream, "UNAVAILABLE", "stream read error: "+err.Error(), true, "EMIT_STREAM", input.TraceID)
 	}
 
 	// Stream ended without terminal event — send done
-	return stream.Send(&actv1.RunActEvent{
+	doneEvt := &actv1.RunActEvent{
 		Event: &actv1.RunActEvent_Terminal{
 			Terminal: &actv1.Terminal{Done: true},
 		},
-	})
+	}
+	if err := stream.Send(doneEvt); err != nil {
+		e.finishWithWorkerError(ctx, input, "INTERNAL", "send to client: "+err.Error(), false, "EMIT_STREAM")
+		return err
+	}
+	seq++
+	e.appendEvent(ctx, input, seq, doneEvt)
+	e.finishFromTerminal(ctx, input, doneEvt.GetTerminal())
+	return nil
 }
 
 // toProtoEvent converts a worker ndjson event to a proto RunActEvent.
@@ -248,4 +275,50 @@ func sendWorkerError(
 		},
 	})
 	return fmt.Errorf("%s: %s", stage, msg)
+}
+
+func (e *ADKWorkerExecutor) appendEvent(ctx context.Context, input domain.RunActInput, seq int, evt *actv1.RunActEvent) {
+	if e.recorder == nil {
+		return
+	}
+	if err := e.recorder.AppendEvent(ctx, input, seq, evt); err != nil {
+		slog.Warn("actRuns append event failed", "trace_id", input.TraceID, "seq", seq, "err", err)
+	}
+}
+
+func (e *ADKWorkerExecutor) finishFromTerminal(ctx context.Context, input domain.RunActInput, terminal *actv1.Terminal) {
+	if e.recorder == nil || terminal == nil {
+	} else {
+		status := "done"
+		if terminal.GetError() != nil {
+			status = "error"
+		}
+		if err := e.recorder.Finish(ctx, input, status, terminal); err != nil {
+			slog.Warn("actRuns finish failed", "trace_id", input.TraceID, "status", status, "err", err)
+		}
+	}
+	if e.idem != nil && terminal != nil {
+		if err := e.idem.Complete(ctx, input.UID, input.WorkspaceID, input.RequestID, terminal); err != nil {
+			slog.Warn("idempotency complete failed", "trace_id", input.TraceID, "err", err)
+		}
+	}
+}
+
+func (e *ADKWorkerExecutor) finishWithWorkerError(
+	ctx context.Context,
+	input domain.RunActInput,
+	code string,
+	msg string,
+	retryable bool,
+	stage string,
+) {
+	e.finishFromTerminal(ctx, input, &actv1.Terminal{
+		Error: &actv1.ErrorInfo{
+			Code:      code,
+			Message:   msg,
+			Retryable: retryable,
+			Stage:     stage,
+			TraceId:   input.TraceID,
+		},
+	})
 }

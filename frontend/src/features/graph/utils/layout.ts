@@ -38,6 +38,10 @@ export async function getLayoutedElements(nodes: Node[], edges: Edge[], directio
         const layoutedGraph = await elk.layout(graph);
 
         const newNodes = nodes.map((node) => {
+            if (node.data && node.data.isManualPosition) {
+                return node;
+            }
+
             const layoutedNode = layoutedGraph.children?.find((n) => n.id === node.id);
 
             // Set handle positions

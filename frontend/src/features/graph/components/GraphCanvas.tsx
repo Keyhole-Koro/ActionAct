@@ -114,11 +114,14 @@ export function GraphCanvas() {
                     setMode('node-detail');
                     openPanel('node-detail', node.id);
                 }}
-                onPaneClick={() => {
-                    // Deselect on empty canvas click
-                    setActiveNode(null);
+                onPaneClick={(event) => {
+                    if (event.detail === 2) {
+                        handlePaneDoubleClick(event);
+                    } else {
+                        // Deselect on single click
+                        setActiveNode(null);
+                    }
                 }}
-                onDoubleClick={handlePaneDoubleClick}
                 nodeTypes={nodeTypes}
                 panOnScroll={true}
                 selectionOnDrag={true}

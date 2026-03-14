@@ -19,6 +19,8 @@ type RunActUsecase struct {
 	session domain.SessionValidator
 	csrf    domain.CSRFValidator
 	exec    domain.ActExecutor
+	runs    domain.ActRunRecorder
+	idem    domain.IdempotencyGate
 }
 
 func NewRunActUsecase(
@@ -26,21 +28,25 @@ func NewRunActUsecase(
 	session domain.SessionValidator,
 	csrf domain.CSRFValidator,
 	exec domain.ActExecutor,
+	runs domain.ActRunRecorder,
+	idem domain.IdempotencyGate,
 ) *RunActUsecase {
 	return &RunActUsecase{
 		auth:    auth,
 		session: session,
 		csrf:    csrf,
 		exec:    exec,
+		runs:    runs,
+		idem:    idem,
 	}
 }
 
 // RequestContext carries extracted HTTP-level values into the usecase.
 type RequestContext struct {
-	AuthHeader  string
-	SIDCookie   string
-	CSRFCookie  string
-	CSRFHeader  string
+	AuthHeader string
+	SIDCookie  string
+	CSRFCookie string
+	CSRFHeader string
 }
 
 // Execute runs the full pipeline and returns a *domain.StageError on failure.
@@ -85,7 +91,37 @@ func (uc *RunActUsecase) Execute(
 	}
 
 	// TODO: AUTHZ — workspace membership + topic access
-	// TODO: Idempotency — dedup on (uid, workspaceID, requestID) via Redis
+
+	// 6. Idempotency — dedup on (uid, workspaceID, requestID) via Redis
+	if uc.idem != nil {
+		result, err := uc.idem.Begin(ctx, uid, msg.GetWorkspaceId(), msg.GetRequestId())
+		if err != nil {
+			log.Warn("IDEMPOTENCY_CHECK failed", "err", err)
+			return &domain.StageError{
+				Stage:     "IDEMPOTENCY_CHECK",
+				Err:       domain.ErrUnavailable,
+				Retryable: true,
+			}
+		}
+		switch result.Status {
+		case domain.IdempotencyInFlight:
+			return &domain.StageError{
+				Stage:        "IDEMPOTENCY_CHECK",
+				Err:          domain.ErrAlreadyExists,
+				Retryable:    true,
+				RetryAfterMs: result.RetryAfterMs,
+			}
+		case domain.IdempotencyDone:
+			if stream != nil && result.Terminal != nil {
+				if err := stream.Send(&actv1.RunActEvent{
+					Event: &actv1.RunActEvent_Terminal{Terminal: result.Terminal},
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
 
 	log.Info("RunAct started",
 		"topic_id", msg.GetTopicId(),
@@ -106,7 +142,19 @@ func (uc *RunActUsecase) Execute(
 		AnchorID:    msg.GetAnchorNodeId(),
 		ContextIDs:  msg.GetContextNodeIds(),
 	}
-	return uc.exec.Execute(ctx, input, stream)
+
+	if uc.runs != nil {
+		if err := uc.runs.Start(ctx, input); err != nil {
+			log.Warn("actRuns start failed", "err", err)
+		}
+	}
+	err = uc.exec.Execute(ctx, input, stream)
+	if err != nil && uc.idem != nil {
+		if releaseErr := uc.idem.Release(ctx, uid, msg.GetWorkspaceId(), msg.GetRequestId()); releaseErr != nil {
+			log.Warn("idempotency release failed", "err", releaseErr)
+		}
+	}
+	return err
 }
 
 func validateRequest(msg *actv1.RunActRequest) error {

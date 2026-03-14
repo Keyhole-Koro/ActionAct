@@ -94,7 +94,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: '', type: 'note', contentMd: '' }
+                data: { label: '', type: 'note', contentMd: '', isManualPosition: true }
             }],
             editingNodeId: id,
             activeNodeId: id,

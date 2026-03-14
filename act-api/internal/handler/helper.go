@@ -48,7 +48,7 @@ func stageErrorToStream(
 	traceID string,
 ) error {
 	code := domainErrToCode(stageErr.Err)
-	return streamError(stream, code, stageErr.Err.Error(), stageErr.Retryable, stageErr.Stage, traceID, 0)
+	return streamError(stream, code, stageErr.Err.Error(), stageErr.Retryable, stageErr.Stage, traceID, stageErr.RetryAfterMs)
 }
 
 func domainErrToCode(err error) string {
@@ -59,6 +59,10 @@ func domainErrToCode(err error) string {
 		return "PERMISSION_DENIED"
 	case errors.Is(err, domain.ErrInvalidArgument):
 		return "INVALID_ARGUMENT"
+	case errors.Is(err, domain.ErrAlreadyExists):
+		return "ALREADY_EXISTS"
+	case errors.Is(err, domain.ErrUnavailable):
+		return "UNAVAILABLE"
 	default:
 		return "INTERNAL"
 	}
