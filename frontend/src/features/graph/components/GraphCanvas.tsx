@@ -70,6 +70,7 @@ export function GraphCanvas() {
         edges: actEdges,
         setSelectedNodes,
         setActiveNode,
+        toggleExpandedNode,
         addEmptyNode,
         addQueryNode,
         setPersistedGraph,
@@ -401,6 +402,7 @@ export function GraphCanvas() {
                     setSelectedNodes(nodes.map((n: Node) => n.id));
                 }}
                 onNodeClick={(_event: React.MouseEvent, node: Node) => {
+                    toggleExpandedNode(node.id);
                     setActiveNode(node.id);
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
@@ -425,7 +427,7 @@ export function GraphCanvas() {
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
-                panOnScroll={true}
+                panOnScroll
                 selectionOnDrag={true}
                 panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}

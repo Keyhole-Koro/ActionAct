@@ -1,13 +1,18 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, PanelRightOpen } from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useGraphStore } from '@/features/graph/store';
 import { usePanelStore } from '@/features/layout/store/panel-store';
+import {
+    GRAPH_NODE_COLLAPSED_WIDTH,
+    GRAPH_NODE_EXPANDED_MAX_HEIGHT,
+    GRAPH_NODE_EXPANDED_WIDTH,
+} from '../constants/nodeDimensions';
 
 type CustomNode = Node<{
     label: string;
@@ -28,15 +33,17 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
 
 export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
     const { startStream, isStreaming } = useActStream();
-    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, activeNodeId } = useGraphStore();
+    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode } = useGraphStore();
     const { openPanel } = usePanelStore();
+    const updateNodeInternals = useUpdateNodeInternals();
     const cfg = typeConfig[data.type] || typeConfig.default;
     const TypeIcon = cfg.icon;
-    const isExpanded = activeNodeId === id;
+    const isExpanded = expandedNodeIds.includes(id);
 
     const isEditing = editingNodeId === id;
     const [editValue, setEditValue] = useState(data.label);
     const inputRef = useRef<HTMLInputElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -44,6 +51,32 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             inputRef.current.select();
         }
     }, [isEditing]);
+
+    useEffect(() => {
+        updateNodeInternals(id);
+    }, [
+        data.contentMd,
+        data.contextSummary,
+        data.label,
+        id,
+        isEditing,
+        isExpanded,
+        updateNodeInternals,
+    ]);
+
+    useEffect(() => {
+        const element = cardRef.current;
+        if (!element || typeof ResizeObserver === 'undefined') {
+            return;
+        }
+
+        const observer = new ResizeObserver(() => {
+            updateNodeInternals(id);
+        });
+        observer.observe(element);
+
+        return () => observer.disconnect();
+    }, [id, updateNodeInternals]);
 
     const commitEdit = useCallback(() => {
         const trimmed = editValue.trim();
@@ -73,8 +106,14 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
         <div className="relative group">
             {/* Main Card Container */}
             <div
+                ref={cardRef}
+                style={{
+                    width: isExpanded ? GRAPH_NODE_EXPANDED_WIDTH : GRAPH_NODE_COLLAPSED_WIDTH,
+                    minWidth: GRAPH_NODE_COLLAPSED_WIDTH,
+                    maxWidth: GRAPH_NODE_EXPANDED_WIDTH,
+                }}
                 className={`
-                group relative w-[340px] rounded-2xl transition-all duration-300
+                group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
                 bg-background border border-border/40
                 shadow-md hover:shadow-xl
                 ${selected || isExpanded ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
@@ -84,8 +123,23 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 {/* Subtle top primary line accent */}
                 <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r ${cfg.gradient} opacity-80`} />
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
+                <div className="absolute right-3 top-3 z-10">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg bg-background/90 backdrop-blur-sm"
+                        onClick={(event: React.MouseEvent) => {
+                            event.stopPropagation();
+                            setActiveNode(id);
+                            openPanel('node-detail', id);
+                        }}
+                    >
+                        <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
+                        Details
+                    </Button>
+                </div>
 
-                <div className="relative p-4 pb-0 flex gap-3">
+                <div className="relative p-4 pb-0 pr-24 flex gap-3">
                     {/* Icon Container with active styling */}
                     {data.type !== 'act' && (
                         <div className="relative shrink-0 mt-0.5 group">
@@ -134,42 +188,66 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                     </div>
                 </div>
 
-                {/* Content preview */}
-                {data.contentMd && (
+                {!isExpanded && data.contentMd && (
                     <div className="relative px-4 pt-3 pb-4">
-                        <p className={`text-sm text-foreground/80 leading-relaxed font-medium ${isExpanded ? '' : 'line-clamp-3'}`}>
+                        <p className="text-sm text-foreground/80 leading-relaxed font-medium line-clamp-3">
                             {data.contentMd}
                         </p>
                     </div>
                 )}
-                {!data.contentMd && <div className="h-4"></div>}
+                {!isExpanded && !data.contentMd && <div className="h-4"></div>}
 
                 {isExpanded && (
-                    <div className="relative px-4 pb-4 pt-2 border-t border-border/20 bg-muted/10">
-                        {data.contextSummary ? (
-                            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                                {data.contextSummary}
-                            </p>
-                        ) : null}
-                        <div className="flex justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 rounded-lg"
-                                onClick={(event: React.MouseEvent) => {
-                                    event.stopPropagation();
-                                    openPanel('node-detail', id);
-                                }}
-                            >
-                                <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
-                                Details
-                            </Button>
+                    <div className="relative border-t border-border/20 bg-muted/10">
+                        <div
+                            style={{ maxHeight: GRAPH_NODE_EXPANDED_MAX_HEIGHT }}
+                            className="overflow-y-auto px-4 py-3"
+                            onWheel={(event) => {
+                                event.stopPropagation();
+                            }}
+                        >
+                            {data.contextSummary ? (
+                                <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                                    {data.contextSummary}
+                                </p>
+                            ) : null}
+                            {data.contentMd ? (
+                                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                                    {data.contentMd}
+                                </div>
+                            ) : null}
+
+                            {data.actions && data.actions.length > 0 && (
+                                <div className="mt-4 flex flex-wrap gap-2 border-t border-border/20 pt-3">
+                                    {data.actions.map((action: { label: string, execute: string }, idx: number) => (
+                                        <Button
+                                            key={idx}
+                                            variant="secondary"
+                                            size="sm"
+                                            className={[
+                                                'h-8 text-xs px-3 rounded-lg font-semibold shadow-sm border border-border/50',
+                                                'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                                'transition-all duration-300 group/btn',
+                                                isStreaming ? 'opacity-50 pointer-events-none' : '',
+                                            ].join(' ')}
+                                            onClick={(e: React.MouseEvent) => {
+                                                e.stopPropagation();
+                                                setSelectedNodes([id]);
+                                                startStream(id, action.label, { clear: false });
+                                            }}
+                                        >
+                                            <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
+                                            {action.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* Actions Area */}
-                {data.actions && data.actions.length > 0 && (
+                {!isExpanded && data.actions && data.actions.length > 0 && (
                     <div className="relative px-4 pb-4 pt-2 flex flex-wrap gap-2 border-t border-border/20 bg-muted/10">
                         {data.actions.map((action: { label: string, execute: string }, idx: number) => (
                             <Button

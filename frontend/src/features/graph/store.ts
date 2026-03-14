@@ -13,6 +13,7 @@ interface GraphState {
     nodes: Node[];
     edges: Edge[];
     selectedNodeIds: string[];
+    expandedNodeIds: string[];
     activeNodeId: string | null;
     editingNodeId: string | null;
 
@@ -22,6 +23,7 @@ interface GraphState {
     setActGraph: (nodes: Node[], edges: Edge[]) => void;
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
+    toggleExpandedNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
 
     addOrUpdateNode: (nodeId: string, label: string, type: string) => void;
@@ -61,6 +63,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     nodes: [],
     edges: [],
     selectedNodeIds: [],
+    expandedNodeIds: [],
     activeNodeId: null,
     editingNodeId: null,
 
@@ -81,6 +84,11 @@ export const useGraphStore = create<GraphState>((set) => ({
     })),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
+    toggleExpandedNode: (id: string) => set((state) => ({
+        expandedNodeIds: state.expandedNodeIds.includes(id)
+            ? state.expandedNodeIds.filter((expandedId) => expandedId !== id)
+            : [...state.expandedNodeIds, id],
+    })),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
 
     addOrUpdateNode: (nodeId, label, type) => set((state) => {
@@ -136,6 +144,9 @@ export const useGraphStore = create<GraphState>((set) => ({
             }],
             editingNodeId: id,
             activeNodeId: id,
+            expandedNodeIds: state.expandedNodeIds.includes(id)
+                ? state.expandedNodeIds
+                : [...state.expandedNodeIds, id],
         }));
         return id;
     },
@@ -161,6 +172,9 @@ export const useGraphStore = create<GraphState>((set) => ({
             ],
             editingNodeId: id,
             activeNodeId: id,
+            expandedNodeIds: state.expandedNodeIds.includes(id)
+                ? state.expandedNodeIds
+                : [...state.expandedNodeIds, id],
             selectedNodeIds: [],
         }));
         return id;
@@ -184,6 +198,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     removeNode: (nodeId) => set((state) => ({
         nodes: state.nodes.filter(n => n.id !== nodeId),
         edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+        expandedNodeIds: state.expandedNodeIds.filter((id) => id !== nodeId),
         activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
         editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
     })),
