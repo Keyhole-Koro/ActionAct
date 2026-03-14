@@ -1,10 +1,10 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { LogoutButton } from '@/features/auth/components/LogoutButton';
 import { useAuthState } from '@/features/auth/hooks/useAuthState';
 import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { Sparkles, FolderKanban, Network } from 'lucide-react';
 
 export function AppHeader() {
     const isMock = config.useMocks;
@@ -13,37 +13,61 @@ export function AppHeader() {
     const userInitial = user?.displayName?.trim().charAt(0) || user?.email?.trim().charAt(0) || 'U';
 
     return (
-        <header className="flex items-center h-14 px-4 border-b bg-background shrink-0 w-full z-10">
-            <div className="flex items-center space-x-4 flex-1">
-                <h1 className="text-sm font-semibold tracking-tight">Act & Organize</h1>
-                <Separator orientation="vertical" className="h-6" />
-                <div className="text-sm text-muted-foreground flex items-center space-x-2 min-w-0">
-                    <span className="shrink-0">Workspace</span>
-                    <Badge variant="outline" className="max-w-44 truncate" title={workspaceId}>
-                        {workspaceId}
-                    </Badge>
-                    <span className="shrink-0 text-xs">Topic</span>
-                    <Badge variant="outline" className="max-w-44 truncate" title={topicId}>
-                        {topicId}
-                    </Badge>
-                </div>
-            </div>
+        <header className="flex flex-col justify-center h-16 px-6 border-b bg-background/80 backdrop-blur-md shrink-0 w-full z-10 sticky top-0 shadow-sm">
+            <div className="flex items-center justify-between w-full">
 
-            <div className="flex items-center space-x-4">
-                {isMock && (
-                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100/80">
-                        Mock Mode
-                    </Badge>
-                )}
-                {!isMock && user?.email ? (
-                    <Badge variant="outline" title={user.email}>
-                        {user.email}
-                    </Badge>
-                ) : null}
-                {!isMock ? <LogoutButton /> : null}
-                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs">
-                    {userInitial.toUpperCase()}
+                {/* Brand & Context */}
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2 group cursor-default">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
+                            <Sparkles className="w-4 h-4 text-white" />
+                        </div>
+                        <h1 className="text-base font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                            Action
+                        </h1>
+                    </div>
+
+                    <div className="h-6 w-px bg-border/60" />
+
+                    <div className="flex items-center gap-4 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground group">
+                            <FolderKanban className="w-4 h-4 group-hover:text-primary transition-colors" />
+                            <span className="font-medium truncate max-w-[150px]" title={workspaceId}>
+                                {workspaceId}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground group">
+                            <Network className="w-4 h-4 group-hover:text-amber-500 transition-colors" />
+                            <span className="font-medium truncate max-w-[150px]" title={topicId}>
+                                {topicId}
+                            </span>
+                        </div>
+                    </div>
                 </div>
+
+                {/* Status & User */}
+                <div className="flex items-center gap-4">
+                    {isMock && (
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-100 border-0 font-semibold tracking-wide">
+                            Mock Mode
+                        </Badge>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                        {!isMock && user?.email ? (
+                            <span className="text-sm font-medium text-muted-foreground truncate max-w-[200px]" title={user.email}>
+                                {user.email}
+                            </span>
+                        ) : null}
+
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/50 border border-border/50 flex items-center justify-center text-sm font-bold text-foreground shadow-sm">
+                            {userInitial.toUpperCase()}
+                        </div>
+
+                        {!isMock ? <LogoutButton /> : null}
+                    </div>
+                </div>
+
             </div>
         </header>
     );
