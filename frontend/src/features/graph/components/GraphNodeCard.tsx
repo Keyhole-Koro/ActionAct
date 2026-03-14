@@ -42,7 +42,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
                                     setSelectedNodes([id]);
-                                    startStream(action.label); // Trigger stream based on action
+                                    startStream(action.label, { clear: false }); // Trigger stream based on action, append to graph
                                 }}
                             >
                                 <Play className="w-3 h-3 mr-1" />

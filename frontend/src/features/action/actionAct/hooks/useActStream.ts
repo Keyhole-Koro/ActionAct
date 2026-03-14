@@ -7,9 +7,11 @@ export function useActStream() {
     const [isStreaming, setIsStreaming] = useState(false);
     const { addOrUpdateNode, appendContent, clearNodes } = useKnowledgeTreeStore();
 
-    const startStream = useCallback((query: string) => {
+    const startStream = useCallback((query: string, options?: { clear?: boolean }) => {
         setIsStreaming(true);
-        clearNodes(); // For demo purposes, clear before new query
+        if (options?.clear !== false) {
+            clearNodes(); // For demo purposes, clear before new query
+        }
 
         const cancel = actService.streamAct(
             query,
