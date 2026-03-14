@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, PanelRightOpen } from 'lucide-react';
@@ -35,7 +35,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
     const { startStream, isStreaming } = useActStream();
     const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode } = useGraphStore();
     const { openPanel } = usePanelStore();
-    const updateNodeInternals = useUpdateNodeInternals();
     const cfg = typeConfig[data.type] || typeConfig.default;
     const TypeIcon = cfg.icon;
     const isExpanded = expandedNodeIds.includes(id);
@@ -43,7 +42,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
     const isEditing = editingNodeId === id;
     const [editValue, setEditValue] = useState(data.label);
     const inputRef = useRef<HTMLInputElement>(null);
-    const cardRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -51,32 +49,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             inputRef.current.select();
         }
     }, [isEditing]);
-
-    useEffect(() => {
-        updateNodeInternals(id);
-    }, [
-        data.contentMd,
-        data.contextSummary,
-        data.label,
-        id,
-        isEditing,
-        isExpanded,
-        updateNodeInternals,
-    ]);
-
-    useEffect(() => {
-        const element = cardRef.current;
-        if (!element || typeof ResizeObserver === 'undefined') {
-            return;
-        }
-
-        const observer = new ResizeObserver(() => {
-            updateNodeInternals(id);
-        });
-        observer.observe(element);
-
-        return () => observer.disconnect();
-    }, [id, updateNodeInternals]);
 
     const commitEdit = useCallback(() => {
         const trimmed = editValue.trim();
@@ -106,7 +78,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
         <div className="relative group">
             {/* Main Card Container */}
             <div
-                ref={cardRef}
                 style={{
                     width: isExpanded ? GRAPH_NODE_EXPANDED_WIDTH : GRAPH_NODE_COLLAPSED_WIDTH,
                     minWidth: GRAPH_NODE_COLLAPSED_WIDTH,

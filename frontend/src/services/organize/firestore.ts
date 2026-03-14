@@ -162,12 +162,13 @@ export const firestoreOrganizeService: OrganizePort = {
     });
   },
 
-  uploadInput: async (workspaceId, file) => {
+  uploadInput: async (workspaceId, topicId, file) => {
     const { getFirebaseIdToken } = await import("@/services/firebase/token");
     const token = await getFirebaseIdToken();
 
     const formData = new FormData();
     formData.append("workspace_id", workspaceId);
+    formData.append("topic_id", topicId);
     formData.append("file", file);
 
     const apiBase = process.env.NEXT_PUBLIC_ACT_API_URL || "http://localhost:8080";

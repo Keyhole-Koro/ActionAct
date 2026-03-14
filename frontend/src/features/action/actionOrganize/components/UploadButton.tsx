@@ -12,7 +12,7 @@ export function UploadButton() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [state, setState] = useState<UploadState>("idle");
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const { workspaceId } = useRunContextStore();
+    const { workspaceId, topicId } = useRunContextStore();
 
     const handleFileChange = useCallback(
         async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,7 +23,7 @@ export function UploadButton() {
             setErrorMsg(null);
 
             try {
-                const result = await organizeService.uploadInput(workspaceId, file);
+                const result = await organizeService.uploadInput(workspaceId, topicId, file);
                 console.info("[Upload] Success:", result.inputId);
                 setState("done");
 
@@ -41,7 +41,7 @@ export function UploadButton() {
                 }
             }
         },
-        [workspaceId],
+        [workspaceId, topicId],
     );
 
     return (

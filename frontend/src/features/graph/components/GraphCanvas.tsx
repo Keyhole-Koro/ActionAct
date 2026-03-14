@@ -290,18 +290,22 @@ export function GraphCanvas() {
                 };
 
             if (!manualNodeIds.includes(node.id)) {
-                return mergedNode;
+                return {
+                    ...mergedNode,
+                    selected: selectedNodeIds.includes(node.id),
+                };
             }
 
             return {
                 ...mergedNode,
+                selected: selectedNodeIds.includes(node.id),
                 data: {
                     ...mergedNode.data,
                     isManualPosition: true,
                 },
             };
         });
-    }, [layoutedNodes, manualNodeIds, rawCombinedNodes]);
+    }, [layoutedNodes, manualNodeIds, rawCombinedNodes, selectedNodeIds]);
 
     const displayEdges = useMemo(
         () => (layoutedEdges.length > 0 ? layoutedEdges : rawCombinedEdges),
@@ -366,6 +370,7 @@ export function GraphCanvas() {
 
     // Track last click time for manual double-click detection
     const lastClickTime = useRef<number>(0);
+    const nodeClickTimeoutRef = useRef<number | null>(null);
     const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
         reactFlowOnNodesChange(changes);
 
@@ -391,6 +396,14 @@ export function GraphCanvas() {
         return () => window.removeEventListener('keydown', handleSelectionTyping);
     }, [handleSelectionTyping]);
 
+    useEffect(() => {
+        return () => {
+            if (nodeClickTimeoutRef.current !== null) {
+                window.clearTimeout(nodeClickTimeoutRef.current);
+            }
+        };
+    }, []);
+
     return (
         <div className="w-full h-full pb-20">
             <ReactFlow
@@ -401,11 +414,31 @@ export function GraphCanvas() {
                 onSelectionChange={({ nodes }: { nodes: Node[] }) => {
                     setSelectedNodes(nodes.map((n: Node) => n.id));
                 }}
-                onNodeClick={(_event: React.MouseEvent, node: Node) => {
-                    toggleExpandedNode(node.id);
-                    setActiveNode(node.id);
+                onNodeClick={(event: React.MouseEvent, node: Node) => {
+                    if (event.shiftKey) {
+                        setSelectedNodes(
+                            selectedNodeIds.includes(node.id)
+                                ? selectedNodeIds.filter((selectedId) => selectedId !== node.id)
+                                : [...selectedNodeIds, node.id],
+                        );
+                        setActiveNode(node.id);
+                        return;
+                    }
+                    if (nodeClickTimeoutRef.current !== null) {
+                        window.clearTimeout(nodeClickTimeoutRef.current);
+                    }
+
+                    nodeClickTimeoutRef.current = window.setTimeout(() => {
+                        toggleExpandedNode(node.id);
+                        setActiveNode(node.id);
+                        nodeClickTimeoutRef.current = null;
+                    }, 220);
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
+                    if (nodeClickTimeoutRef.current !== null) {
+                        window.clearTimeout(nodeClickTimeoutRef.current);
+                        nodeClickTimeoutRef.current = null;
+                    }
                     reactFlowInstance.setCenter(
                         node.position.x + 170,
                         node.position.y + 90,
@@ -422,6 +455,7 @@ export function GraphCanvas() {
                         handlePaneDoubleClick(event);
                     } else {
                         // Single click
+                        setSelectedNodes([]);
                         setActiveNode(null);
                     }
                 }}

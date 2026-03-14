@@ -40,6 +40,7 @@ func (u *UploadUsecase) Execute(
 	ctx context.Context,
 	authHeader string,
 	workspaceID string,
+	topicID string,
 	filename string,
 	contentType string,
 	data []byte,
@@ -75,7 +76,6 @@ func (u *UploadUsecase) Execute(
 	slog.Info("recorded input in Firestore", "inputId", inputID, "workspaceId", workspaceID)
 
 	// 5. Publish event to Pub/Sub
-	topicID := "topic:" + inputID
 	idempotencyKey := fmt.Sprintf("type:input.received/topicId:%s/inputId:%s", topicID, inputID)
 	if err := u.publisher.Publish(ctx, "input.received", workspaceID, topicID, idempotencyKey, map[string]string{
 		"inputId":     inputID,
