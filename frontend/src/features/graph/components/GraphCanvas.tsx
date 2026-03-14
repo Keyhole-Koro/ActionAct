@@ -15,12 +15,14 @@ import '@xyflow/react/dist/style.css';
 import { GraphNodeCard } from './GraphNodeCard';
 import { organizeService } from '@/services/organize';
 import { TopicNode } from '@/services/organize/port';
+import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
 
 const nodeTypes = {
     customTask: GraphNodeCard,
 };
 
 export function GraphCanvas() {
+    const { nodes: actNodes, edges: actEdges } = useKnowledgeTreeStore();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -52,12 +54,15 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [setNodes, setEdges]);
 
+    // Combine organize nodes & edges with dynamically streamed Act nodes & edges
+    const combinedNodes = [...nodes, ...actNodes];
+    const combinedEdges = [...edges, ...actEdges];
 
     return (
-        <div className="w-full h-full">
+        <div className="w-full h-full pb-20">
             <ReactFlow
-                nodes={nodes}
-                edges={edges}
+                nodes={combinedNodes}
+                edges={combinedEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 nodeTypes={nodeTypes}

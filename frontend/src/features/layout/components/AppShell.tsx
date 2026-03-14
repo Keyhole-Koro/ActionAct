@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { usePanelStore } from '../store/panel-store';
 import { Menu, PanelRightClose } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AskForm } from '@/components/ui/AskForm';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -56,8 +57,9 @@ export function AppShell({ children }: AppShellProps) {
                         )}
                     </div>
 
-                    <div className="flex-1 h-full w-full">
+                    <div className="flex-1 h-full w-full relative">
                         {children}
+                        <AskForm />
                     </div>
                 </main>
 
