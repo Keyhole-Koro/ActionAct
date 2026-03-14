@@ -12,13 +12,16 @@ var (
 	ErrSessionInvalid   = errors.New("session invalid or not found")
 	ErrCSRFMismatch     = errors.New("csrf validation failed")
 	ErrUIDMismatch      = errors.New("uid mismatch between token and request")
+	ErrAlreadyExists    = errors.New("already exists")
+	ErrUnavailable      = errors.New("unavailable")
 )
 
 // StageError wraps a domain error with the pipeline stage that produced it.
 type StageError struct {
-	Stage     string // e.g. "AUTHN", "SID_VALIDATE", "CSRF_VALIDATE"
-	Err       error
-	Retryable bool
+	Stage        string // e.g. "AUTHN", "SID_VALIDATE", "CSRF_VALIDATE"
+	Err          error
+	Retryable    bool
+	RetryAfterMs int64
 }
 
 func (e *StageError) Error() string { return e.Stage + ": " + e.Err.Error() }

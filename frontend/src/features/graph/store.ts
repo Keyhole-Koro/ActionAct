@@ -1,0 +1,190 @@
+import { create } from 'zustand';
+import { Node, Edge } from '@xyflow/react';
+
+/**
+ * Graph store — manages act-generated nodes, user-created nodes, edges, and selection.
+ */
+
+interface GraphState {
+    persistedNodes: Node[];
+    persistedEdges: Edge[];
+    draftNodes: Node[];
+    draftEdges: Edge[];
+    nodes: Node[];
+    edges: Edge[];
+    selectedNodeIds: string[];
+    activeNodeId: string | null;
+    editingNodeId: string | null;
+
+    setSelectedNodes: (ids: string[]) => void;
+    setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
+    setDraftGraph: (nodes: Node[], edges: Edge[]) => void;
+    setActGraph: (nodes: Node[], edges: Edge[]) => void;
+    clearSelection: () => void;
+    setActiveNode: (id: string | null) => void;
+    setEditingNode: (id: string | null) => void;
+
+    addOrUpdateNode: (nodeId: string, label: string, type: string) => void;
+    addEmptyNode: (position: { x: number; y: number }) => string;
+    addQueryNode: (position: { x: number; y: number }, initialLabel: string) => string;
+    updateNodeLabel: (nodeId: string, label: string) => void;
+    appendContent: (nodeId: string, content: string) => void;
+    removeNode: (nodeId: string) => void;
+}
+
+function sameIds(left: string[], right: string[]) {
+    if (left.length !== right.length) return false;
+    return left.every((id, index) => id === right[index]);
+}
+
+function preserveNodePositions(previousNodes: Node[], nextNodes: Node[]) {
+    const previousById = new Map(previousNodes.map((node) => [node.id, node]));
+    return nextNodes.map((node) => {
+        const previous = previousById.get(node.id);
+        if (!previous) {
+            return node;
+        }
+        return {
+            ...node,
+            position: previous.position,
+        };
+    });
+}
+
+let _nodeCounter = 0;
+
+export const useGraphStore = create<GraphState>((set) => ({
+    persistedNodes: [],
+    persistedEdges: [],
+    draftNodes: [],
+    draftEdges: [],
+    nodes: [],
+    edges: [],
+    selectedNodeIds: [],
+    activeNodeId: null,
+    editingNodeId: null,
+
+    setSelectedNodes: (ids) => set((state) => (
+        sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
+    )),
+    setPersistedGraph: (nodes, edges) => set((state) => ({
+        persistedNodes: preserveNodePositions(state.persistedNodes, nodes),
+        persistedEdges: edges,
+    })),
+    setDraftGraph: (nodes, edges) => set((state) => ({
+        draftNodes: preserveNodePositions(state.draftNodes, nodes),
+        draftEdges: edges,
+    })),
+    setActGraph: (nodes, edges) => set((state) => ({
+        nodes: preserveNodePositions(state.nodes, nodes),
+        edges,
+    })),
+    clearSelection: () => set({ selectedNodeIds: [] }),
+    setActiveNode: (id: string | null) => set({ activeNodeId: id }),
+    setEditingNode: (id: string | null) => set({ editingNodeId: id }),
+
+    addOrUpdateNode: (nodeId, label, type) => set((state) => {
+        const exists = state.nodes.find(n => n.id === nodeId);
+        if (exists) {
+            return {
+                nodes: state.nodes.map(n =>
+                    n.id === nodeId ? { ...n, data: { ...n.data, label, type } } : n
+                )
+            };
+        }
+
+        const newNode: Node = {
+            id: nodeId,
+            type: 'customTask',
+            position: { x: 200 + (state.nodes.length * 10), y: 150 + (state.nodes.length * 100) },
+            data: { label, type, contentMd: '' }
+        };
+
+        const newEdges = [...state.edges];
+        if (state.nodes.length > 0) {
+            if (state.selectedNodeIds.length > 0) {
+                state.selectedNodeIds.forEach(targetId => {
+                    newEdges.push({
+                        id: `edge-ctx-${targetId}-${nodeId}`,
+                        source: targetId,
+                        target: nodeId,
+                        animated: true,
+                        style: { stroke: '#888', strokeDasharray: '5,5' }
+                    });
+                });
+            } else {
+                newEdges.push({
+                    id: `e-${state.nodes[0].id}-${nodeId}`,
+                    source: state.nodes[0].id,
+                    target: nodeId,
+                    animated: true,
+                });
+            }
+        }
+
+        return { nodes: [...state.nodes, newNode], edges: newEdges, selectedNodeIds: [] };
+    }),
+
+    addEmptyNode: (position) => {
+        const id = `user-node-${++_nodeCounter}-${Date.now()}`;
+        set((state) => ({
+            nodes: [...state.nodes, {
+                id,
+                type: 'customTask',
+                position,
+                data: { label: '', type: 'act', contentMd: '', isManualPosition: true }
+            }],
+            editingNodeId: id,
+            activeNodeId: id,
+        }));
+        return id;
+    },
+
+    addQueryNode: (position, initialLabel) => {
+        const id = `act-node-${++_nodeCounter}-${Date.now()}`;
+        set((state) => ({
+            nodes: [...state.nodes, {
+                id,
+                type: 'customTask',
+                position,
+                data: { label: initialLabel, type: 'act', contentMd: '', isManualPosition: true }
+            }],
+            edges: [
+                ...state.edges,
+                ...state.selectedNodeIds.map((targetId) => ({
+                    id: `edge-ctx-${targetId}-${id}`,
+                    source: targetId,
+                    target: id,
+                    animated: true,
+                    style: { stroke: '#888', strokeDasharray: '5,5' }
+                })),
+            ],
+            editingNodeId: id,
+            activeNodeId: id,
+            selectedNodeIds: [],
+        }));
+        return id;
+    },
+
+    updateNodeLabel: (nodeId, label) => set((state) => ({
+        nodes: state.nodes.map(n =>
+            n.id === nodeId ? { ...n, data: { ...n.data, label } } : n
+        ),
+        editingNodeId: null,
+    })),
+
+    appendContent: (nodeId, content) => set((state) => ({
+        nodes: state.nodes.map(n =>
+            n.id === nodeId
+                ? { ...n, data: { ...n.data, contentMd: (n.data.contentMd as string || '') + content } }
+                : n
+        )
+    })),
+
+    removeNode: (nodeId) => set((state) => ({
+        nodes: state.nodes.filter(n => n.id !== nodeId),
+        edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+        activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
+        editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
+    })),
+}));

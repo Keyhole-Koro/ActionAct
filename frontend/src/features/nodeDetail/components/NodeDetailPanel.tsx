@@ -1,7 +1,6 @@
 "use client";
 
 import React from 'react';
-import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
 import { MarkdownPane } from '@/features/nodeMarkdown/components/MarkdownPane';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Node } from '@xyflow/react';
@@ -11,9 +10,10 @@ import { NodeSummaryCard } from './NodeSummaryCard';
 import { NodeEvidenceList } from './NodeEvidenceList';
 import { EvidenceRef } from '@/services/organize/port';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { useGraphStore } from '@/features/graph/store';
 
 export function NodeDetailPanel() {
-    const { activeNodeId, nodes, setActiveNode } = useKnowledgeTreeStore();
+    const { activeNodeId, persistedNodes, nodes, setActiveNode } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
 
     if (!activeNodeId) {
@@ -24,7 +24,7 @@ export function NodeDetailPanel() {
         );
     }
 
-    const activeNode = nodes.find((n: Node) => n.id === activeNodeId);
+    const activeNode = [...persistedNodes, ...nodes].find((n: Node) => n.id === activeNodeId);
 
     if (!activeNode) {
         return (
@@ -36,6 +36,7 @@ export function NodeDetailPanel() {
 
     // Safely extract our custom A7 data fields from the generic ReactFlow node
     const data = activeNode.data || {};
+    const nodeTopicId = (data.topicId as string) || topicId;
     const title = (data.label as string) || 'Untitled';
     const typeLabel = (data.type as string) || 'concept';
     const contentMd = (data.contentMd as string) || '';
@@ -54,7 +55,7 @@ export function NodeDetailPanel() {
                     {/* Action Organize Bar for Rename/Delete */}
                     <ActionOrganizeBar
                         workspaceId={workspaceId}
-                        topicId={topicId}
+                        topicId={nodeTopicId}
                         nodeId={activeNode.id}
                         currentTitle={title}
                         onDeleteSuccess={() => setActiveNode(null)}

@@ -2,6 +2,18 @@
 
 FastAPI で動く Act worker です。
 
+## Context Assembly
+
+`RunAct` 実行時は Firestore を read-only で参照し、少なくとも次を prompt context に束ねます。
+
+* `topics/{topicId}` の topic summary
+* `outlines/{latestOutlineVersion}` と `drafts/{latestDraftVersion}`
+* focus node と neighbor node
+* `nodes/{nodeId}/evidence/*`
+* `actRuns/*` の recent history
+
+Firestore 取得に失敗した場合は、仕様どおり minimal bundle に degrade して応答生成だけは継続します。
+
 ## Runtime Modes
 
 * `GOOGLE_API_KEY` を設定すると Gemini Developer API を使います

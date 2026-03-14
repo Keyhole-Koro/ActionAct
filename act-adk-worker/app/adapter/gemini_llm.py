@@ -6,7 +6,7 @@ import logging
 from typing import AsyncIterator
 
 from google import genai
-from google.genai.types import GenerateContentConfig, Content, Part
+from google.genai.types import Content, GenerateContentConfig, GoogleSearch, Part, ThinkingConfig, Tool
 
 from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
@@ -42,12 +42,23 @@ class GeminiLLM:
             contents.append(Content(role="user", parts=[Part(text=f"Context:\n{context_text}")]))
         contents.append(Content(role="user", parts=[Part(text=bundle.user_prompt)]))
 
+        tools = [Tool(googleSearch=GoogleSearch())] if config.enable_grounding else None
         gen_config = GenerateContentConfig(
-            system_instruction=bundle.system_instruction or None,
+            systemInstruction=bundle.system_instruction or None,
+            tools=tools,
+            thinkingConfig=ThinkingConfig(includeThoughts=True) if config.enable_thinking else None,
         )
 
         try:
-            logger.info("Gemini generate start", extra={"backend": self._backend, "model": model_name})
+            logger.info(
+                "Gemini generate start",
+                extra={
+                    "backend": self._backend,
+                    "model": model_name,
+                    "grounding_enabled": config.enable_grounding,
+                    "thinking_enabled": config.enable_thinking,
+                },
+            )
             stream = await self._client.aio.models.generate_content_stream(
                 model=model_name,
                 contents=contents,

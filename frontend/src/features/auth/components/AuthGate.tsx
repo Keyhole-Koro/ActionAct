@@ -4,8 +4,9 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
+import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
+import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
-import { getFirebaseIdToken } from "@/services/firebase/token";
 
 type AuthGateProps = {
   children: ReactNode;
@@ -13,6 +14,7 @@ type AuthGateProps = {
 
 export function AuthGate({ children }: AuthGateProps) {
   const { user, loading, error, isAuthenticated } = useRequireAuth();
+  const { workspaceId, topicId } = useRunContextStore();
   const [bootstrapping, setBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
@@ -29,7 +31,9 @@ export function AuthGate({ children }: AuthGateProps) {
 
     void (async () => {
       try {
-        const idToken = await getFirebaseIdToken();
+        await ensureLocalWorkspaceAccess(user, workspaceId, topicId);
+
+        const idToken = await user.getIdToken();
         if (!idToken) {
           throw new Error("Firebase ID token is missing");
         }
@@ -60,7 +64,7 @@ export function AuthGate({ children }: AuthGateProps) {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [topicId, user, workspaceId]);
 
   if (config.useMocks) {
     return <>{children}</>;

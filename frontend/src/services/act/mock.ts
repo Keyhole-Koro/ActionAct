@@ -2,7 +2,7 @@ import { ActPort, PatchOp } from './port';
 import { agentTools } from '@/features/agentInteraction/hooks/agentTools';
 
 export const mockActService: ActPort = {
-    streamAct: (query, onPatch, onDone, onError) => {
+    streamAct: (query, onPatch, onDone, onError, _options) => {
         void onError;
         let isCancelled = false;
         let step = 0;

@@ -8,11 +8,16 @@ export interface StreamResponse {
     patch: PatchOp;
 }
 
+export interface StreamActOptions {
+    enableGrounding?: boolean;
+}
+
 export interface ActPort {
     streamAct: (
         query: string,
         onPatch: (patch: PatchOp) => void,
         onDone: () => void,
-        onError: (err: Error) => void
+        onError: (err: Error) => void,
+        options?: StreamActOptions
     ) => () => void; // returns a cancel function
 }

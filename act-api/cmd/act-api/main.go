@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 
+	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/storage"
 	firebase "firebase.google.com/go/v4"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/net/http2"
@@ -52,13 +54,55 @@ func main() {
 
 	// ── Adapter layer (DI) ──
 	authVerifier := adapter.NewFirebaseAuthVerifier(authClient)
+	authzVerifier, err := adapter.NewFirestoreAuthzVerifier(ctx, cfg.GCloudProject)
+	if err != nil {
+		slog.Error("firestore authz verifier init failed", "err", err)
+		os.Exit(1)
+	}
+	defer authzVerifier.Close()
 	sessionValidator := adapter.NewRedisSessionValidator(rdb, cfg.SIDStrict)
 	sessionIssuer := adapter.NewRedisSessionIssuer(rdb, cfg.SIDTTLSeconds, cfg.CSRFTTLSeconds)
+	idempotencyGate := adapter.NewRedisIdempotencyGate(rdb, cfg.SIDLockTTLSeconds, cfg.SIDReqTTLSeconds)
 	csrfValidator := adapter.NewDoubleSubmitCSRFValidator()
-	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL)
+	actRunRecorder, err := adapter.NewFirestoreActRunRecorder(ctx, cfg.GCloudProject)
+	if err != nil {
+		slog.Error("firestore actRuns recorder init failed", "err", err)
+		os.Exit(1)
+	}
+	defer actRunRecorder.Close()
+	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
+
+	// ── GCS ──
+	gcsClient, err := storage.NewClient(ctx)
+	if err != nil {
+		slog.Error("gcs client init failed", "err", err)
+		os.Exit(1)
+	}
+	gcsStorage := adapter.NewGCSStorage(gcsClient, cfg.GCSBucket)
+	defer gcsStorage.Close()
+
+	// ── Pub/Sub ──
+	pubsubClient, err := pubsub.NewClient(ctx, cfg.GCloudProject)
+	if err != nil {
+		slog.Error("pubsub client init failed", "err", err)
+		os.Exit(1)
+	}
+	defer pubsubClient.Close()
+	pubsubPublisher := adapter.NewPubSubPublisher(pubsubClient.Topic(cfg.PubSubTopic))
+	defer pubsubPublisher.Stop()
+
+	// ── Firestore (input recorder) ──
+	fsClient, err := app.Firestore(ctx)
+	if err != nil {
+		slog.Error("firestore client init failed", "err", err)
+		os.Exit(1)
+	}
+	inputRecorder := adapter.NewFirestoreInputRecorder(fsClient)
+	defer inputRecorder.Close()
 
 	// ── Usecase layer ──
-	uc := usecase.NewRunActUsecase(authVerifier, sessionValidator, csrfValidator, actExecutor)
+	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
+	uploadUC := usecase.NewUploadUsecase(authVerifier, gcsStorage, inputRecorder, pubsubPublisher)
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)
@@ -68,11 +112,13 @@ func main() {
 		cfg.SIDTTLSeconds,
 		cfg.CSRFTTLSeconds,
 	)
+	uploadHandler := handler.NewUploadHandler(uploadUC)
 
 	mux := http.NewServeMux()
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
 	mux.Handle(path, connectHandler)
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
+	mux.Handle("/api/upload", uploadHandler)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
