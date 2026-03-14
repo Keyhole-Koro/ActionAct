@@ -39,6 +39,14 @@ func (m *mockCSRF) Validate(cookieValue, headerValue string) error {
 	return m.err
 }
 
+type mockAuthz struct {
+	err error
+}
+
+func (m *mockAuthz) AuthorizeRunAct(ctx context.Context, uid, workspaceID, topicID string) error {
+	return m.err
+}
+
 type mockExecutor struct {
 	called bool
 	err    error
@@ -106,6 +114,7 @@ func newTestMsg() *actv1.RunActRequest {
 func TestRunActUsecase_AuthFailure(t *testing.T) {
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{err: domain.ErrUnauthenticated},
+		&mockAuthz{},
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
@@ -133,6 +142,7 @@ func TestRunActUsecase_AuthFailure(t *testing.T) {
 func TestRunActUsecase_SessionFailure(t *testing.T) {
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "user-1"},
+		&mockAuthz{},
 		&mockSession{err: domain.ErrSessionInvalid},
 		&mockCSRF{},
 		&mockExecutor{},
@@ -160,6 +170,7 @@ func TestRunActUsecase_SessionFailure(t *testing.T) {
 func TestRunActUsecase_CSRFFailure(t *testing.T) {
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "user-1"},
+		&mockAuthz{},
 		&mockSession{},
 		&mockCSRF{err: domain.ErrCSRFMismatch},
 		&mockExecutor{},
@@ -187,6 +198,7 @@ func TestRunActUsecase_CSRFFailure(t *testing.T) {
 func TestRunActUsecase_ValidationFailure_MissingTopicID(t *testing.T) {
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "user-1"},
+		&mockAuthz{},
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
@@ -217,6 +229,7 @@ func TestRunActUsecase_ValidationFailure_MissingTopicID(t *testing.T) {
 func TestRunActUsecase_UIDMismatch(t *testing.T) {
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "real-uid"},
+		&mockAuthz{},
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
@@ -253,6 +266,7 @@ func TestRunActUsecase_HappyPath_CallsExecutor(t *testing.T) {
 	idem := &mockIdempotencyGate{}
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "user-1"},
+		&mockAuthz{},
 		&mockSession{},
 		&mockCSRF{},
 		exec,
@@ -285,6 +299,7 @@ func TestRunActUsecase_HappyPath_CallsExecutor(t *testing.T) {
 func TestRunActUsecase_IdempotencyInFlight(t *testing.T) {
 	uc := usecase.NewRunActUsecase(
 		&mockAuth{uid: "user-1"},
+		&mockAuthz{},
 		&mockSession{},
 		&mockCSRF{},
 		&mockExecutor{},
@@ -315,5 +330,36 @@ func TestRunActUsecase_IdempotencyInFlight(t *testing.T) {
 	}
 	if stageErr.RetryAfterMs != 3000 {
 		t.Errorf("retryAfterMs = %d, want 3000", stageErr.RetryAfterMs)
+	}
+}
+
+func TestRunActUsecase_AuthzFailure(t *testing.T) {
+	uc := usecase.NewRunActUsecase(
+		&mockAuth{uid: "user-1"},
+		&mockAuthz{err: domain.ErrPermissionDenied},
+		&mockSession{},
+		&mockCSRF{},
+		&mockExecutor{},
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
+	)
+
+	err := uc.Execute(
+		context.Background(),
+		usecase.RequestContext{AuthHeader: "Bearer ok"},
+		newTestMsg(),
+		nil,
+		"trace-1",
+	)
+
+	var stageErr *domain.StageError
+	if !errors.As(err, &stageErr) {
+		t.Fatalf("expected StageError, got %T: %v", err, err)
+	}
+	if stageErr.Stage != "AUTHZ" {
+		t.Errorf("stage = %q, want AUTHZ", stageErr.Stage)
+	}
+	if !errors.Is(stageErr.Err, domain.ErrPermissionDenied) {
+		t.Errorf("err = %v, want ErrPermissionDenied", stageErr.Err)
 	}
 }

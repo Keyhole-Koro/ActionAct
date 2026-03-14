@@ -44,11 +44,19 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
         const trimmed = editValue.trim();
         if (trimmed) {
             updateNodeLabel(id, trimmed);
+
+            // If it's a newly created act node starting with no previous valid label, 
+            // trigger the stream automatically from what user typed!
+            if (data.type === 'act' && !data.label) {
+                // Ensure nodes are selected contextually if needed, but here we just fire it
+                setSelectedNodes([id]);
+                startStream(trimmed, { clear: false });
+            }
         } else {
             // Empty label → remove the node
             removeNode(id);
         }
-    }, [id, editValue, updateNodeLabel, removeNode]);
+    }, [id, editValue, updateNodeLabel, removeNode, data.type, data.label, setSelectedNodes, startStream]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {

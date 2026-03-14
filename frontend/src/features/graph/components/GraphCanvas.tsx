@@ -122,6 +122,7 @@ export function GraphCanvas() {
                         setActiveNode(null);
                     }
                 }}
+                zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
                 panOnScroll={true}
                 selectionOnDrag={true}

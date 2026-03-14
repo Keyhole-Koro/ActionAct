@@ -52,6 +52,12 @@ func main() {
 
 	// ── Adapter layer (DI) ──
 	authVerifier := adapter.NewFirebaseAuthVerifier(authClient)
+	authzVerifier, err := adapter.NewFirestoreAuthzVerifier(ctx, cfg.GCloudProject)
+	if err != nil {
+		slog.Error("firestore authz verifier init failed", "err", err)
+		os.Exit(1)
+	}
+	defer authzVerifier.Close()
 	sessionValidator := adapter.NewRedisSessionValidator(rdb, cfg.SIDStrict)
 	sessionIssuer := adapter.NewRedisSessionIssuer(rdb, cfg.SIDTTLSeconds, cfg.CSRFTTLSeconds)
 	idempotencyGate := adapter.NewRedisIdempotencyGate(rdb, cfg.SIDLockTTLSeconds, cfg.SIDReqTTLSeconds)
@@ -65,7 +71,7 @@ func main() {
 	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
 
 	// ── Usecase layer ──
-	uc := usecase.NewRunActUsecase(authVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
+	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)

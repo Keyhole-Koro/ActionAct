@@ -16,6 +16,7 @@ import (
 // Auth → SID → CSRF → Validate → Execute.
 type RunActUsecase struct {
 	auth    domain.AuthVerifier
+	authz   domain.AuthzVerifier
 	session domain.SessionValidator
 	csrf    domain.CSRFValidator
 	exec    domain.ActExecutor
@@ -25,6 +26,7 @@ type RunActUsecase struct {
 
 func NewRunActUsecase(
 	auth domain.AuthVerifier,
+	authz domain.AuthzVerifier,
 	session domain.SessionValidator,
 	csrf domain.CSRFValidator,
 	exec domain.ActExecutor,
@@ -33,6 +35,7 @@ func NewRunActUsecase(
 ) *RunActUsecase {
 	return &RunActUsecase{
 		auth:    auth,
+		authz:   authz,
 		session: session,
 		csrf:    csrf,
 		exec:    exec,
@@ -90,7 +93,22 @@ func (uc *RunActUsecase) Execute(
 		return err
 	}
 
-	// TODO: AUTHZ — workspace membership + topic access
+	// 5. AUTHZ — workspace membership + topic access
+	if uc.authz != nil {
+		if err := uc.authz.AuthorizeRunAct(ctx, uid, msg.GetWorkspaceId(), msg.GetTopicId()); err != nil {
+			log.Warn("AUTHZ failed", "err", err, "uid", uid, "workspace_id", msg.GetWorkspaceId(), "topic_id", msg.GetTopicId())
+			retryable := errors.Is(err, domain.ErrUnavailable)
+			mappedErr := domain.ErrPermissionDenied
+			if retryable {
+				mappedErr = domain.ErrUnavailable
+			}
+			return &domain.StageError{
+				Stage:     "AUTHZ",
+				Err:       mappedErr,
+				Retryable: retryable,
+			}
+		}
+	}
 
 	// 6. Idempotency — dedup on (uid, workspaceID, requestID) via Redis
 	if uc.idem != nil {
