@@ -178,7 +178,6 @@ export function GraphCanvas() {
                     lastClickTime.current = now;
 
                     if (timeDiff < 400) {
-                        console.log("★★DOUBLE CLICK DETECTED★★ timeDiff:", timeDiff);
                         // Detected a double click!
                         handlePaneDoubleClick(event);
                     } else {

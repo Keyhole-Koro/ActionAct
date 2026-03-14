@@ -2,10 +2,11 @@ package adapter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"act-api/internal/domain"
 )
@@ -26,6 +27,9 @@ func (v *FirestoreAuthzVerifier) AuthorizeRunAct(ctx context.Context, uid, works
 	memberPath := fmt.Sprintf("workspaces/%s/members/%s", workspaceID, uid)
 	memberSnap, err := v.client.Doc(memberPath).Get(ctx)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return domain.ErrPermissionDenied
+		}
 		return fmt.Errorf("%w: read workspace member: %v", domain.ErrUnavailable, err)
 	}
 	if !memberSnap.Exists() {
@@ -35,6 +39,9 @@ func (v *FirestoreAuthzVerifier) AuthorizeRunAct(ctx context.Context, uid, works
 	topicPath := fmt.Sprintf("workspaces/%s/topics/%s", workspaceID, topicID)
 	topicSnap, err := v.client.Doc(topicPath).Get(ctx)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return domain.ErrPermissionDenied
+		}
 		return fmt.Errorf("%w: read topic: %v", domain.ErrUnavailable, err)
 	}
 	if !topicSnap.Exists() {
@@ -52,7 +59,3 @@ func (v *FirestoreAuthzVerifier) Close() error {
 
 var _ domain.AuthzVerifier = (*FirestoreAuthzVerifier)(nil)
 var _ interface{ Close() error } = (*FirestoreAuthzVerifier)(nil)
-
-func _() {
-	_ = errors.Is
-}

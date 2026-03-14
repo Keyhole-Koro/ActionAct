@@ -88,25 +88,29 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
                 {/* Header Section */}
-                <div className="relative p-4 pb-0 flex items-start gap-3">
+                <div className="relative p-4 pb-0 flex gap-3">
                     {/* Icon Container with active glow */}
-                    <div className="relative shrink-0">
-                        <div className={`absolute inset-0 rounded-xl blur-md bg-gradient-to-br ${cfg.gradient} opacity-50 group-hover:opacity-100 transition-opacity`} />
-                        <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background/90 border border-border/50 shadow-inner ${cfg.accent}`}>
-                            <TypeIcon className="w-5 h-5 drop-shadow-sm" />
+                    {data.type !== 'act' && (
+                        <div className="relative shrink-0 mt-0.5">
+                            <div className={`absolute inset-0 rounded-xl blur-md bg-gradient-to-br ${cfg.gradient} opacity-50 group-hover:opacity-100 transition-opacity`} />
+                            <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background/90 border border-border/50 shadow-inner ${cfg.accent}`}>
+                                <TypeIcon className="w-5 h-5 drop-shadow-sm" />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-center justify-between gap-2 mb-1">
-                            <Badge
-                                variant="outline"
-                                className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
-                            >
-                                {data.type}
-                            </Badge>
+                            {data.type !== 'act' && (
+                                <Badge
+                                    variant="outline"
+                                    className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
+                                >
+                                    {data.type}
+                                </Badge>
+                            )}
                             {isStreaming && (
-                                <span className="flex h-2 w-2">
+                                <span className="flex h-2 w-2 ml-auto">
                                     <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                                 </span>
@@ -120,30 +124,33 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 onChange={(e) => setEditValue(e.target.value)}
                                 onBlur={commitEdit}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Enter node title..."
+                                placeholder="Ask a question..."
                                 className="w-full text-base font-bold bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 mt-1 font-heading"
                             />
                         ) : (
                             <h3
-                                className="text-base font-bold leading-snug text-foreground cursor-text line-clamp-2 mt-0.5 group-hover:text-primary transition-colors duration-300 font-heading"
+                                className="text-base font-bold leading-snug text-foreground cursor-text line-clamp-2 mt-0.5 hover:text-primary transition-colors duration-300 font-heading"
                                 onDoubleClick={(e) => {
                                     e.stopPropagation();
                                     setEditingNode(id);
                                     setEditValue(data.label || '');
                                 }}
                             >
-                                {data.label || 'Untitled Act Node'}
+                                {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
                         )}
                     </div>
                 </div>
 
                 {/* Content preview */}
-                <div className="relative px-4 pt-3 pb-4">
-                    <p className="text-sm text-foreground/70 leading-relaxed line-clamp-3 font-medium">
-                        {data.contentMd || <span className="text-muted-foreground/50 italic">Double-click title to edit...</span>}
-                    </p>
-                </div>
+                {data.contentMd && (
+                    <div className="relative px-4 pt-3 pb-4">
+                        <p className="text-sm text-foreground/80 leading-relaxed line-clamp-3 font-medium">
+                            {data.contentMd}
+                        </p>
+                    </div>
+                )}
+                {!data.contentMd && <div className="h-4"></div>}
 
                 {/* Actions Area */}
                 {data.actions && data.actions.length > 0 && (
