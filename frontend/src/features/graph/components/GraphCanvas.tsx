@@ -31,7 +31,7 @@ const nodeTypes = {
 };
 
 export function GraphCanvas() {
-    const { setPanelMode, setPanelOpen } = usePanelStore();
+    const { setMode, openPanel } = usePanelStore();
     const { nodes: actNodes, edges: actEdges, setSelectedNodes, setActiveNode } = useKnowledgeTreeStore();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -80,13 +80,13 @@ export function GraphCanvas() {
                 edges={combinedEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
-                onSelectionChange={({ nodes }) => {
-                    setSelectedNodes(nodes.map(n => n.id));
+                onSelectionChange={({ nodes }: { nodes: Node[] }) => {
+                    setSelectedNodes(nodes.map((n: Node) => n.id));
                 }}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
                     setActiveNode(node.id);
-                    setPanelMode('node-detail');
-                    setPanelOpen(true);
+                    setMode('node-detail');
+                    openPanel('node-detail', node.id);
                 }}
                 nodeTypes={nodeTypes}
                 panOnScroll={true}
