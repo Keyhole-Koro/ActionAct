@@ -3,7 +3,6 @@ import { useState, useCallback } from 'react';
 import { actService } from '@/services/act';
 import { PatchOp, StreamActOptions } from '@/services/act/port';
 import { actDraftService } from '@/services/actDraft/firestore';
-import { organizeService } from '@/services/organize';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useGraphStore } from '@/features/graph/store';
 
@@ -31,18 +30,10 @@ export function useActStream() {
                     if (!node) {
                         return;
                     }
-                    const persistedNode = {
-                        id: nodeId,
-                        title: typeof node.data?.label === 'string' ? node.data.label : query,
-                        type: typeof node.data?.type === 'string' ? node.data.type : 'act',
-                        contentMd: typeof node.data?.contentMd === 'string' ? node.data.contentMd : '',
-                    };
-
-                    await organizeService.upsertNode(workspaceId, topicId, persistedNode);
                     await actDraftService.saveDraftSnapshot(workspaceId, topicId, nodeId, {
-                        title: persistedNode.title,
-                        kind: persistedNode.type,
-                        contentMd: persistedNode.contentMd,
+                        title: typeof node.data?.label === 'string' ? node.data.label : query,
+                        kind: typeof node.data?.type === 'string' ? node.data.type : 'act',
+                        contentMd: typeof node.data?.contentMd === 'string' ? node.data.contentMd : '',
                     });
                 }),
             );

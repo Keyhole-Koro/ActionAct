@@ -6,8 +6,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  setDoc,
   updateDoc,
 } from "firebase/firestore";
 
@@ -95,25 +93,6 @@ export const firestoreOrganizeService: OrganizePort = {
       );
       callback(topicNodes);
     });
-  },
-
-  upsertNode: async (workspaceId, topicId, node) => {
-    await setDoc(
-      topicNodeDoc(workspaceId, topicId, node.id),
-      {
-        topicId,
-        nodeId: node.id,
-        kind: node.type,
-        title: node.title,
-        parentId: node.parentId ?? null,
-        contextSummary: node.contextSummary ?? null,
-        detailHtml: node.detailHtml ?? null,
-        contentMd: node.contentMd ?? "",
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
   },
 
   renameNode: async (workspaceId, topicId, nodeId, newTitle) => {

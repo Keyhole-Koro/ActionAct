@@ -1,11 +1,21 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { LogoutButton } from '@/features/auth/components/LogoutButton';
 import { useAuthState } from '@/features/auth/hooks/useAuthState';
+import { signOutCurrentUser } from '@/services/firebase/auth';
 import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
-import { Sparkles, FolderKanban, Network } from 'lucide-react';
+import { Sparkles, FolderKanban, Network, LogOut, Settings, User } from 'lucide-react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export function AppHeader() {
     const isMock = config.useMocks;
@@ -57,17 +67,51 @@ export function AppHeader() {
                     )}
 
                     <div className="flex items-center gap-3">
-                        {!isMock && user?.email ? (
-                            <span className="text-sm font-medium text-muted-foreground truncate max-w-[200px]" title={user.email}>
-                                {user.email}
-                            </span>
-                        ) : null}
-
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/50 border border-border/50 flex items-center justify-center text-sm font-bold text-foreground shadow-sm">
-                            {userInitial.toUpperCase()}
-                        </div>
-
-                        {!isMock ? <LogoutButton /> : null}
+                        {user ? (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary ring-offset-2 transition-all">
+                                    <Avatar className="h-9 w-9 border border-border/50 shadow-sm cursor-pointer hover:opacity-80 transition-opacity bg-muted">
+                                        <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User avatar"} />
+                                        <AvatarFallback className="bg-gradient-to-br from-muted to-muted/50 text-sm font-bold text-foreground">
+                                            {userInitial.toUpperCase()}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56 p-2 rounded-xl shadow-lg border-border/40">
+                                    <DropdownMenuGroup>
+                                        <DropdownMenuLabel className="font-normal">
+                                            <div className="flex flex-col space-y-1">
+                                                <p className="text-sm font-medium leading-none">
+                                                    {user.displayName || 'User'}
+                                                </p>
+                                                <p className="text-xs leading-none text-muted-foreground truncate" title={user.email || ''}>
+                                                    {user.email || 'No email'}
+                                                </p>
+                                            </div>
+                                        </DropdownMenuLabel>
+                                    </DropdownMenuGroup>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuGroup>
+                                        <DropdownMenuItem className="cursor-pointer gap-2 py-2 rounded-md hover:bg-muted transition-colors">
+                                            <Settings className="w-4 h-4 text-muted-foreground" />
+                                            <span>Account Settings</span>
+                                        </DropdownMenuItem>
+                                    </DropdownMenuGroup>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        onClick={() => void signOutCurrentUser()}
+                                        className="cursor-pointer gap-2 py-2 rounded-md hover:bg-destructive/10 text-destructive focus:bg-destructive/10 focus:text-destructive transition-colors"
+                                    >
+                                        <LogOut className="w-4 h-4" />
+                                        <span>Log out</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        ) : (
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/50 border border-border/50 flex items-center justify-center text-sm font-bold text-foreground shadow-sm">
+                                {userInitial.toUpperCase()}
+                            </div>
+                        )}
                     </div>
                 </div>
 

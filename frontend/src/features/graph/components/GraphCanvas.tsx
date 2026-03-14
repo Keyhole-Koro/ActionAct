@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import {
     ReactFlow,
     Controls,
@@ -34,6 +34,34 @@ const nodeTypes = {
     selectionNode: SelectionNodeCard,
 };
 
+function persistedGraphCacheKey(workspaceId: string, topicId: string) {
+    return `graph.persisted.${workspaceId}.${topicId}`;
+}
+
+function actGraphCacheKey(workspaceId: string, topicId: string) {
+    return `graph.act.${workspaceId}.${topicId}`;
+}
+
+function serializePersistedGraph(nodes: Node[], edges: Edge[]) {
+    return JSON.stringify({ nodes, edges });
+}
+
+function deserializePersistedGraph(rawValue: string | null): { nodes: Node[]; edges: Edge[] } | null {
+    if (!rawValue) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(rawValue) as { nodes?: Node[]; edges?: Edge[] };
+        return {
+            nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+            edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+        };
+    } catch {
+        return null;
+    }
+}
+
 export function GraphCanvas() {
     const { setMode, openPanel } = usePanelStore();
     const {
@@ -46,12 +74,52 @@ export function GraphCanvas() {
         addEmptyNode,
         setPersistedGraph,
         setDraftGraph,
+        setActGraph,
         editingNodeId,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const [, , onNodesChange] = useNodesState<Node>([]);
     const [, , onEdgesChange] = useEdgesState<Edge>([]);
     const reactFlowInstance = useReactFlow();
+    const hydratedPersistedCacheKeyRef = useRef<string | null>(null);
+    const hydratedActCacheKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const cacheKey = persistedGraphCacheKey(workspaceId, topicId);
+        if (hydratedPersistedCacheKeyRef.current === cacheKey) {
+            return;
+        }
+
+        hydratedPersistedCacheKeyRef.current = cacheKey;
+        const cachedGraph = deserializePersistedGraph(window.localStorage.getItem(cacheKey));
+        if (cachedGraph && cachedGraph.nodes.length > 0) {
+            setPersistedGraph(cachedGraph.nodes, cachedGraph.edges);
+        }
+    }, [setPersistedGraph, topicId, workspaceId]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const cacheKey = actGraphCacheKey(workspaceId, topicId);
+        if (hydratedActCacheKeyRef.current === cacheKey) {
+            return;
+        }
+
+        hydratedActCacheKeyRef.current = cacheKey;
+        const cachedGraph = deserializePersistedGraph(window.localStorage.getItem(cacheKey));
+        if (cachedGraph) {
+            setActGraph(cachedGraph.nodes, cachedGraph.edges);
+            return;
+        }
+
+        setActGraph([], []);
+    }, [setActGraph, topicId, workspaceId]);
 
     useEffect(() => {
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes: TopicNode[]) => {
@@ -78,29 +146,82 @@ export function GraphCanvas() {
                     animated: true,
                 }));
 
+            if (rfNodes.length === 0 && persistedNodes.length > 0) {
+                return;
+            }
+
             setPersistedGraph(rfNodes, rfEdges);
+
+            if (typeof window !== 'undefined' && rfNodes.length > 0) {
+                window.localStorage.setItem(
+                    persistedGraphCacheKey(workspaceId, topicId),
+                    serializePersistedGraph(rfNodes, rfEdges),
+                );
+            }
         });
 
         return () => unsubscribe();
-    }, [setPersistedGraph, workspaceId, topicId]);
+    }, [persistedNodes.length, setPersistedGraph, workspaceId, topicId]);
 
     useEffect(() => {
         setDraftGraph([], []);
     }, [setDraftGraph, topicId, workspaceId]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        if (actNodes.length === 0 && actEdges.length === 0) {
+            return;
+        }
+
+        window.localStorage.setItem(
+            actGraphCacheKey(workspaceId, topicId),
+            serializePersistedGraph(actNodes, actEdges),
+        );
+    }, [actEdges, actNodes, topicId, workspaceId]);
+
     const { groups } = useAgentInteractionStore();
-    const selectionBaseNodes = [...persistedNodes];
-    const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, selectionBaseNodes);
+    const selectionBaseNodes = useMemo(() => [...persistedNodes], [persistedNodes]);
+    const { nodes: selectionNodes, edges: selectionEdges } = useMemo(
+        () => toSelectionFlow(groups, selectionBaseNodes),
+        [groups, selectionBaseNodes],
+    );
     const lastDebugSignature = useRef<string>('');
 
     // Combine all node sources
-    const dedupedActNodes = actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id));
-    const rawCombinedNodes = [...persistedNodes, ...dedupedActNodes, ...selectionNodes];
-    const rawCombinedEdges = [...persistedEdges, ...actEdges, ...selectionEdges];
+    const dedupedActNodes = useMemo(
+        () => actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id)),
+        [actNodes, persistedNodes],
+    );
+    const rawCombinedNodes = useMemo(
+        () => [...persistedNodes, ...dedupedActNodes, ...selectionNodes],
+        [dedupedActNodes, persistedNodes, selectionNodes],
+    );
+    const rawCombinedEdges = useMemo(
+        () => [...persistedEdges, ...actEdges, ...selectionEdges],
+        [actEdges, persistedEdges, selectionEdges],
+    );
 
     // State for auto-layouted nodes/edges
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
+    const topologySignature = useMemo(
+        () => JSON.stringify({
+            nodes: rawCombinedNodes.map((node) => ({
+                id: node.id,
+                type: node.type,
+                manual: Boolean(node.data?.isManualPosition),
+            })),
+            edges: rawCombinedEdges.map((edge) => ({
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+            })),
+        }),
+        [rawCombinedEdges, rawCombinedNodes],
+    );
 
     useEffect(() => {
         const nodes = [
@@ -149,7 +270,28 @@ export function GraphCanvas() {
         });
     }, [actNodes, persistedNodes, selectionNodes, topicId, workspaceId]);
 
-    // Apply auto-layout asynchronously
+    const displayNodes = useMemo(() => {
+        const layoutById = new Map(layoutedNodes.map((node) => [node.id, node]));
+        return rawCombinedNodes.map((node) => {
+            const layoutedNode = layoutById.get(node.id);
+            if (!layoutedNode) {
+                return node;
+            }
+            return {
+                ...node,
+                position: layoutedNode.position,
+                sourcePosition: layoutedNode.sourcePosition,
+                targetPosition: layoutedNode.targetPosition,
+            };
+        });
+    }, [layoutedNodes, rawCombinedNodes]);
+
+    const displayEdges = useMemo(
+        () => (layoutedEdges.length > 0 ? layoutedEdges : rawCombinedEdges),
+        [layoutedEdges, rawCombinedEdges],
+    );
+
+    // Apply auto-layout asynchronously only when topology changes
     useEffect(() => {
         let mounted = true;
         getLayoutedElements(rawCombinedNodes, rawCombinedEdges, 'TB').then((res) => {
@@ -159,7 +301,7 @@ export function GraphCanvas() {
             }
         });
         return () => { mounted = false; };
-    }, [rawCombinedNodes, rawCombinedEdges]);
+    }, [topologySignature, rawCombinedEdges, rawCombinedNodes]);
 
     // Canvas double-click → create empty node
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
@@ -176,8 +318,8 @@ export function GraphCanvas() {
     return (
         <div className="w-full h-full pb-20">
             <ReactFlow
-                nodes={layoutedNodes}
-                edges={layoutedEdges}
+                nodes={displayNodes}
+                edges={displayEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onSelectionChange={({ nodes }: { nodes: Node[] }) => {

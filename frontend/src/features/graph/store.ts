@@ -19,6 +19,7 @@ interface GraphState {
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
     setDraftGraph: (nodes: Node[], edges: Edge[]) => void;
+    setActGraph: (nodes: Node[], edges: Edge[]) => void;
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
     setEditingNode: (id: string | null) => void;
@@ -72,6 +73,10 @@ export const useGraphStore = create<GraphState>((set) => ({
     setDraftGraph: (nodes, edges) => set((state) => ({
         draftNodes: preserveNodePositions(state.draftNodes, nodes),
         draftEdges: edges,
+    })),
+    setActGraph: (nodes, edges) => set((state) => ({
+        nodes: preserveNodePositions(state.nodes, nodes),
+        edges,
     })),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
