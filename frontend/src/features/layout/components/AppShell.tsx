@@ -1,6 +1,7 @@
 "use client";
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppHeader } from './AppHeader';
 import { LeftRail } from './LeftRail';
 import { RightPanelRouter } from './RightPanelRouter';
@@ -9,6 +10,7 @@ import { usePanelStore } from '../store/panel-store';
 import { Menu, PanelRightClose } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AskForm } from '@/components/ui/AskForm';
+import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -16,6 +18,27 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
     const { isOpen, openPanel } = usePanelStore();
+    const searchParams = useSearchParams();
+    const { workspaceId, topicId, setContext } = useRunContextStore();
+
+    useEffect(() => {
+        const urlWorkspaceId = searchParams.get('workspaceId')?.trim();
+        const urlTopicId = searchParams.get('topicId')?.trim();
+        const persistedWorkspaceId = typeof window !== 'undefined' ? window.localStorage.getItem('run_context.workspaceId') : null;
+        const persistedTopicId = typeof window !== 'undefined' ? window.localStorage.getItem('run_context.topicId') : null;
+
+        const nextWorkspaceId = urlWorkspaceId || persistedWorkspaceId || workspaceId;
+        const nextTopicId = urlTopicId || persistedTopicId || topicId;
+
+        if (nextWorkspaceId !== workspaceId || nextTopicId !== topicId) {
+            setContext(nextWorkspaceId, nextTopicId);
+        }
+
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem('run_context.workspaceId', nextWorkspaceId);
+            window.localStorage.setItem('run_context.topicId', nextTopicId);
+        }
+    }, [searchParams, setContext, topicId, workspaceId]);
 
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
