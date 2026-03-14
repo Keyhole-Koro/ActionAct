@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,21 +11,16 @@ import { useRunContextStore } from '@/features/context/store/run-context-store';
 export function AskForm() {
     const [query, setQuery] = useState('');
     const { workspaceId, topicId, setContext } = useRunContextStore();
-    const [workspaceInput, setWorkspaceInput] = useState(workspaceId);
-    const [topicInput, setTopicInput] = useState(topicId);
+    const workspaceInputRef = useRef<HTMLInputElement>(null);
+    const topicInputRef = useRef<HTMLInputElement>(null);
     const { isStreaming, startStream } = useActStream();
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
 
-    useEffect(() => {
-        setWorkspaceInput(workspaceId);
-        setTopicInput(topicId);
-    }, [workspaceId, topicId]);
-
     const applyRunContext = () => {
-        const nextWorkspaceId = workspaceInput.trim() || workspaceId;
-        const nextTopicId = topicInput.trim() || topicId;
+        const nextWorkspaceId = workspaceInputRef.current?.value.trim() || workspaceId;
+        const nextTopicId = topicInputRef.current?.value.trim() || topicId;
 
         setContext(nextWorkspaceId, nextTopicId);
         if (typeof window !== 'undefined') {
@@ -51,16 +46,18 @@ export function AskForm() {
             <div className="mb-2 rounded-xl border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                     <Input
-                        value={workspaceInput}
-                        onChange={(e) => setWorkspaceInput(e.target.value)}
+                        key={`workspace-${workspaceId}`}
+                        defaultValue={workspaceId}
+                        ref={workspaceInputRef}
                         onBlur={applyRunContext}
                         placeholder="workspaceId"
                         className="h-8"
                         disabled={isStreaming}
                     />
                     <Input
-                        value={topicInput}
-                        onChange={(e) => setTopicInput(e.target.value)}
+                        key={`topic-${topicId}`}
+                        defaultValue={topicId}
+                        ref={topicInputRef}
                         onBlur={applyRunContext}
                         placeholder="topicId"
                         className="h-8"

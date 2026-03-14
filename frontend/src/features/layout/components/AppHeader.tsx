@@ -1,11 +1,11 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { env } from '@/lib/env';
+import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 export function AppHeader() {
-    const isMock = env.NEXT_PUBLIC_USE_MOCKS;
+    const isMock = config.useMocks;
     const { workspaceId, topicId } = useRunContextStore();
 
     return (

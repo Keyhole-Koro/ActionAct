@@ -1,10 +1,10 @@
 import { ActPort } from './port';
 import { mockActService } from './mock';
 import { createRpcActService } from './rpc-client';
-import { env } from '@/lib/env';
+import { config } from '@/lib/config';
 
 function createActService(): ActPort {
-    const useMocks = env.NEXT_PUBLIC_USE_MOCKS;
+    const useMocks = config.useMocks;
 
     if (useMocks) {
         console.log('Using mock Act service');

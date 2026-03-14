@@ -5,14 +5,11 @@ import { v4 as uuidv4 } from "uuid";
 import { ActService, ActType, type RunActEvent, type PatchOp as RpcPatchOp } from "@/gen/act/v1/act_pb";
 import { getFirebaseIdToken } from "@/features/auth/session";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
+import { config } from "@/lib/config";
 import type { ActPort, PatchOp } from "./port";
 
 function getBaseUrl(): string {
-  const baseUrl = process.env.NEXT_PUBLIC_RPC_BASE_URL;
-  if (!baseUrl) {
-    throw new Error("NEXT_PUBLIC_RPC_BASE_URL is required");
-  }
-  return baseUrl;
+  return config.rpcBaseUrl;
 }
 
 function getCookie(name: string): string {

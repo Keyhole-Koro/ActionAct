@@ -52,7 +52,7 @@ func main() {
 	authVerifier := adapter.NewFirebaseAuthVerifier(authClient)
 	sessionValidator := adapter.NewRedisSessionValidator(rdb, cfg.SIDStrict)
 	csrfValidator := adapter.NewDoubleSubmitCSRFValidator()
-	actExecutor := adapter.NewStubActExecutor(cfg.ADKWorkerURL)
+	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL)
 
 	// ── Usecase layer ──
 	uc := usecase.NewRunActUsecase(authVerifier, sessionValidator, csrfValidator, actExecutor)

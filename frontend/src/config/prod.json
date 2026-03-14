@@ -1,0 +1,8 @@
+{
+  "useMocks": false,
+  "rpcBaseUrl": "",
+  "actApiBaseUrl": "",
+  "firebaseAuthEmulatorHost": "",
+  "firestoreEmulatorHost": "",
+  "gcloudProject": "prod"
+}

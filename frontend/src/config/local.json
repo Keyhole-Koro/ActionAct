@@ -1,0 +1,8 @@
+{
+  "useMocks": true,
+  "rpcBaseUrl": "http://localhost:8080",
+  "actApiBaseUrl": "http://localhost:8080",
+  "firebaseAuthEmulatorHost": "localhost:9099",
+  "firestoreEmulatorHost": "localhost:8081",
+  "gcloudProject": "local-dev"
+}

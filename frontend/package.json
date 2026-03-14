@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bash ../../scripts/run-frontend-with-env.sh next dev",
-    "build": "bash ../../scripts/run-frontend-with-env.sh next build",
-    "start": "bash ../../scripts/run-frontend-with-env.sh next start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {

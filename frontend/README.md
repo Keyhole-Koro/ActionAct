@@ -6,7 +6,6 @@ Next.js frontend です。
 
 ```bash
 npm install
-make -C /home/unix/Action frontend-env
 npm run dev
 npm run lint
 npm run build
@@ -14,30 +13,26 @@ npm run build
 
 ## Environment
 
-起動時に `src/lib/env.ts` が `NEXT_PUBLIC_*` を検証します。missing や空文字では起動しません。
-ローカル開発用の正本は [config/local/frontend.env](/home/unix/Action/config/local/frontend.env) です。
-`npm run dev` / `npm run build` / `npm run start` は起動前にこの内容を `.env.local` へ自動同期します。
+公開してよい frontend 設定は JSON 正本で管理します。
+
+* local: [local.json](/home/unix/Action/ActionAct/frontend/src/config/local.json)
+* prod: [prod.json](/home/unix/Action/ActionAct/frontend/src/config/prod.json)
+
+`src/lib/config.ts` が `NODE_ENV` に応じて読み分けます。
+秘密情報は frontend に置かず、必要なら server 側で環境変数を読む前提です。
 
 Required:
 
-* `NEXT_PUBLIC_USE_MOCKS`
-  * `true` or `false`
-* `NEXT_PUBLIC_RPC_BASE_URL`
-* `NEXT_PUBLIC_ACT_API_BASE_URL`
-* `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST`
-* `NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST`
-* `NEXT_PUBLIC_GCLOUD_PROJECT`
+* local/prod JSON の整合
 
 Example:
 
 ```bash
-cd /home/unix/Action
-make frontend-env
 cd ActionAct/frontend
 npm run dev
 ```
 
 ## Notes
 
-* `NEXT_PUBLIC_USE_MOCKS=true` では mock service を使います
-* `NEXT_PUBLIC_USE_MOCKS=false` では Connect RPC / Act API 接続前提です
+* local config では mock service を使います
+* prod config では Connect RPC / Act API 接続前提です
