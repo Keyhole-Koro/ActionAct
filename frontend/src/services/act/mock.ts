@@ -22,11 +22,11 @@ export const mockActService: ActPort = {
             { type: 'upsert', nodeId: rootId, data: { label: 'Query Analysis', type: 'concept' } },
 
             // 4. Upsert a child node
-            { type: 'upsert', nodeId: childId1, data: { label: 'Sub-topic A', type: 'detail' } },
+            { type: 'upsert', nodeId: childId1, data: { label: 'Sub-topic A', type: 'detail', actions: [{ label: 'Deep Dive A', execute: 'run_act' }] } },
             { type: 'append_md', nodeId: childId1, data: { contentMd: 'This is the first detail related to the query.' } },
 
             // 5. Upsert another child node
-            { type: 'upsert', nodeId: childId2, data: { label: 'Sub-topic B', type: 'detail' } },
+            { type: 'upsert', nodeId: childId2, data: { label: 'Sub-topic B', type: 'detail', actions: [{ label: 'Verify Source', execute: 'run_act' }] } },
             { type: 'append_md', nodeId: childId2, data: { contentMd: 'This is the second detail.' } },
         ];
 
