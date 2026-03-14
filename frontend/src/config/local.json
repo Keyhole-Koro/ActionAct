@@ -1,5 +1,5 @@
 {
-  "useMocks": true,
+  "useMocks": false,
   "rpcBaseUrl": "http://localhost:8080",
   "actApiBaseUrl": "http://localhost:8080",
   "firebaseAuthEmulatorHost": "localhost:9099",

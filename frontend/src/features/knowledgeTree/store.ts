@@ -17,13 +17,23 @@ interface ActState {
     clearNodes: () => void;
 }
 
+function sameIds(left: string[], right: string[]) {
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    return left.every((id, index) => id === right[index]);
+}
+
 export const useKnowledgeTreeStore = create<ActState>((set) => ({
     nodes: [],
     edges: [],
     selectedNodeIds: [],
     activeNodeId: null,
 
-    setSelectedNodes: (ids) => set({ selectedNodeIds: ids }),
+    setSelectedNodes: (ids) => set((state) => (
+        sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
+    )),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
 
