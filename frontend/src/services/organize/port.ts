@@ -7,6 +7,7 @@ export interface EvidenceRef {
 
 export interface TopicNode {
     id: string;
+    topicId?: string;
     title: string;
     type: string;
     parentId?: string;

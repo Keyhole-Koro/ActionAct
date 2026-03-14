@@ -36,6 +36,7 @@ export function NodeDetailPanel() {
 
     // Safely extract our custom A7 data fields from the generic ReactFlow node
     const data = activeNode.data || {};
+    const nodeTopicId = (data.topicId as string) || topicId;
     const title = (data.label as string) || 'Untitled';
     const typeLabel = (data.type as string) || 'concept';
     const contentMd = (data.contentMd as string) || '';
@@ -54,7 +55,7 @@ export function NodeDetailPanel() {
                     {/* Action Organize Bar for Rename/Delete */}
                     <ActionOrganizeBar
                         workspaceId={workspaceId}
-                        topicId={topicId}
+                        topicId={nodeTopicId}
                         nodeId={activeNode.id}
                         currentTitle={title}
                         onDeleteSuccess={() => setActiveNode(null)}

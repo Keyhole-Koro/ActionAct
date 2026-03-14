@@ -12,6 +12,7 @@ import {
     useEdgesState,
     useReactFlow,
     SelectionMode,
+    type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -34,12 +35,12 @@ const nodeTypes = {
     selectionNode: SelectionNodeCard,
 };
 
-function persistedGraphCacheKey(workspaceId: string, topicId: string) {
-    return `graph.persisted.${workspaceId}.${topicId}`;
+function persistedGraphCacheKey(workspaceId: string) {
+    return `graph.persisted.${workspaceId}`;
 }
 
-function actGraphCacheKey(workspaceId: string, topicId: string) {
-    return `graph.act.${workspaceId}.${topicId}`;
+function actGraphCacheKey(workspaceId: string) {
+    return `graph.act.${workspaceId}`;
 }
 
 function serializePersistedGraph(nodes: Node[], edges: Edge[]) {
@@ -78,7 +79,7 @@ export function GraphCanvas() {
         editingNodeId,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
-    const [, , onNodesChange] = useNodesState<Node>([]);
+    const [, , reactFlowOnNodesChange] = useNodesState<Node>([]);
     const [, , onEdgesChange] = useEdgesState<Edge>([]);
     const reactFlowInstance = useReactFlow();
     const hydratedPersistedCacheKeyRef = useRef<string | null>(null);
@@ -89,7 +90,8 @@ export function GraphCanvas() {
             return;
         }
 
-        const cacheKey = persistedGraphCacheKey(workspaceId, topicId);
+        const cacheKey = persistedGraphCacheKey(workspaceId);
+        
         if (hydratedPersistedCacheKeyRef.current === cacheKey) {
             return;
         }
@@ -99,14 +101,14 @@ export function GraphCanvas() {
         if (cachedGraph && cachedGraph.nodes.length > 0) {
             setPersistedGraph(cachedGraph.nodes, cachedGraph.edges);
         }
-    }, [setPersistedGraph, topicId, workspaceId]);
+    }, [setPersistedGraph, workspaceId]);
 
     useEffect(() => {
         if (typeof window === 'undefined') {
             return;
         }
 
-        const cacheKey = actGraphCacheKey(workspaceId, topicId);
+        const cacheKey = actGraphCacheKey(workspaceId);
         if (hydratedActCacheKeyRef.current === cacheKey) {
             return;
         }
@@ -119,7 +121,7 @@ export function GraphCanvas() {
         }
 
         setActGraph([], []);
-    }, [setActGraph, topicId, workspaceId]);
+    }, [setActGraph, workspaceId]);
 
     useEffect(() => {
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes: TopicNode[]) => {
@@ -128,6 +130,7 @@ export function GraphCanvas() {
                 type: 'customTask',
                 position: { x: 120, y: i * 180 + 80 },
                 data: {
+                    topicId: n.topicId,
                     label: n.title,
                     type: n.type,
                     contextSummary: n.contextSummary,
@@ -154,7 +157,7 @@ export function GraphCanvas() {
 
             if (typeof window !== 'undefined' && rfNodes.length > 0) {
                 window.localStorage.setItem(
-                    persistedGraphCacheKey(workspaceId, topicId),
+                    persistedGraphCacheKey(workspaceId),
                     serializePersistedGraph(rfNodes, rfEdges),
                 );
             }
@@ -177,10 +180,10 @@ export function GraphCanvas() {
         }
 
         window.localStorage.setItem(
-            actGraphCacheKey(workspaceId, topicId),
+            actGraphCacheKey(workspaceId),
             serializePersistedGraph(actNodes, actEdges),
         );
-    }, [actEdges, actNodes, topicId, workspaceId]);
+    }, [actEdges, actNodes, workspaceId]);
 
     const { groups } = useAgentInteractionStore();
     const selectionBaseNodes = useMemo(() => [...persistedNodes], [persistedNodes]);
@@ -207,6 +210,8 @@ export function GraphCanvas() {
     // State for auto-layouted nodes/edges
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
+    const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
+    const previousLayoutRef = useRef<Node[]>([]);
     const topologySignature = useMemo(
         () => JSON.stringify({
             nodes: rawCombinedNodes.map((node) => ({
@@ -274,17 +279,28 @@ export function GraphCanvas() {
         const layoutById = new Map(layoutedNodes.map((node) => [node.id, node]));
         return rawCombinedNodes.map((node) => {
             const layoutedNode = layoutById.get(node.id);
-            if (!layoutedNode) {
-                return node;
+            const mergedNode = !layoutedNode
+                ? node
+                : {
+                    ...node,
+                    position: layoutedNode.position,
+                    sourcePosition: layoutedNode.sourcePosition,
+                    targetPosition: layoutedNode.targetPosition,
+                };
+
+            if (!manualNodeIds.includes(node.id)) {
+                return mergedNode;
             }
+
             return {
-                ...node,
-                position: layoutedNode.position,
-                sourcePosition: layoutedNode.sourcePosition,
-                targetPosition: layoutedNode.targetPosition,
+                ...mergedNode,
+                data: {
+                    ...mergedNode.data,
+                    isManualPosition: true,
+                },
             };
         });
-    }, [layoutedNodes, rawCombinedNodes]);
+    }, [layoutedNodes, manualNodeIds, rawCombinedNodes]);
 
     const displayEdges = useMemo(
         () => (layoutedEdges.length > 0 ? layoutedEdges : rawCombinedEdges),
@@ -294,10 +310,11 @@ export function GraphCanvas() {
     // Apply auto-layout asynchronously only when topology changes
     useEffect(() => {
         let mounted = true;
-        getLayoutedElements(rawCombinedNodes, rawCombinedEdges, 'TB').then((res) => {
+        getLayoutedElements(rawCombinedNodes, rawCombinedEdges, 'TB', { nodes: previousLayoutRef.current }).then((res) => {
             if (mounted) {
                 setLayoutedNodes(res.nodes);
                 setLayoutedEdges(res.edges);
+                previousLayoutRef.current = res.nodes;
             }
         });
         return () => { mounted = false; };
@@ -314,13 +331,32 @@ export function GraphCanvas() {
 
     // Track last click time for manual double-click detection
     const lastClickTime = useRef<number>(0);
+    const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
+        reactFlowOnNodesChange(changes);
+
+        const completedMoves = changes
+            .filter((change): change is Extract<NodeChange<Node>, { type: 'position' }> => (
+                change.type === 'position' && change.dragging === false
+            ))
+            .map((change) => change.id);
+
+        if (completedMoves.length === 0) {
+            return;
+        }
+
+        setManualNodeIds((currentIds) => {
+            const nextIds = new Set(currentIds);
+            completedMoves.forEach((id) => nextIds.add(id));
+            return [...nextIds];
+        });
+    }, [reactFlowOnNodesChange]);
 
     return (
         <div className="w-full h-full pb-20">
             <ReactFlow
                 nodes={displayNodes}
                 edges={displayEdges}
-                onNodesChange={onNodesChange}
+                onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onSelectionChange={({ nodes }: { nodes: Node[] }) => {
                     setSelectedNodes(nodes.map((n: Node) => n.id));

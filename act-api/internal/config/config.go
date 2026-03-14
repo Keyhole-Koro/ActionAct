@@ -12,6 +12,8 @@ type Config struct {
 	RedisDB           int
 	ADKWorkerURL      string
 	GCloudProject     string
+	GCSBucket         string
+	PubSubTopic       string
 	SIDStrict         bool
 	SIDTTLSeconds     int
 	CSRFTTLSeconds    int

@@ -5,7 +5,7 @@ import { signOutCurrentUser } from '@/services/firebase/auth';
 import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
-import { Sparkles, FolderKanban, Network, LogOut, Settings, User } from 'lucide-react';
+import { Sparkles, FolderKanban, LogOut, Settings } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,7 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export function AppHeader() {
     const isMock = config.useMocks;
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId } = useRunContextStore();
     const { user } = useAuthState();
     const userInitial = user?.displayName?.trim().charAt(0) || user?.email?.trim().charAt(0) || 'U';
 
@@ -45,12 +45,6 @@ export function AppHeader() {
                             <FolderKanban className="w-4 h-4 group-hover:text-primary transition-colors" />
                             <span className="font-medium truncate max-w-[150px]" title={workspaceId}>
                                 {workspaceId}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground group">
-                            <Network className="w-4 h-4 group-hover:text-amber-500 transition-colors" />
-                            <span className="font-medium truncate max-w-[150px]" title={topicId}>
-                                {topicId}
                             </span>
                         </div>
                     </div>
