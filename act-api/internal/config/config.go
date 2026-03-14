@@ -13,6 +13,8 @@ type Config struct {
 	ADKWorkerURL      string
 	GCloudProject     string
 	SIDStrict         bool
+	SIDTTLSeconds     int
+	CSRFTTLSeconds    int
 	SIDReqTTLSeconds  int
 	SIDLockTTLSeconds int
 }
@@ -25,6 +27,8 @@ func MustLoad() *Config {
 		ADKWorkerURL:      mustEnv("ACT_ADK_WORKER_URL"),
 		GCloudProject:     mustEnv("GOOGLE_CLOUD_PROJECT"),
 		SIDStrict:         mustBoolEnv("SID_STRICT"),
+		SIDTTLSeconds:     mustIntEnv("SID_TTL_SECONDS"),
+		CSRFTTLSeconds:    mustIntEnv("CSRF_TTL_SECONDS"),
 		SIDReqTTLSeconds:  mustIntEnv("SID_REQ_TTL_SECONDS"),
 		SIDLockTTLSeconds: mustIntEnv("SID_LOCK_TTL_SECONDS"),
 	}

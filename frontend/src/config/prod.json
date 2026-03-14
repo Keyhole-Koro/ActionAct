@@ -2,6 +2,9 @@
   "useMocks": false,
   "rpcBaseUrl": "",
   "actApiBaseUrl": "",
+  "firebaseApiKey": "replace-me",
+  "firebaseAuthDomain": "replace-me.firebaseapp.com",
+  "firebaseAppId": "replace-me",
   "firebaseAuthEmulatorHost": "",
   "firestoreEmulatorHost": "",
   "gcloudProject": "prod"

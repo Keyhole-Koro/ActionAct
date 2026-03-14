@@ -23,6 +23,10 @@ Required:
 * `GOOGLE_CLOUD_PROJECT`
 * `SID_STRICT`
   * `true` or `false`
+* `SID_TTL_SECONDS`
+  * integer
+* `CSRF_TTL_SECONDS`
+  * integer
 * `SID_REQ_TTL_SECONDS`
   * integer
 * `SID_LOCK_TTL_SECONDS`
@@ -37,7 +41,14 @@ REDIS_DB=0 \
 ACT_ADK_WORKER_URL=http://localhost:8000 \
 GOOGLE_CLOUD_PROJECT=local-dev \
 SID_STRICT=true \
+SID_TTL_SECONDS=86400 \
+CSRF_TTL_SECONDS=86400 \
 SID_REQ_TTL_SECONDS=900 \
 SID_LOCK_TTL_SECONDS=10 \
 go run ./cmd/act-api
 ```
+
+## Auth Session Bootstrap
+
+`RunAct` の前に `Authorization: Bearer <Firebase ID token>` を使って
+`POST /auth/session/bootstrap` を呼び、`sid` と `csrf_token` cookie を発行する前提です。

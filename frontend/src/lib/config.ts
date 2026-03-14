@@ -5,6 +5,9 @@ export type FrontendConfig = {
   useMocks: boolean;
   rpcBaseUrl: string;
   actApiBaseUrl: string;
+  firebaseApiKey: string;
+  firebaseAuthDomain: string;
+  firebaseAppId: string;
   firebaseAuthEmulatorHost: string;
   firestoreEmulatorHost: string;
   gcloudProject: string;
@@ -16,6 +19,9 @@ export const config: FrontendConfig = {
   useMocks: staticConfig.useMocks,
   rpcBaseUrl: staticConfig.rpcBaseUrl,
   actApiBaseUrl: staticConfig.actApiBaseUrl,
+  firebaseApiKey: staticConfig.firebaseApiKey,
+  firebaseAuthDomain: staticConfig.firebaseAuthDomain,
+  firebaseAppId: staticConfig.firebaseAppId,
   firebaseAuthEmulatorHost: staticConfig.firebaseAuthEmulatorHost,
   firestoreEmulatorHost: staticConfig.firestoreEmulatorHost,
   gcloudProject: staticConfig.gcloudProject,

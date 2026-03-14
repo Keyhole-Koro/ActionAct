@@ -1,12 +1,16 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { LogoutButton } from '@/features/auth/components/LogoutButton';
+import { useAuthState } from '@/features/auth/hooks/useAuthState';
 import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 export function AppHeader() {
     const isMock = config.useMocks;
     const { workspaceId, topicId } = useRunContextStore();
+    const { user } = useAuthState();
+    const userInitial = user?.displayName?.trim().charAt(0) || user?.email?.trim().charAt(0) || 'U';
 
     return (
         <header className="flex items-center h-14 px-4 border-b bg-background shrink-0 w-full z-10">
@@ -31,8 +35,14 @@ export function AppHeader() {
                         Mock Mode
                     </Badge>
                 )}
+                {!isMock && user?.email ? (
+                    <Badge variant="outline" title={user.email}>
+                        {user.email}
+                    </Badge>
+                ) : null}
+                {!isMock ? <LogoutButton /> : null}
                 <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs">
-                    U
+                    {userInitial.toUpperCase()}
                 </div>
             </div>
         </header>

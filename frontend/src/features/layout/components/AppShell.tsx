@@ -2,6 +2,7 @@
 
 import React, { ReactNode, useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { AuthGate } from '@/features/auth/components/AuthGate';
 import { AppHeader } from './AppHeader';
 import { LeftRail } from './LeftRail';
 import { RightPanelRouter } from './RightPanelRouter';
@@ -11,7 +12,7 @@ import { Menu, PanelRightClose } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AskForm } from '@/components/ui/AskForm';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
-import { emitAuthContext, setFirebaseIdToken } from '@/features/auth/session';
+import { emitAuthContext } from '@/features/auth/session';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -25,18 +26,11 @@ export function AppShell({ children }: AppShellProps) {
     const { workspaceId, topicId, setContext } = useRunContextStore();
 
     useEffect(() => {
-        const idToken = searchParams.get('id_token')?.trim();
         const authWorkspaceId = searchParams.get('authWorkspaceId')?.trim();
         const authTopicId = searchParams.get('authTopicId')?.trim();
 
         const params = new URLSearchParams(searchParams.toString());
         let needsCleanup = false;
-
-        if (idToken) {
-            setFirebaseIdToken(idToken);
-            params.delete('id_token');
-            needsCleanup = true;
-        }
 
         if (authWorkspaceId && authTopicId) {
             emitAuthContext({ workspaceId: authWorkspaceId, topicId: authTopicId });
@@ -96,7 +90,7 @@ export function AppShell({ children }: AppShellProps) {
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
             <AppHeader />
-
+            <AuthGate>
             <div className="flex-1 flex overflow-hidden relative">
                 {/* Left Rail (Desktop: full width 280px, Tablet: narrow ~64px/icon only. Here we conditionally style. )
             For simplicity, in >=768px we show a fixed width sidebar that might collapse.
@@ -164,6 +158,7 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
 
             </div>
+            </AuthGate>
         </div>
     );
 }

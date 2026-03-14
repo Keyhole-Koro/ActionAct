@@ -3,38 +3,25 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import { v4 as uuidv4 } from "uuid";
 
 import { ActService, ActType, type RunActEvent, type PatchOp as RpcPatchOp } from "@/gen/act/v1/act_pb";
-import { getFirebaseIdToken } from "@/features/auth/session";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
+import { getCSRFToken } from "@/services/firebase/csrf";
+import { getFirebaseIdToken } from "@/services/firebase/token";
 import type { ActPort, PatchOp } from "./port";
 
 function getBaseUrl(): string {
   return config.rpcBaseUrl;
 }
 
-function getCookie(name: string): string {
-  const all = typeof document !== "undefined" ? document.cookie : "";
-  if (!all) {
-    return "";
-  }
-  const key = `${name}=`;
-  const pair = all
-    .split(";")
-    .map((v) => v.trim())
-    .find((v) => v.startsWith(key));
-  return pair ? decodeURIComponent(pair.slice(key.length)) : "";
-}
-
-function buildHeaders(): HeadersInit {
+async function buildHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {};
 
-  // If auth token is preloaded by auth flow, forward it to act-api.
-  const idToken = getFirebaseIdToken();
+  const idToken = await getFirebaseIdToken();
   if (idToken) {
     headers.Authorization = `Bearer ${idToken}`;
   }
 
-  const csrf = getCookie("csrf_token");
+  const csrf = getCSRFToken();
   if (csrf) {
     headers["X-CSRF-Token"] = csrf;
   }
@@ -123,6 +110,7 @@ export function createRpcActService(): ActPort {
       void (async () => {
         try {
           const { workspaceId, topicId } = useRunContextStore.getState();
+          const headers = await buildHeaders();
           const response = client.runAct(
             {
               topicId,
@@ -133,7 +121,7 @@ export function createRpcActService(): ActPort {
             },
             {
               signal: abortController.signal,
-              headers: buildHeaders(),
+              headers,
             },
           );
 

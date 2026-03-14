@@ -24,6 +24,13 @@ npm run build
 Required:
 
 * local/prod JSON の整合
+* Firebase 公開設定
+  * `firebaseApiKey`
+  * `firebaseAuthDomain`
+  * `firebaseAppId`
+* Act API 接続先
+  * `rpcBaseUrl`
+  * `actApiBaseUrl`
 
 Example:
 
@@ -34,5 +41,6 @@ npm run dev
 
 ## Notes
 
-* local config では mock service を使います
-* prod config では Connect RPC / Act API 接続前提です
+* `useMocks=false` の場合は Firebase Auth と `POST /auth/session/bootstrap` が前提です
+* `AuthGate` が Google sign-in 後に session bootstrap を行い、`sid` / `csrf_token` cookie を揃えます
+* `services/firebase/token.ts` が `Authorization` を付与し、`services/firebase/csrf.ts` が `X-CSRF-Token` を付与します

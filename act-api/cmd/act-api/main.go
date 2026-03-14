@@ -53,6 +53,7 @@ func main() {
 	// ── Adapter layer (DI) ──
 	authVerifier := adapter.NewFirebaseAuthVerifier(authClient)
 	sessionValidator := adapter.NewRedisSessionValidator(rdb, cfg.SIDStrict)
+	sessionIssuer := adapter.NewRedisSessionIssuer(rdb, cfg.SIDTTLSeconds, cfg.CSRFTTLSeconds)
 	csrfValidator := adapter.NewDoubleSubmitCSRFValidator()
 	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL)
 
@@ -61,10 +62,17 @@ func main() {
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)
+	sessionBootstrapHandler := handler.NewSessionBootstrapHandler(
+		authVerifier,
+		sessionIssuer,
+		cfg.SIDTTLSeconds,
+		cfg.CSRFTTLSeconds,
+	)
 
 	mux := http.NewServeMux()
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
 	mux.Handle(path, connectHandler)
+	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
