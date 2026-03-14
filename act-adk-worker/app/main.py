@@ -8,9 +8,9 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.config import Config
+from app.adapter.firestore_assembly import FirestoreAssembly
 from app.adapter.mock_llm import MockLLM
 from app.adapter.gemini_llm import GeminiLLM
-from app.adapter.stub_assembly import StubAssembly
 from app.usecase.run_act import RunActUsecase
 from app.handler import run_act_handler
 
@@ -26,8 +26,8 @@ app = FastAPI(title="act-adk-worker", version="0.1.0")
 # ── DI Wiring ──
 config = Config()
 
-# Assembly adapter (stub for now)
-assembly = StubAssembly()
+# Assembly adapter (read-only Firestore retrieval with graceful degrade)
+assembly = FirestoreAssembly(project=config.google_cloud_project)
 
 # LLM adapter (mock, Gemini Developer API, or Vertex AI Gemini)
 if config.google_api_key:

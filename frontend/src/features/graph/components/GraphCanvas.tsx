@@ -27,6 +27,7 @@ import { SelectionGroupHeader } from './SelectionGroupHeader';
 import { SelectionNodeCard } from './SelectionNodeCard';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
 import { toSelectionFlow } from '../selectors/toSelectionFlow';
+import { getLayoutedElements } from '../utils/layout';
 
 const nodeTypes = {
     customTask: GraphNodeCard,
@@ -71,8 +72,23 @@ export function GraphCanvas() {
     const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, nodes);
 
     // Combine all node sources
-    const combinedNodes = [...nodes, ...actNodes, ...selectionNodes];
-    const combinedEdges = [...edges, ...actEdges, ...selectionEdges];
+    const rawCombinedNodes = [...nodes, ...actNodes, ...selectionNodes];
+    const rawCombinedEdges = [...edges, ...actEdges, ...selectionEdges];
+
+    // State for auto-layouted nodes/edges
+    const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
+    const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
+    // Apply auto-layout asynchronously
+    useEffect(() => {
+        let mounted = true;
+        getLayoutedElements(rawCombinedNodes, rawCombinedEdges, 'TB').then((res) => {
+            if (mounted) {
+                setLayoutedNodes(res.nodes);
+                setLayoutedEdges(res.edges);
+            }
+        });
+        return () => { mounted = false; };
+    }, [rawCombinedNodes, rawCombinedEdges]);
 
     // Canvas double-click → create empty node
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
@@ -86,8 +102,8 @@ export function GraphCanvas() {
     return (
         <div className="w-full h-full pb-20">
             <ReactFlow
-                nodes={combinedNodes}
-                edges={combinedEdges}
+                nodes={layoutedNodes}
+                edges={layoutedEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onSelectionChange={({ nodes }: { nodes: Node[] }) => {
