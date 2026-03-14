@@ -6,6 +6,8 @@ import { Node, Edge } from '@xyflow/react';
  */
 
 interface GraphState {
+    persistedNodes: Node[];
+    persistedEdges: Edge[];
     nodes: Node[];
     edges: Edge[];
     selectedNodeIds: string[];
@@ -13,6 +15,7 @@ interface GraphState {
     editingNodeId: string | null;
 
     setSelectedNodes: (ids: string[]) => void;
+    setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
     setEditingNode: (id: string | null) => void;
@@ -32,6 +35,8 @@ function sameIds(left: string[], right: string[]) {
 let _nodeCounter = 0;
 
 export const useGraphStore = create<GraphState>((set) => ({
+    persistedNodes: [],
+    persistedEdges: [],
     nodes: [],
     edges: [],
     selectedNodeIds: [],
@@ -41,6 +46,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     setSelectedNodes: (ids) => set((state) => (
         sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
     )),
+    setPersistedGraph: (nodes, edges) => set({ persistedNodes: nodes, persistedEdges: edges }),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),

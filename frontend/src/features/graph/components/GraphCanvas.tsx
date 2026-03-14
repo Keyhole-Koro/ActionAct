@@ -37,10 +37,19 @@ const nodeTypes = {
 
 export function GraphCanvas() {
     const { setMode, openPanel } = usePanelStore();
-    const { nodes: actNodes, edges: actEdges, setSelectedNodes, setActiveNode, addEmptyNode, editingNodeId } = useGraphStore();
+    const {
+        persistedNodes,
+        persistedEdges,
+        nodes: actNodes,
+        edges: actEdges,
+        setSelectedNodes,
+        setActiveNode,
+        addEmptyNode,
+        setPersistedGraph,
+    } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
-    const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const [, , onNodesChange] = useNodesState<Node>([]);
+    const [, , onEdgesChange] = useEdgesState<Edge>([]);
     const reactFlowInstance = useReactFlow();
 
     useEffect(() => {
@@ -49,7 +58,14 @@ export function GraphCanvas() {
                 id: n.id,
                 type: 'customTask',
                 position: { x: 100 + (Math.random() * 200), y: i * 150 + 50 },
-                data: { label: n.title, type: n.type },
+                data: {
+                    label: n.title,
+                    type: n.type,
+                    contextSummary: n.contextSummary,
+                    detailHtml: n.detailHtml,
+                    contentMd: n.contentMd,
+                    evidenceRefs: n.evidenceRefs,
+                },
             }));
 
             const rfEdges: Edge[] = topicNodes
@@ -61,19 +77,18 @@ export function GraphCanvas() {
                     animated: true,
                 }));
 
-            setNodes(rfNodes);
-            setEdges(rfEdges);
+            setPersistedGraph(rfNodes, rfEdges);
         });
 
         return () => unsubscribe();
-    }, [setNodes, setEdges, workspaceId, topicId]);
+    }, [setPersistedGraph, workspaceId, topicId]);
 
     const { groups } = useAgentInteractionStore();
-    const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, nodes);
+    const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, persistedNodes);
 
     // Combine all node sources
-    const rawCombinedNodes = [...nodes, ...actNodes, ...selectionNodes];
-    const rawCombinedEdges = [...edges, ...actEdges, ...selectionEdges];
+    const rawCombinedNodes = [...persistedNodes, ...actNodes, ...selectionNodes];
+    const rawCombinedEdges = [...persistedEdges, ...actEdges, ...selectionEdges];
 
     // State for auto-layouted nodes/edges
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
@@ -100,6 +115,9 @@ export function GraphCanvas() {
         addEmptyNode(position);
     }, [reactFlowInstance, addEmptyNode]);
 
+    // Track last click time for manual double-click detection
+    const lastClickTime = useRef<number>(0);
+
     return (
         <div className="w-full h-full pb-20">
             <ReactFlow
@@ -116,11 +134,16 @@ export function GraphCanvas() {
                     openPanel('node-detail', node.id);
                 }}
                 onPaneClick={(event) => {
-                    console.log("onPaneClick fired. Detail:", event.detail);
-                    if (event.detail === 2) {
+                    const now = Date.now();
+                    const timeDiff = now - lastClickTime.current;
+                    lastClickTime.current = now;
+
+                    if (timeDiff < 400) {
+                        console.log("★★DOUBLE CLICK DETECTED★★ timeDiff:", timeDiff);
+                        // Detected a double click!
                         handlePaneDoubleClick(event);
                     } else {
-                        // Deselect on single click
+                        // Single click
                         setActiveNode(null);
                     }
                 }}
