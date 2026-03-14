@@ -69,32 +69,27 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
 
     return (
         <div className="relative group">
-            {/* Animated Glow Backdrop */}
-            <div className={`absolute -inset-0.5 rounded-2xl blur-xl opacity-0 group-hover:opacity-60 transition-opacity duration-700 bg-gradient-to-tr ${cfg.gradient} pointer-events-none`} />
-
             {/* Main Card Container */}
             <div
-                className={[
-                    'relative w-[320px] rounded-2xl border transition-all duration-500 ease-out overflow-hidden',
-                    'bg-background/60 backdrop-blur-xl',
-                    'hover:shadow-2xl hover:-translate-y-1',
-                    selected
-                        ? `ring-2 ring-primary ring-offset-4 ring-offset-background shadow-2xl ${cfg.glow} border-transparent`
-                        : 'shadow-lg border-border/40 hover:border-primary/50',
-                ].join(' ')}
+                className={`
+                    group relative w-[340px] rounded-sm transition-all duration-300
+                    bg-white/95 backdrop-blur-md border border-primary/20
+                    shadow-[0_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0_4px_25px_rgba(0,255,255,0.2)]
+                    ${selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-[0_0_30px_rgba(0,255,255,0.4)] scale-[1.02] border-primary/50' : 'hover:border-primary/40'}
+                    ${isStreaming ? 'animate-pulse-subtle' : ''}
+                `}
             >
-                {/* Internal Animated Gradient Sweep */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-20 pointer-events-none group-hover:opacity-40 transition-opacity duration-500`} />
+                {/* Inner top glow accent based on node type */}
+                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${cfg.gradient} opacity-70`} />
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
-                {/* Header Section */}
                 <div className="relative p-4 pb-0 flex gap-3">
                     {/* Icon Container with active glow */}
                     {data.type !== 'act' && (
-                        <div className="relative shrink-0 mt-0.5">
-                            <div className={`absolute inset-0 rounded-xl blur-md bg-gradient-to-br ${cfg.gradient} opacity-50 group-hover:opacity-100 transition-opacity`} />
-                            <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background/90 border border-border/50 shadow-inner ${cfg.accent}`}>
-                                <TypeIcon className="w-5 h-5 drop-shadow-sm" />
+                        <div className="relative shrink-0 mt-0.5 group">
+                            <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-0 group-hover:opacity-100 blur-sm transition-opacity duration-300`} />
+                            <div className={`relative flex items-center justify-center w-10 h-10 rounded-sm bg-white border-2 border-primary/30 shadow-[0_0_10px_rgba(0,255,255,0.15)] group-hover:shadow-[0_0_15px_rgba(0,255,255,0.3)] transition-shadow ${cfg.accent}`}>
+                                <TypeIcon className="w-5 h-5" />
                             </div>
                         </div>
                     )}

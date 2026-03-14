@@ -193,11 +193,11 @@ export function GraphCanvas() {
                 selectionMode={SelectionMode.Partial}
                 fitView
             >
-                <Background color="hsl(var(--primary) / 0.15)" gap={24} size={2} />
-                <Controls className="!bg-card/80 !border-border/40 !rounded-xl !shadow-lg backdrop-blur-md" />
+                <Background color="hsl(var(--primary) / 0.3)" gap={32} size={1.5} />
+                <Controls className="!bg-card/90 !border-primary/30 !rounded-none !shadow-[0_0_15px_rgba(0,255,255,0.15)] backdrop-blur-md" />
                 <MiniMap
-                    className="!bg-card/80 !border-border/40 !rounded-xl !shadow-lg backdrop-blur-md"
-                    maskColor="rgba(0,0,0,0.1)"
+                    className="!bg-card/90 !border-primary/30 !rounded-none !shadow-[0_0_15px_rgba(0,255,255,0.15)] backdrop-blur-md"
+                    maskColor="rgba(0,255,255,0.05)"
                     nodeColor={() => 'hsl(var(--primary))'}
                 />
             </ReactFlow>
