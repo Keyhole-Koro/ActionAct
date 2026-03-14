@@ -28,6 +28,7 @@ import { SelectionNodeCard } from './SelectionNodeCard';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
 import { toSelectionFlow } from '../selectors/toSelectionFlow';
 import { getLayoutedElements } from '../utils/layout';
+import { actDraftService } from '@/services/actDraft/firestore';
 
 const nodeTypes = {
     customTask: GraphNodeCard,
@@ -40,12 +41,16 @@ export function GraphCanvas() {
     const {
         persistedNodes,
         persistedEdges,
+        draftNodes,
+        draftEdges,
         nodes: actNodes,
         edges: actEdges,
         setSelectedNodes,
         setActiveNode,
         addEmptyNode,
         setPersistedGraph,
+        setDraftGraph,
+        editingNodeId,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const [, , onNodesChange] = useNodesState<Node>([]);
@@ -83,12 +88,41 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [setPersistedGraph, workspaceId, topicId]);
 
+    useEffect(() => {
+        const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (topicNodes: TopicNode[]) => {
+            const rfNodes: Node[] = topicNodes.map((n, i) => ({
+                id: n.id,
+                type: 'customTask',
+                position: { x: 420 + (Math.random() * 120), y: i * 180 + 80 },
+                data: {
+                    label: n.title,
+                    type: n.type,
+                    contentMd: n.contentMd,
+                    contextSummary: n.contextSummary,
+                    detailHtml: n.detailHtml,
+                    evidenceRefs: n.evidenceRefs,
+                    isActDraft: true,
+                },
+            }));
+
+            setDraftGraph(rfNodes, []);
+        });
+
+        return () => unsubscribe();
+    }, [setDraftGraph, topicId, workspaceId]);
+
     const { groups } = useAgentInteractionStore();
-    const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, persistedNodes);
+    const selectionBaseNodes = [...persistedNodes, ...draftNodes];
+    const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, selectionBaseNodes);
 
     // Combine all node sources
-    const rawCombinedNodes = [...persistedNodes, ...actNodes, ...selectionNodes];
-    const rawCombinedEdges = [...persistedEdges, ...actEdges, ...selectionEdges];
+    const dedupedPersistedAndDraft = [
+        ...persistedNodes,
+        ...draftNodes.filter((draftNode) => !persistedNodes.some((persistedNode) => persistedNode.id === draftNode.id)),
+    ];
+    const dedupedActNodes = actNodes.filter((actNode) => !dedupedPersistedAndDraft.some((node) => node.id === actNode.id));
+    const rawCombinedNodes = [...dedupedPersistedAndDraft, ...dedupedActNodes, ...selectionNodes];
+    const rawCombinedEdges = [...persistedEdges, ...draftEdges, ...actEdges, ...selectionEdges];
 
     // State for auto-layouted nodes/edges
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
@@ -130,8 +164,13 @@ export function GraphCanvas() {
                 }}
                 onNodeClick={(_event: React.MouseEvent, node: Node) => {
                     setActiveNode(node.id);
-                    setMode('node-detail');
-                    openPanel('node-detail', node.id);
+                    if (editingNodeId !== node.id) {
+                        setMode('node-detail');
+                        openPanel('node-detail', node.id);
+                    }
+                    if (node.data?.isActDraft) {
+                        void actDraftService.touchDraft(workspaceId, topicId, node.id);
+                    }
                 }}
                 onPaneClick={(event) => {
                     const now = Date.now();
@@ -155,11 +194,11 @@ export function GraphCanvas() {
                 selectionMode={SelectionMode.Partial}
                 fitView
             >
-                <Background />
-                <Controls />
+                <Background color="hsl(var(--primary) / 0.15)" gap={24} size={2} />
+                <Controls className="!bg-card/80 !border-border/40 !rounded-xl !shadow-lg backdrop-blur-md" />
                 <MiniMap
-                    className="!bg-card/80 !border-border/40 !rounded-xl"
-                    maskColor="rgba(0,0,0,0.08)"
+                    className="!bg-card/80 !border-border/40 !rounded-xl !shadow-lg backdrop-blur-md"
+                    maskColor="rgba(0,0,0,0.1)"
                     nodeColor={() => 'hsl(var(--primary))'}
                 />
             </ReactFlow>

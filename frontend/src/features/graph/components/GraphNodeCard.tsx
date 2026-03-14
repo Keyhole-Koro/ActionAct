@@ -51,7 +51,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             if (data.type === 'act' && !data.label) {
                 // Ensure nodes are selected contextually if needed, but here we just fire it
                 setSelectedNodes([id]);
-                startStream(trimmed, { clear: false });
+                startStream(id, trimmed, { clear: false });
             }
         } else {
             // Empty label → remove the node
@@ -68,32 +68,51 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
     }, [commitEdit, setEditingNode]);
 
     return (
-        <>
-            <Handle
-                type="target"
-                position={Position.Top}
-                isConnectable={isConnectable}
-                className="!w-2.5 !h-2.5 !bg-primary/60 !border-2 !border-background !-top-1.5 transition-all hover:!scale-150"
-            />
+        <div className="relative group">
+            {/* Animated Glow Backdrop */}
+            <div className={`absolute -inset-0.5 rounded-2xl blur-xl opacity-0 group-hover:opacity-60 transition-opacity duration-700 bg-gradient-to-tr ${cfg.gradient} pointer-events-none`} />
 
+            {/* Main Card Container */}
             <div
                 className={[
-                    'group w-[240px] rounded-xl border transition-all duration-300 ease-out',
-                    'bg-card/80 backdrop-blur-md',
-                    'hover:shadow-lg hover:-translate-y-0.5',
+                    'relative w-[320px] rounded-2xl border transition-all duration-500 ease-out overflow-hidden',
+                    'bg-background/60 backdrop-blur-xl',
+                    'hover:shadow-2xl hover:-translate-y-1',
                     selected
-                        ? `ring-2 ring-primary ring-offset-2 ring-offset-background shadow-xl ${cfg.glow}`
-                        : 'shadow-md border-border/60 hover:border-border',
+                        ? `ring-2 ring-primary ring-offset-4 ring-offset-background shadow-2xl ${cfg.glow} border-transparent`
+                        : 'shadow-lg border-border/40 hover:border-primary/50',
                 ].join(' ')}
             >
-                <div className={`absolute inset-0 rounded-xl bg-gradient-to-b ${cfg.gradient} pointer-events-none`} />
+                {/* Internal Animated Gradient Sweep */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-20 pointer-events-none group-hover:opacity-40 transition-opacity duration-500`} />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
-                {/* Header */}
-                <div className="relative p-3 pb-2 flex items-start gap-2">
-                    <div className={`mt-0.5 p-1.5 rounded-lg bg-background/80 border border-border/40 ${cfg.accent}`}>
-                        <TypeIcon className="w-3.5 h-3.5" />
+                {/* Header Section */}
+                <div className="relative p-4 pb-0 flex items-start gap-3">
+                    {/* Icon Container with active glow */}
+                    <div className="relative shrink-0">
+                        <div className={`absolute inset-0 rounded-xl blur-md bg-gradient-to-br ${cfg.gradient} opacity-50 group-hover:opacity-100 transition-opacity`} />
+                        <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background/90 border border-border/50 shadow-inner ${cfg.accent}`}>
+                            <TypeIcon className="w-5 h-5 drop-shadow-sm" />
+                        </div>
                     </div>
-                    <div className="flex-1 min-w-0">
+
+                    <div className="flex-1 min-w-0 pt-0.5">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <Badge
+                                variant="outline"
+                                className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
+                            >
+                                {data.type}
+                            </Badge>
+                            {isStreaming && (
+                                <span className="flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                </span>
+                            )}
+                        </div>
+
                         {isEditing ? (
                             <input
                                 ref={inputRef}
@@ -102,78 +121,78 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 onBlur={commitEdit}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Enter node title..."
-                                className="w-full text-sm font-semibold bg-transparent border-b border-primary/40 outline-none text-foreground placeholder:text-muted-foreground/50 pb-0.5"
+                                className="w-full text-base font-bold bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 mt-1 font-heading"
                             />
                         ) : (
                             <h3
-                                className="text-sm font-semibold leading-tight truncate text-foreground cursor-text"
+                                className="text-base font-bold leading-snug text-foreground cursor-text line-clamp-2 mt-0.5 group-hover:text-primary transition-colors duration-300 font-heading"
                                 onDoubleClick={(e) => {
                                     e.stopPropagation();
-                                    setEditValue(data.label);
                                     setEditingNode(id);
+                                    setEditValue(data.label || '');
                                 }}
                             >
-                                {data.label || 'Untitled'}
+                                {data.label || 'Untitled Act Node'}
                             </h3>
                         )}
-                        <Badge
-                            variant="secondary"
-                            className="mt-1 text-[9px] px-1.5 py-0 uppercase tracking-wider font-medium opacity-70"
-                        >
-                            {data.type}
-                        </Badge>
                     </div>
                 </div>
 
                 {/* Content preview */}
-                <div className="relative px-3 pb-2">
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                        {data.contentMd || 'Double-click to edit...'}
+                <div className="relative px-4 pt-3 pb-4">
+                    <p className="text-sm text-foreground/70 leading-relaxed line-clamp-3 font-medium">
+                        {data.contentMd || <span className="text-muted-foreground/50 italic">Double-click title to edit...</span>}
                     </p>
                 </div>
 
-                {/* Actions */}
+                {/* Actions Area */}
                 {data.actions && data.actions.length > 0 && (
-                    <div className="relative px-3 pb-3 pt-1 flex flex-wrap gap-1.5 border-t border-border/30 mt-1">
+                    <div className="relative px-4 pb-4 pt-2 flex flex-wrap gap-2 border-t border-border/20 bg-muted/10">
                         {data.actions.map((action: { label: string, execute: string }, idx: number) => (
                             <Button
                                 key={idx}
-                                variant="ghost"
+                                variant="secondary"
                                 size="sm"
                                 className={[
-                                    'h-7 text-[10px] px-2.5 rounded-lg font-medium',
-                                    'bg-primary/5 hover:bg-primary/10 text-primary',
-                                    'transition-all duration-200 hover:shadow-sm',
-                                    isStreaming ? 'opacity-50' : '',
+                                    'h-8 text-xs px-3 rounded-lg font-semibold shadow-sm border border-border/50',
+                                    'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                    'transition-all duration-300 group/btn',
+                                    isStreaming ? 'opacity-50 pointer-events-none' : '',
                                 ].join(' ')}
-                                disabled={isStreaming}
                                 onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
                                     setSelectedNodes([id]);
-                                    startStream(action.label, { clear: false });
+                                    startStream(id, action.label, { clear: false });
                                 }}
                             >
-                                <Play className="w-3 h-3 mr-1" />
+                                <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
                                 {action.label}
                             </Button>
                         ))}
                     </div>
                 )}
 
-                {/* Streaming indicator */}
+                {/* Streaming Progress Bar */}
                 {isStreaming && (
-                    <div className="absolute -bottom-1 left-3 right-3 h-0.5 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-primary via-primary/60 to-primary animate-pulse rounded-full" />
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30 overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-primary/40 via-primary to-primary/40 animate-[shimmer_1.5s_infinite] w-[200%] -ml-[50%]" />
                     </div>
                 )}
             </div>
 
+            {/* Custom Handles */}
+            <Handle
+                type="target"
+                position={Position.Top}
+                isConnectable={isConnectable}
+                className="!w-4 !h-4 !bg-background !border-2 !border-primary !shadow-md !-top-2 hover:!scale-125 hover:!bg-primary transition-all duration-300 z-10"
+            />
             <Handle
                 type="source"
                 position={Position.Bottom}
                 isConnectable={isConnectable}
-                className="!w-2.5 !h-2.5 !bg-primary/60 !border-2 !border-background !-bottom-1.5 transition-all hover:!scale-150"
+                className="!w-4 !h-4 !bg-background !border-2 !border-primary !shadow-md !-bottom-2 hover:!scale-125 hover:!bg-primary transition-all duration-300 z-10"
             />
-        </>
+        </div>
     );
 }

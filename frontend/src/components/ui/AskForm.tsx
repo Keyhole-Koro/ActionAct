@@ -35,10 +35,11 @@ export function AskForm() {
         router.replace(`${pathname}?${params.toString()}`);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const onSubmit = (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!query.trim() || isStreaming) return;
-        startStream(query, { enableGrounding });
+
+        startStream(null, query, { enableGrounding });
         setQuery(''); // clear after submit
     };
 
@@ -70,7 +71,7 @@ export function AskForm() {
                 </div>
             </div>
             <form
-                onSubmit={handleSubmit}
+                onSubmit={onSubmit}
                 className="bg-background border shadow-lg rounded-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-shadow"
             >
                 <label className="flex items-center gap-2 px-2 text-xs text-muted-foreground whitespace-nowrap">
