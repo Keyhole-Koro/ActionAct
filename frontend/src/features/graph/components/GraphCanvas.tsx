@@ -19,8 +19,15 @@ import { TopicNode } from '@/services/organize/port';
 import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
 import { usePanelStore } from '@/features/layout/store/panel-store';
 
+import { SelectionGroupHeader } from './SelectionGroupHeader';
+import { SelectionNodeCard } from './SelectionNodeCard';
+import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
+import { toSelectionFlow } from '../selectors/toSelectionFlow';
+
 const nodeTypes = {
     customTask: GraphNodeCard,
+    selectionHeader: SelectionGroupHeader,
+    selectionNode: SelectionNodeCard,
 };
 
 export function GraphCanvas() {
@@ -57,9 +64,14 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [setNodes, setEdges]);
 
-    // Combine organize nodes & edges with dynamically streamed Act nodes & edges
-    const combinedNodes = [...nodes, ...actNodes];
-    const combinedEdges = [...edges, ...actEdges];
+    const { groups } = useAgentInteractionStore();
+
+    // Generate selection node flow
+    const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(groups, nodes);
+
+    // Combine organize nodes & edges with dynamically streamed Act nodes & edges & selection nodes
+    const combinedNodes = [...nodes, ...actNodes, ...selectionNodes];
+    const combinedEdges = [...edges, ...actEdges, ...selectionEdges];
 
     return (
         <div className="w-full h-full pb-20">

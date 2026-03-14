@@ -1,5 +1,6 @@
 import { ActPort, PatchOp } from './port';
 import { v4 as uuidv4 } from 'uuid';
+import { agentTools } from '@/features/agentInteraction/hooks/agentTools';
 
 export const mockActService: ActPort = {
     streamAct: (query, onPatch, onDone, onError) => {
@@ -38,7 +39,17 @@ export const mockActService: ActPort = {
             if (step < patches.length) {
                 onPatch(patches[step]);
                 step++;
-            } else {
+            } else if (step === patches.length) {
+                agentTools.createSelectableNodes({
+                    title: "Which path should we explore next?",
+                    instruction: "Select an option to guide the next thinking steps.",
+                    selection_mode: "single",
+                    anchor_node_id: rootId,
+                    options: [
+                        { option_id: `opt1-${Date.now()}`, label: "Focus on Sub-topic A", content_md: "Deep dive into the first area." },
+                        { option_id: `opt2-${Date.now()}`, label: "Focus on Sub-topic B", content_md: "Investigate alternative perspectives." }
+                    ]
+                });
                 clearInterval(timer);
                 onDone();
             }
