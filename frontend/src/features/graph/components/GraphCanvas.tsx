@@ -11,7 +11,8 @@ import {
     useNodesState,
     useEdgesState,
     useReactFlow,
-    SelectionMode
+    SelectionMode,
+    ReactFlowProvider
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 

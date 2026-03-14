@@ -1,7 +1,6 @@
 "use client";
 
 import React from 'react';
-import { useGraphStore } from '@/features/graph/store';
 import { MarkdownPane } from '@/features/nodeMarkdown/components/MarkdownPane';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Node } from '@xyflow/react';
@@ -11,9 +10,10 @@ import { NodeSummaryCard } from './NodeSummaryCard';
 import { NodeEvidenceList } from './NodeEvidenceList';
 import { EvidenceRef } from '@/services/organize/port';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { useGraphStore } from '@/features/graph/store';
 
 export function NodeDetailPanel() {
-    const { activeNodeId, nodes, setActiveNode } = useKnowledgeTreeStore();
+    const { activeNodeId, nodes, setActiveNode } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
 
     if (!activeNodeId) {
