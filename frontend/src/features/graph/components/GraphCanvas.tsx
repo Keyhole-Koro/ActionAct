@@ -18,6 +18,7 @@ import { organizeService } from '@/services/organize';
 import { TopicNode } from '@/services/organize/port';
 import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
 import { usePanelStore } from '@/features/layout/store/panel-store';
+import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 import { SelectionGroupHeader } from './SelectionGroupHeader';
 import { SelectionNodeCard } from './SelectionNodeCard';
@@ -33,12 +34,13 @@ const nodeTypes = {
 export function GraphCanvas() {
     const { setMode, openPanel } = usePanelStore();
     const { nodes: actNodes, edges: actEdges, setSelectedNodes, setActiveNode } = useKnowledgeTreeStore();
+    const { workspaceId, topicId } = useRunContextStore();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
     useEffect(() => {
         // Subscribe to our organize service Mock data
-        const unsubscribe = organizeService.subscribeTree('workspace-1', 'topic-1', (topicNodes: TopicNode[]) => {
+        const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes: TopicNode[]) => {
 
             // Transform mock data to ReactFlow structure
             const rfNodes: Node[] = topicNodes.map((n, i) => ({
@@ -62,7 +64,7 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [setNodes, setEdges]);
+    }, [setNodes, setEdges, workspaceId, topicId]);
 
     const { groups } = useAgentInteractionStore();
 

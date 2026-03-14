@@ -1,9 +1,10 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { env } from '@/lib/env';
 
 export function AppHeader() {
-    const isMock = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
+    const isMock = env.NEXT_PUBLIC_USE_MOCKS;
 
     return (
         <header className="flex items-center h-14 px-4 border-b bg-background shrink-0 w-full z-10">

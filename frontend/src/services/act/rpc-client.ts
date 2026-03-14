@@ -3,10 +3,8 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import { v4 as uuidv4 } from "uuid";
 
 import { ActService, ActType, type RunActEvent, type PatchOp as RpcPatchOp } from "@/gen/act/v1/act_pb";
+import { useRunContextStore } from "@/features/context/store/run-context-store";
 import type { ActPort, PatchOp } from "./port";
-
-const DEFAULT_TOPIC_ID = "topic:local";
-const DEFAULT_WORKSPACE_ID = "workspace:local";
 
 function getBaseUrl(): string {
   const baseUrl = process.env.NEXT_PUBLIC_RPC_BASE_URL;
@@ -126,10 +124,11 @@ export function createRpcActService(): ActPort {
 
       void (async () => {
         try {
+          const { workspaceId, topicId } = useRunContextStore.getState();
           const response = client.runAct(
             {
-              topicId: DEFAULT_TOPIC_ID,
-              workspaceId: DEFAULT_WORKSPACE_ID,
+              topicId,
+              workspaceId,
               requestId: uuidv4(),
               actType: ActType.EXPLORE,
               userMessage: query,

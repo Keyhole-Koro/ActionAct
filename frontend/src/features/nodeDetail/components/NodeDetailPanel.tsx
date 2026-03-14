@@ -10,9 +10,11 @@ import { ActionOrganizeBar } from '@/features/action/actionOrganize/components/A
 import { NodeSummaryCard } from './NodeSummaryCard';
 import { NodeEvidenceList } from './NodeEvidenceList';
 import { EvidenceRef } from '@/services/organize/port';
+import { useRunContextStore } from '@/features/context/store/run-context-store';
 
 export function NodeDetailPanel() {
     const { activeNodeId, nodes, setActiveNode } = useKnowledgeTreeStore();
+    const { workspaceId, topicId } = useRunContextStore();
 
     if (!activeNodeId) {
         return (
@@ -51,8 +53,8 @@ export function NodeDetailPanel() {
                     </div>
                     {/* Action Organize Bar for Rename/Delete */}
                     <ActionOrganizeBar
-                        workspaceId="workspace-1"
-                        topicId="topic-1"
+                        workspaceId={workspaceId}
+                        topicId={topicId}
                         nodeId={activeNode.id}
                         currentTitle={title}
                         onDeleteSuccess={() => setActiveNode(null)}

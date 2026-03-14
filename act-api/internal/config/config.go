@@ -21,12 +21,12 @@ func MustLoad() *Config {
 	return &Config{
 		Port:              mustEnv("PORT"),
 		RedisAddr:         mustEnv("REDIS_ADDR"),
-		RedisDB:           optionalInt("REDIS_DB", 0),
+		RedisDB:           mustIntEnv("REDIS_DB"),
 		ADKWorkerURL:      mustEnv("ACT_ADK_WORKER_URL"),
 		GCloudProject:     mustEnv("GOOGLE_CLOUD_PROJECT"),
-		SIDStrict:         optionalBool("SID_STRICT", true),
-		SIDReqTTLSeconds:  optionalInt("SID_REQ_TTL_SECONDS", 900),
-		SIDLockTTLSeconds: optionalInt("SID_LOCK_TTL_SECONDS", 10),
+		SIDStrict:         mustBoolEnv("SID_STRICT"),
+		SIDReqTTLSeconds:  mustIntEnv("SID_REQ_TTL_SECONDS"),
+		SIDLockTTLSeconds: mustIntEnv("SID_LOCK_TTL_SECONDS"),
 	}
 }
 
@@ -38,10 +38,10 @@ func mustEnv(key string) string {
 	return v
 }
 
-func optionalInt(key string, def int) int {
+func mustIntEnv(key string) int {
 	v := os.Getenv(key)
 	if v == "" {
-		return def
+		panic(fmt.Sprintf("required environment variable %q is not set", key))
 	}
 	i, err := strconv.Atoi(v)
 	if err != nil {
@@ -50,10 +50,10 @@ func optionalInt(key string, def int) int {
 	return i
 }
 
-func optionalBool(key string, def bool) bool {
+func mustBoolEnv(key string) bool {
 	v := os.Getenv(key)
 	if v == "" {
-		return def
+		panic(fmt.Sprintf("required environment variable %q is not set", key))
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
