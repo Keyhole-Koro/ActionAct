@@ -10,11 +10,11 @@ type CustomNode = Node<{
     type: string;
 }, 'customTask'>;
 
-export function GraphNodeCard({ data, isConnectable }: NodeProps<CustomNode>) {
+export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<CustomNode>) {
     return (
         <>
             <Handle type="target" position={Position.Top} isConnectable={isConnectable} className="w-2 h-2" />
-            <Card className="w-[200px] shadow-md border-muted">
+            <Card className={`w-[200px] shadow-md border-muted transition-colors ${selected ? 'border-primary ring-2 ring-primary ring-offset-2' : ''}`}>
                 <CardHeader className="p-3 pb-2 border-b bg-muted/30 flex flex-row items-center justify-between">
                     <CardTitle className="text-sm font-medium">{data.label}</CardTitle>
                     <Badge variant="outline" className="text-[10px] px-1 py-0">{data.type}</Badge>

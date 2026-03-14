@@ -9,6 +9,7 @@ import {
     Edge,
     useNodesState,
     useEdgesState,
+    SelectionMode
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -22,7 +23,7 @@ const nodeTypes = {
 };
 
 export function GraphCanvas() {
-    const { nodes: actNodes, edges: actEdges } = useKnowledgeTreeStore();
+    const { nodes: actNodes, edges: actEdges, setSelectedNodes } = useKnowledgeTreeStore();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -65,7 +66,14 @@ export function GraphCanvas() {
                 edges={combinedEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
+                onSelectionChange={({ nodes }) => {
+                    setSelectedNodes(nodes.map(n => n.id));
+                }}
                 nodeTypes={nodeTypes}
+                panOnScroll={true}
+                selectionOnDrag={true}
+                panOnDrag={[1, 2]} // Middle mouse and right click pan (Left click dragging will select nodes)
+                selectionMode={SelectionMode.Partial}
                 fitView
             >
                 <Background />
