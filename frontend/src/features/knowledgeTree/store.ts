@@ -8,8 +8,10 @@ interface ActState {
     nodes: Node[];
     edges: Edge[];
     selectedNodeIds: string[];
+    activeNodeId: string | null;
     setSelectedNodes: (ids: string[]) => void;
     clearSelection: () => void;
+    setActiveNode: (id: string | null) => void;
     addOrUpdateNode: (nodeId: string, label: string, type: string) => void;
     appendContent: (nodeId: string, content: string) => void;
     clearNodes: () => void;
@@ -19,9 +21,11 @@ export const useKnowledgeTreeStore = create<ActState>((set) => ({
     nodes: [],
     edges: [],
     selectedNodeIds: [],
+    activeNodeId: null,
 
     setSelectedNodes: (ids) => set({ selectedNodeIds: ids }),
     clearSelection: () => set({ selectedNodeIds: [] }),
+    setActiveNode: (id: string | null) => set({ activeNodeId: id }),
 
     addOrUpdateNode: (nodeId, label, type) => set((state) => {
         const exists = state.nodes.find(n => n.id === nodeId);

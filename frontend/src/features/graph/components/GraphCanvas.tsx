@@ -17,13 +17,15 @@ import { GraphNodeCard } from './GraphNodeCard';
 import { organizeService } from '@/services/organize';
 import { TopicNode } from '@/services/organize/port';
 import { useKnowledgeTreeStore } from '@/features/knowledgeTree/store';
+import { usePanelStore } from '@/features/layout/store/panel-store';
 
 const nodeTypes = {
     customTask: GraphNodeCard,
 };
 
 export function GraphCanvas() {
-    const { nodes: actNodes, edges: actEdges, setSelectedNodes } = useKnowledgeTreeStore();
+    const { setPanelMode, setPanelOpen } = usePanelStore();
+    const { nodes: actNodes, edges: actEdges, setSelectedNodes, setActiveNode } = useKnowledgeTreeStore();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -68,6 +70,11 @@ export function GraphCanvas() {
                 onEdgesChange={onEdgesChange}
                 onSelectionChange={({ nodes }) => {
                     setSelectedNodes(nodes.map(n => n.id));
+                }}
+                onNodeClick={(event: React.MouseEvent, node: Node) => {
+                    setActiveNode(node.id);
+                    setPanelMode('node-detail');
+                    setPanelOpen(true);
                 }}
                 nodeTypes={nodeTypes}
                 panOnScroll={true}
