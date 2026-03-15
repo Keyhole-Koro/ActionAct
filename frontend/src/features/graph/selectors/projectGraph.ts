@@ -161,9 +161,20 @@ export function buildDisplayNodes({
     const selectedNodeIdSet = new Set(selectedNodeIds);
     const expandedBranchSet = new Set(expandedBranchNodeIds);
 
-    const sortedActNodes = [...standaloneActNodes].sort((left, right) => left.position.y - right.position.y);
+    const manualActNodes: GraphNodeBase[] = [];
+    const laneActNodes: GraphNodeBase[] = [];
+
+    standaloneActNodes.forEach((node) => {
+        if (node.data?.isManualPosition || manualNodeIdSet.has(node.id)) {
+            manualActNodes.push(node);
+        } else {
+            laneActNodes.push(node);
+        }
+    });
+
+    const sortedLaneNodes = [...laneActNodes].sort((left, right) => left.position.y - right.position.y);
     let actLaneY = 100;
-    const actLaneNodes = sortedActNodes.map((node) => {
+    const positionedLaneNodes = sortedLaneNodes.map((node) => {
         const layoutedNode = layoutById.get(node.id);
         const sourceNode = layoutedNode ?? node;
         const sourceNodeData = (sourceNode.data ?? {}) as Record<string, unknown>;
@@ -186,7 +197,21 @@ export function buildDisplayNodes({
         };
     });
 
-    const combinedNodes = [...layoutInputNodes, ...actLaneNodes];
+    const positionedManualNodes = manualActNodes.map((node) => {
+        const layoutedNode = layoutById.get(node.id);
+        const sourceNode = layoutedNode ?? node;
+        const sourceNodeData = (sourceNode.data ?? {}) as Record<string, unknown>;
+        const isExpanded = sourceNodeData.isExpanded === true || isNodeExpanded(node.id);
+        return {
+            ...sourceNode,
+            data: {
+                ...sourceNodeData,
+                isExpanded,
+            },
+        };
+    });
+
+    const combinedNodes = [...layoutInputNodes, ...positionedLaneNodes, ...positionedManualNodes];
 
     return combinedNodes.map((node) => {
         const layoutedNode = layoutById.get(node.id);

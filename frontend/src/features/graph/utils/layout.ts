@@ -1,8 +1,9 @@
 import { Node, Edge, Position } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk.bundled';
 import {
-    GRAPH_NODE_COLLAPSED_WIDTH,
     GRAPH_NODE_LAYOUT_HEIGHT,
+    getCollapsedNodeWidth,
+    getExpandedNodeWidth,
     getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
 
@@ -15,16 +16,16 @@ type PreviousLayout = {
 };
 
 function getNodeDimensions(node: Node) {
-    const measuredWidth = typeof node.measured?.width === 'number' ? node.measured.width : undefined;
     const measuredHeight = typeof node.measured?.height === 'number' ? node.measured.height : undefined;
-
-    if (measuredWidth && measuredHeight) {
-        return { width: measuredWidth, height: measuredHeight };
-    }
-
-    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, node.data?.isExpanded === true);
+    const label = typeof node.data?.label === 'string' ? node.data.label : undefined;
+    const nodeKind = typeof node.data?.kind === 'string' ? node.data.kind : undefined;
+    const isExpanded = node.data?.isExpanded === true;
+    const hasChildNodes = node.data?.hasChildNodes === true;
+    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
     return {
-        width: layoutDimensions.width ?? GRAPH_NODE_COLLAPSED_WIDTH,
+        width: node.type === 'customTask'
+            ? (isExpanded ? getExpandedNodeWidth(label, nodeKind) : getCollapsedNodeWidth(label, nodeKind, hasChildNodes))
+            : layoutDimensions.width,
         height: layoutDimensions.height ?? GRAPH_NODE_LAYOUT_HEIGHT,
     };
 }

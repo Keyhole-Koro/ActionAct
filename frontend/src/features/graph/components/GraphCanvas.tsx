@@ -413,9 +413,61 @@ export function GraphCanvas() {
 
         // Offset by half the default node dimensions to center it on the cursor
         // Width: 340 -> 170, Height: ~100 -> 50
+        let targetX = position.x - 170;
+        let targetY = position.y - 50;
+
+        // Prevent exact overlap with existing nodes
+        const nodes = reactFlowInstance.getNodes();
+        const newW = 340;
+        const newH = 100;
+        const margin = 20;
+
+        let overlap = true;
+        let attempts = 0;
+
+        while (overlap && attempts < 50) {
+            overlap = false;
+            for (const node of nodes) {
+                const nodeX = node.position.x;
+                const nodeY = node.position.y;
+                const nodeW = node.measured?.width ?? 340;
+                const nodeH = node.measured?.height ?? 180;
+
+                // Check box intersection
+                const intersectX = targetX < nodeX + nodeW + margin && targetX + newW + margin > nodeX;
+                const intersectY = targetY < nodeY + nodeH + margin && targetY + newH + margin > nodeY;
+
+                if (intersectX && intersectY) {
+                    overlap = true;
+                    // Calculate distance to push out of each edge
+                    const pushRight = (nodeX + nodeW + margin) - targetX;
+                    const pushLeft = targetX - (nodeX - newW - margin);
+                    const pushBottom = (nodeY + nodeH + margin) - targetY;
+                    const pushTop = targetY - (nodeY - newH - margin);
+
+                    // Find the smallest push distance
+                    const minPush = Math.min(pushRight, pushLeft, pushBottom, pushTop);
+
+                    if (minPush === pushRight) {
+                        targetX += pushRight;
+                    } else if (minPush === pushLeft) {
+                        targetX -= pushLeft;
+                    } else if (minPush === pushBottom) {
+                        targetY += pushBottom;
+                    } else {
+                        targetY -= pushTop;
+                    }
+
+                    // Break to re-check all nodes with the new position
+                    break;
+                }
+            }
+            attempts++;
+        }
+
         addEmptyActNode({
-            x: position.x - 170,
-            y: position.y - 50,
+            x: targetX,
+            y: targetY,
         });
     }, [addEmptyActNode, reactFlowInstance]);
 

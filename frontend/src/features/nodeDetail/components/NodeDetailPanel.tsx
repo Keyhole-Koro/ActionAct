@@ -68,7 +68,7 @@ export function NodeDetailPanel() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background border-l">
+        <div className="flex flex-col h-full bg-background">
             <div className="p-4 border-b flex-shrink-0 bg-muted/20">
                 <div className="flex items-center justify-between mb-1">
                     <div className="text-xs font-medium text-muted-foreground">
