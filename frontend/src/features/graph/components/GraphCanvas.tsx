@@ -99,6 +99,7 @@ export function GraphCanvas() {
         actEdges,
         setSelectedNodes,
         setActiveNode,
+        focusExpandedNode,
         addEmptyActNode,
         addQueryActNode,
         setPersistedGraph,
@@ -541,6 +542,15 @@ export function GraphCanvas() {
 
                     nodeClickTimeoutRef.current = window.setTimeout(() => {
                         setActiveNode(node.id);
+                        focusExpandedNode(node.id);
+                        const nextZoom = reactFlowInstance.getZoom() > 1.1
+                            ? 0.92
+                            : reactFlowInstance.getZoom();
+                        reactFlowInstance.setCenter(
+                            node.position.x + 170,
+                            node.position.y + 90,
+                            { duration: 240, zoom: nextZoom },
+                        );
                         nodeClickTimeoutRef.current = null;
                     }, 220);
                 }}
@@ -555,13 +565,11 @@ export function GraphCanvas() {
                         { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
                     );
                 }}
+                onPaneDoubleClick={handlePaneDoubleClick}
                 onPaneClick={(event) => {
-                    if (event.detail >= 2) {
-                        handlePaneDoubleClick(event);
-                        return;
-                    }
                     setSelectedNodes([]);
                     setActiveNode(null);
+                    focusExpandedNode(null);
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}

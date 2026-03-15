@@ -22,6 +22,8 @@ export type StartActRunResult = {
   cancel: () => void;
 };
 
+const GROUNDING_HINT_PATTERN = /\b(latest|current|today|news|price|pricing|version|release|official|source|reference|references|citation|citations|compare|comparison|docs?|documentation)\b|最新|現在|今日|ニュース|価格|料金|相場|バージョン|リリース|公式|出典|ソース|参考|比較|ドキュメント/u;
+
 function uniqueNodeIds(nodeIds: string[]): string[] {
   const seen = new Set<string>();
   const ordered: string[] = [];
@@ -34,6 +36,14 @@ function uniqueNodeIds(nodeIds: string[]): string[] {
     ordered.push(value);
   });
   return ordered;
+}
+
+function shouldAutoEnableGrounding(query: string, actType: StreamActOptions["actType"]) {
+  if (GROUNDING_HINT_PATTERN.test(query)) {
+    return true;
+  }
+
+  return actType === "investigate";
 }
 
 export function startActRun({ targetNodeId, query, workspaceId, topicId, options }: StartActRunParams): StartActRunResult {
@@ -151,7 +161,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       requestId,
       anchorNodeId: targetNodeId ?? options?.anchorNodeId,
       contextNodeIds: options?.contextNodeIds ?? selectedNodeIds,
-      enableGrounding: options?.enableGrounding ?? preferences.useWebGrounding,
+      enableGrounding: options?.enableGrounding ?? shouldAutoEnableGrounding(query, options?.actType),
       includeThoughts: options?.includeThoughts ?? preferences.includeThoughts,
       modelProfile: options?.modelProfile ?? preferences.modelProfile,
     },

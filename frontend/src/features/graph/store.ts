@@ -24,6 +24,7 @@ interface GraphState {
     clearActGraph: () => void;
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
+    focusExpandedNode: (id: string | null) => void;
     toggleExpandedNode: (id: string) => void;
     toggleExpandedBranchNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
@@ -108,6 +109,9 @@ export const useGraphStore = create<GraphState>((set) => ({
     }),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
+    focusExpandedNode: (id: string | null) => set({
+        expandedNodeIds: id ? [id] : [],
+    }),
     toggleExpandedNode: (id: string) => set((state) => ({
         expandedNodeIds: state.expandedNodeIds.includes(id)
             ? state.expandedNodeIds.filter((expandedId) => expandedId !== id)

@@ -235,6 +235,9 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * double click は補助操作であり、node 作成の主経路にしない
 * canvas は ACT draft nodes を一括で除去する `Clear ACT` control を持つ
 * `Clear ACT` は frontend 上の ACT graph state と対応する `actDrafts` をまとめて除去する
+* Ask bar の Web Grounding は常設トグルにしない
+* grounding 利用は query 内容と act type に応じて runtime が自動判定してよい
+* tool / agent / explicit request がある場合のみ grounding 設定を明示 override してよい
 
 4. Right panel
 * `node-detail` と `topic-activity` の2モードを持つ
