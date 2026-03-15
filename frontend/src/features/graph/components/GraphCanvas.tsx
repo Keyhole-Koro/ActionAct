@@ -121,7 +121,6 @@ export function GraphCanvas() {
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
     const previousLayoutRef = useRef<Node[]>([]);
-    const nodeClickTimeoutRef = useRef<number | null>(null);
 
     useGraphCache({
         kind: 'persisted',
@@ -405,72 +404,6 @@ export function GraphCanvas() {
         };
     }, [normalizedDisplayNodes.length, positionSignature, reactFlowInstance]);
 
-    const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
-        const position = reactFlowInstance.screenToFlowPosition({
-            x: event.clientX,
-            y: event.clientY,
-        });
-
-        // Offset by half the default node dimensions to center it on the cursor
-        // Width: 340 -> 170, Height: ~100 -> 50
-        let targetX = position.x - 170;
-        let targetY = position.y - 50;
-
-        // Prevent exact overlap with existing nodes
-        const nodes = reactFlowInstance.getNodes();
-        const newW = 340;
-        const newH = 100;
-        const margin = 20;
-
-        let overlap = true;
-        let attempts = 0;
-
-        while (overlap && attempts < 50) {
-            overlap = false;
-            for (const node of nodes) {
-                const nodeX = node.position.x;
-                const nodeY = node.position.y;
-                const nodeW = node.measured?.width ?? 340;
-                const nodeH = node.measured?.height ?? 180;
-
-                // Check box intersection
-                const intersectX = targetX < nodeX + nodeW + margin && targetX + newW + margin > nodeX;
-                const intersectY = targetY < nodeY + nodeH + margin && targetY + newH + margin > nodeY;
-
-                if (intersectX && intersectY) {
-                    overlap = true;
-                    // Calculate distance to push out of each edge
-                    const pushRight = (nodeX + nodeW + margin) - targetX;
-                    const pushLeft = targetX - (nodeX - newW - margin);
-                    const pushBottom = (nodeY + nodeH + margin) - targetY;
-                    const pushTop = targetY - (nodeY - newH - margin);
-
-                    // Find the smallest push distance
-                    const minPush = Math.min(pushRight, pushLeft, pushBottom, pushTop);
-
-                    if (minPush === pushRight) {
-                        targetX += pushRight;
-                    } else if (minPush === pushLeft) {
-                        targetX -= pushLeft;
-                    } else if (minPush === pushBottom) {
-                        targetY += pushBottom;
-                    } else {
-                        targetY -= pushTop;
-                    }
-
-                    // Break to re-check all nodes with the new position
-                    break;
-                }
-            }
-            attempts++;
-        }
-
-        addEmptyActNode({
-            x: targetX,
-            y: targetY,
-        });
-    }, [addEmptyActNode, reactFlowInstance]);
-
     const handleCreateActNode = useCallback(() => {
         const viewport = reactFlowInstance.getViewport();
         const position = reactFlowInstance.screenToFlowPosition({
@@ -542,21 +475,8 @@ export function GraphCanvas() {
         return () => window.removeEventListener('keydown', handleSelectionTyping);
     }, [handleSelectionTyping]);
 
-    useEffect(() => () => {
-        if (nodeClickTimeoutRef.current !== null) {
-            window.clearTimeout(nodeClickTimeoutRef.current);
-        }
-    }, []);
-
-    const handleWrapperDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-        const target = event.target as HTMLElement;
-        if (target.classList.contains('react-flow__pane')) {
-            handlePaneDoubleClick(event);
-        }
-    }, [handlePaneDoubleClick]);
-
     return (
-        <div className="relative w-full h-full" onDoubleClick={handleWrapperDoubleClick}>
+        <div className="relative w-full h-full">
             <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                     variant="outline"
@@ -601,40 +521,25 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    if (nodeClickTimeoutRef.current !== null) {
-                        window.clearTimeout(nodeClickTimeoutRef.current);
-                    }
-
-                    nodeClickTimeoutRef.current = window.setTimeout(() => {
-                        setActiveNode(node.id);
-                        toggleExpandedNode(node.id);
-                        const nextZoom = reactFlowInstance.getZoom() > 1.1
-                            ? 0.92
-                            : reactFlowInstance.getZoom();
-                        reactFlowInstance.setCenter(
-                            node.position.x + 170,
-                            node.position.y + 90,
-                            { duration: 240, zoom: nextZoom },
-                        );
-                        nodeClickTimeoutRef.current = null;
-                    }, 220);
+                    setActiveNode(node.id);
+                    toggleExpandedNode(node.id);
+                    const nextZoom = reactFlowInstance.getZoom() > 1.1
+                        ? 0.92
+                        : reactFlowInstance.getZoom();
+                    reactFlowInstance.setCenter(
+                        node.position.x + 170,
+                        node.position.y + 90,
+                        { duration: 240, zoom: nextZoom },
+                    );
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
-                    if (nodeClickTimeoutRef.current !== null) {
-                        window.clearTimeout(nodeClickTimeoutRef.current);
-                        nodeClickTimeoutRef.current = null;
-                    }
                     reactFlowInstance.setCenter(
                         node.position.x + 170,
                         node.position.y + 90,
                         { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
                     );
                 }}
-                onPaneClick={(event) => {
-                    if (event.detail >= 2) {
-                        handlePaneDoubleClick(event);
-                        return;
-                    }
+                onPaneClick={() => {
                     setSelectedNodes([]);
                     setActiveNode(null);
                 }}

@@ -4,7 +4,6 @@ import React, { ReactNode, useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AuthGate } from '@/features/auth/components/AuthGate';
 import { FloatingHeader } from './FloatingHeader';
-import { UserAvatar } from './UserAvatar';
 import { AskForm } from '@/components/ui/AskForm';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { emitAuthContext } from '@/features/auth/session';
@@ -96,11 +95,6 @@ export function AppShell({ children }: AppShellProps) {
                         <div className="flex-1 h-full w-full relative">
                             {children}
                             <AskForm />
-                        </div>
-
-                        {/* Bottom-Left Floating Avatar */}
-                        <div className="absolute bottom-4 left-4 z-20">
-                            <UserAvatar />
                         </div>
                     </main>
 

@@ -4,10 +4,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { workspaceService, type WorkspaceData } from '@/features/workspace/services/workspace-service';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
-import { FolderKanban, Sparkles } from 'lucide-react';
+import { FolderKanban } from 'lucide-react';
 import { config } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { UserAvatar } from './UserAvatar';
 
 export function FloatingHeader() {
     const isMock = config.useMocks;
@@ -75,10 +76,8 @@ export function FloatingHeader() {
     return (
         <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
             <div className="flex items-center gap-2">
-                {/* Brand Logo / Home indicator */}
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/80 to-primary/40 flex items-center justify-center shadow-md backdrop-blur-sm cursor-default">
-                    <Sparkles className="w-5 h-5 text-white" />
-                </div>
+                {/* Account Avatar */}
+                <UserAvatar className="h-10 w-10 rounded-xl shadow-md backdrop-blur-sm" />
 
                 {/* Workspace Name & Actions */}
                 <div className="flex items-center gap-1.5 bg-background/95 backdrop-blur-sm border shadow-sm rounded-xl px-2 h-10">

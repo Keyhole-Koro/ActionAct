@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { ActService, ActType, type RunActEvent, type PatchOp as RpcPatchOp } from "@/gen/act/v1/act_pb";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
+import { applyResponseLanguagePreference } from "@/lib/response-language-preference";
 import { getCSRFToken } from "@/services/firebase/csrf";
 import { getFirebaseIdToken } from "@/services/firebase/token";
 import type { ActPort, PatchOp, StreamActOptions } from "./port";
@@ -117,6 +118,7 @@ export function createRpcActService(): ActPort {
           const runContext = useRunContextStore.getState();
           const workspaceId = options?.workspaceId ?? runContext.workspaceId;
           const topicId = options?.topicId ?? runContext.topicId;
+          const queryWithLanguagePreference = applyResponseLanguagePreference(query);
           const headers = await buildHeaders();
           const response = client.runAct(
             {
@@ -124,7 +126,7 @@ export function createRpcActService(): ActPort {
               workspaceId,
               requestId: options?.requestId ?? uuidv4(),
               actType: mapActType(options?.actType),
-              userMessage: query,
+              userMessage: queryWithLanguagePreference,
               anchorNodeId: options?.anchorNodeId ?? "",
               contextNodeIds: options?.contextNodeIds ?? [],
               llmConfig: {

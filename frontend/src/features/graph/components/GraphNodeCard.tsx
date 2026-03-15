@@ -59,6 +59,7 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const cardMaxWidth = isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH;
     const expandedMaxHeight = isActNode ? GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT : GRAPH_NODE_EXPANDED_MAX_HEIGHT;
     const inputRef = useRef<HTMLInputElement>(null);
+    const showMetaRow = isExpanded || isNodeStreaming;
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -99,23 +100,31 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 }}
                 className={`
                 group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
-                border border-border/40
-                shadow-md hover:shadow-xl
-                ${isActNode ? 'bg-background/95 backdrop-blur-sm' : 'bg-background'}
-                ${selected || isExpanded ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
+                border
+                ${isActNode
+                    ? 'rounded-[22px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] backdrop-blur-md shadow-[0_14px_34px_-22px_rgba(15,23,42,0.42)] hover:shadow-[0_18px_40px_-22px_rgba(37,99,235,0.32)]'
+                    : 'border-border/40 bg-background shadow-md hover:shadow-xl'}
+                ${selected || isExpanded
+                    ? (isActNode
+                        ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-[0_18px_42px_-20px_rgba(37,99,235,0.34)]'
+                        : 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl')
+                    : 'hover:border-primary/30'}
                 ${isNodeStreaming ? 'animate-pulse-subtle' : ''}
             `}
             >
                 {/* Subtle top primary line accent */}
-                <div className={`absolute top-0 left-0 right-0 ${isActNode ? 'h-[2px]' : 'h-1'} rounded-t-2xl bg-gradient-to-r ${cfg.gradient} opacity-80`} />
-                <div className={`absolute top-0 right-0 ${isActNode ? 'w-24 h-24 -mr-12 -mt-12' : 'w-32 h-32 -mr-16 -mt-16'} bg-white/5 rounded-full blur-3xl pointer-events-none`} />
-                <div className="absolute right-3 top-3 z-10">
+                <div className={`absolute top-0 left-0 right-0 ${isActNode ? 'h-px opacity-70' : 'h-1 opacity-80'} rounded-t-2xl bg-gradient-to-r ${cfg.gradient}`} />
+                {isExpanded && <div className={`absolute inset-y-3 left-0 ${isActNode ? 'w-[3px]' : 'hidden'} rounded-r-full bg-gradient-to-b from-blue-500/75 via-sky-400/55 to-transparent`} />}
+                {isExpanded && <div className={`absolute top-0 right-0 ${isActNode ? 'w-20 h-20 -mr-10 -mt-10 bg-blue-100/50' : 'w-32 h-32 -mr-16 -mt-16 bg-white/5'} rounded-full blur-3xl pointer-events-none`} />}
+                <div className={`absolute ${isActNode ? 'right-2.5 top-2.5' : 'right-3 top-3'} z-10`}>
                     <div className="flex items-center gap-2">
                         {hasChildNodes && (
                             <Button
                                 variant="outline"
                                 size="icon"
-                                className="h-8 w-8 rounded-lg bg-background/90 backdrop-blur-sm"
+                                className={isActNode
+                                    ? 'h-7 w-7 rounded-full border-slate-200/80 bg-white/90 text-slate-600 shadow-sm backdrop-blur-sm'
+                                    : 'h-8 w-8 rounded-lg bg-background/90 backdrop-blur-sm'}
                                 onClick={(event: React.MouseEvent) => {
                                     event.stopPropagation();
                                     data.onToggleBranch?.();
@@ -131,12 +140,13 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 <div
                     className={`relative ${
                         isActNode
-                            ? (hasChildNodes ? 'p-3 pb-0 pr-11' : 'px-3 pt-3 pb-0')
-                            : (hasChildNodes ? 'p-3.5 pb-0 pr-12' : 'px-3.5 pt-3.5 pb-0')
+                            ? (hasChildNodes ? `px-3.5 ${isExpanded ? 'pt-3 pb-0' : 'py-2.5'} pr-10` : `px-3.5 ${isExpanded ? 'pt-3 pb-0' : 'py-2.5'}`)
+                            : (hasChildNodes ? `px-3.5 ${isExpanded ? 'pt-3.5 pb-0' : 'py-3'} pr-12` : `px-3.5 ${isExpanded ? 'pt-3.5 pb-0' : 'py-3'}`)
                     }`}
                 >
-                    <div className="flex-1 min-w-0 pt-0.5">
-                        <div className={`flex items-center justify-between gap-2 ${isActNode ? 'mb-0.5' : 'mb-1'}`}>
+                    <div className={`flex-1 min-w-0 ${isExpanded ? 'pt-0.5' : 'pt-0'}`}>
+                        {showMetaRow && (
+                            <div className="mb-1 flex items-center justify-between gap-2">
                             {isExpanded && createdBy && (
                                 <span
                                     className={[
@@ -164,7 +174,8 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                                 </span>
                             )}
-                        </div>
+                            </div>
+                        )}
 
                         {isEditing ? (
                             <input
@@ -174,11 +185,11 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                                 onBlur={commitEdit}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ask a question..."
-                                className="w-full text-base font-semibold bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 mt-1"
+                                className={`w-full bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 ${isExpanded ? 'mt-1 text-base font-semibold' : 'text-[14px] font-medium'}`}
                             />
                         ) : (
                             <h3
-                                className={`${isActNode ? 'text-[15px]' : 'text-base'} font-semibold leading-snug text-foreground ${isExpanded ? 'line-clamp-2' : 'truncate whitespace-nowrap'} mt-0.5`}
+                                className={`${isActNode ? 'text-[14px] tracking-[-0.01em]' : 'text-base'} ${isActNode ? 'font-medium' : 'font-semibold'} leading-snug text-foreground ${isExpanded ? 'line-clamp-2 mt-0.5' : 'truncate whitespace-nowrap'}`}
                             >
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
@@ -218,10 +229,8 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                     </div>
                 </div>
 
-                {!isExpanded && <div className={isActNode ? 'h-3' : 'h-4'}></div>}
-
                 {isExpanded && (
-                    <div className={`relative border-t border-border/20 ${isActNode ? 'bg-muted/[0.06]' : 'bg-muted/10'}`}>
+                    <div className={`relative border-t ${isActNode ? 'border-slate-200/70 bg-slate-50/60' : 'border-border/20 bg-muted/10'}`}>
                         <div
                             style={{ maxHeight: expandedMaxHeight }}
                             className={`overflow-y-auto ${isActNode ? 'px-3 py-2.5' : 'px-4 py-3'}`}
