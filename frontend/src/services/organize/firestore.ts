@@ -88,6 +88,8 @@ function readInputProgress(
     status,
     currentPhase: readString(data.currentPhase),
     lastEventType: readString(data.lastEventType),
+    resolutionMode: readString(data.resolutionMode),
+    resolvedTopicId: readString(data.resolvedTopicId),
   };
 }
 
@@ -146,6 +148,9 @@ export const firestoreOrganizeService: OrganizePort = {
   uploadInput: async (workspaceId, file) => {
     const { getFirebaseIdToken } = await import("@/services/firebase/token");
     const token = await getFirebaseIdToken();
+    if (!token) {
+      throw new Error("Sign in required before uploading files");
+    }
 
     const formData = new FormData();
     formData.append("workspace_id", workspaceId);
@@ -166,7 +171,10 @@ export const firestoreOrganizeService: OrganizePort = {
       throw new Error(`Upload failed: ${res.status} ${text}`);
     }
 
-    const json = (await res.json()) as { input_id: string };
-    return { inputId: json.input_id };
+    const json = (await res.json()) as { input_id: string; topic_id?: string };
+    return {
+      inputId: json.input_id,
+      topicId: typeof json.topic_id === "string" && json.topic_id.trim() ? json.topic_id : `topic:${json.input_id}`,
+    };
   },
 };

@@ -91,6 +91,7 @@ func (u *UploadUsecase) Execute(
 
 	return &domain.UploadResult{
 		InputID: inputID,
+		TopicID: topicID,
 		GCSUri:  gcsURI,
 		Status:  "uploaded",
 	}, nil

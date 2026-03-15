@@ -10,6 +10,7 @@ export interface TopicNode {
     topicId?: string;
     title: string;
     kind?: string;
+    createdBy?: 'user' | 'agent';
     parentId?: string;
     referencedNodeIds?: string[];
 
@@ -36,6 +37,8 @@ export interface InputProgress {
     status: InputProgressStatus;
     currentPhase?: string;
     lastEventType?: string;
+    resolutionMode?: string;
+    resolvedTopicId?: string;
 }
 
 export interface OrganizePort {
@@ -49,5 +52,5 @@ export interface OrganizePort {
     moveNode: (workspaceId: string, topicId: string, nodeId: string, newParentId: string | null) => Promise<void>;
 
     // Upload
-    uploadInput: (workspaceId: string, file: File) => Promise<{ inputId: string }>;
+    uploadInput: (workspaceId: string, file: File) => Promise<{ inputId: string; topicId: string }>;
 }

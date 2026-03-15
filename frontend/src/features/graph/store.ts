@@ -31,9 +31,10 @@ interface GraphState {
     addStreamingNode: (nodeId: string) => void;
     clearStreamingNodes: (nodeIds?: string[]) => void;
 
-    addOrUpdateActNode: (nodeId: string, payload: { label?: string; kind?: string; referencedNodeIds?: string[] }) => void;
+    addOrUpdateActNode: (nodeId: string, payload: { label?: string; kind?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent' }) => void;
     addEmptyActNode: (position: { x: number; y: number }) => string;
     addQueryActNode: (position: { x: number; y: number }, initialLabel: string) => string;
+    resetActNode: (nodeId: string, payload?: { label?: string; referencedNodeIds?: string[] }) => void;
     updateActNodeLabel: (nodeId: string, label: string) => void;
     appendActNodeContent: (nodeId: string, content: string) => void;
     removeActNode: (nodeId: string) => void;
@@ -147,6 +148,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...(payload.label !== undefined ? { label: payload.label } : {}),
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
+                                ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
                             },
                         }
                         : n
@@ -161,6 +163,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             data: {
                 label: payload.label ?? '',
                 nodeSource: 'act',
+                createdBy: payload.createdBy ?? 'agent',
                 kind: payload.kind ?? 'act',
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',
@@ -199,7 +202,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: '', nodeSource: 'act', kind: 'act', contentMd: '', isManualPosition: true }
+                data: { label: '', nodeSource: 'act', createdBy: 'user', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             editingNodeId: id,
             activeNodeId: id,
@@ -217,7 +220,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: initialLabel, nodeSource: 'act', kind: 'act', contentMd: '', isManualPosition: true }
+                data: { label: initialLabel, nodeSource: 'act', createdBy: 'user', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             actEdges: [
                 ...state.actEdges,
@@ -238,6 +241,24 @@ export const useGraphStore = create<GraphState>((set) => ({
         }));
         return id;
     },
+
+    resetActNode: (nodeId, payload) => set((state) => ({
+        actNodes: state.actNodes.map((node) =>
+            node.id === nodeId
+                ? {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        ...(payload?.label !== undefined ? { label: payload.label } : {}),
+                        ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
+                        contentMd: '',
+                        contextSummary: '',
+                        detailHtml: '',
+                    },
+                }
+                : node,
+        ),
+    })),
 
     updateActNodeLabel: (nodeId, label) => set((state) => ({
         actNodes: state.actNodes.map(n =>

@@ -150,3 +150,26 @@ async def test_firestore_assembly_degrades_when_topic_is_missing():
 
     assert bundle.user_prompt == "Hello"
     assert bundle.context_blocks == []
+    assert "Respond in English." in bundle.system_instruction
+
+
+@pytest.mark.asyncio
+async def test_firestore_assembly_sets_japanese_response_policy():
+    docs = {
+        "workspaces/ws/topics/tp": {
+            "title": "Agents",
+            "status": "active",
+        },
+    }
+    assembly = FirestoreAssembly.__new__(FirestoreAssembly)
+    assembly._client = _FakeClient(docs)
+
+    bundle = await assembly.assemble(
+        topic_id="tp",
+        workspace_id="ws",
+        anchor_node_id=None,
+        context_node_ids=[],
+        user_message="日本語でAWSについて教えて",
+    )
+
+    assert "Respond in Japanese" in bundle.system_instruction

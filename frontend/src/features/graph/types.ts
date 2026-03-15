@@ -15,6 +15,7 @@ export type ReferencedNodeView = {
 
 export type BaseNodeData = {
     nodeSource?: 'persisted' | 'act';
+    createdBy?: 'user' | 'agent';
     topicId?: string;
     label: string;
     kind?: string;

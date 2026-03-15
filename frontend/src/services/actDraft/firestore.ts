@@ -53,6 +53,7 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
     id: nodeId,
     title: readString(data.title) ?? nodeId,
     kind: readString(data.kind) ?? "act",
+    createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
     topicId: readString(data.topicId),
     referencedNodeIds: readStringArray(data.referencedNodeIds),
     contentMd: readString(data.contentMd),
@@ -83,7 +84,7 @@ export const actDraftService = {
     workspaceId: string,
     topicId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[] },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent' },
   ) {
     await setDoc(
       draftDoc(workspaceId, topicId, nodeId),
@@ -92,6 +93,7 @@ export const actDraftService = {
         topicId,
         title: draft.title ?? nodeId,
         kind: draft.kind ?? "act",
+        createdBy: draft.createdBy ?? "agent",
         contentMd: draft.contentMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
         createdAt: serverTimestamp(),
@@ -110,6 +112,7 @@ export const actDraftService = {
       topicId,
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
+      createdBy: patch.data?.createdBy ?? "agent",
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],
       ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),
       lastTouchedAt: serverTimestamp(),

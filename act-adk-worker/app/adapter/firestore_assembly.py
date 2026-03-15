@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from app.domain.models import PromptBundle
+from app.domain.language_policy import build_language_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +108,14 @@ class FirestoreAssembly:
         )
 
         return PromptBundle(
-            system_instruction=_SYSTEM_INSTRUCTION,
+            system_instruction=f"{_SYSTEM_INSTRUCTION} {build_language_instruction(user_message)}",
             user_prompt=user_message,
             context_blocks=context_blocks,
         )
 
     def _minimal_bundle(self, user_message: str) -> PromptBundle:
         return PromptBundle(
-            system_instruction=_SYSTEM_INSTRUCTION,
+            system_instruction=f"{_SYSTEM_INSTRUCTION} {build_language_instruction(user_message)}",
             user_prompt=user_message,
             context_blocks=[],
         )

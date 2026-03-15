@@ -3,7 +3,8 @@
 import React, { ReactNode, useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AuthGate } from '@/features/auth/components/AuthGate';
-import { AppHeader } from './AppHeader';
+import { FloatingHeader } from './FloatingHeader';
+import { UserAvatar } from './UserAvatar';
 
 import { RightPanelRouter } from './RightPanelRouter';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -92,11 +93,12 @@ export function AppShell({ children }: AppShellProps) {
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
             <FrontendToolBridge />
-            <AppHeader />
             <AuthGate>
                 <div className="flex-1 flex overflow-hidden relative">
                     {/* Main Canvas Area */}
                     <main className="flex-1 relative flex flex-col min-w-0 bg-muted/20">
+                        {/* Top-Left Floating Controls */}
+                        <FloatingHeader />
 
                         <div className="absolute top-4 right-4 z-10 flex gap-2">
                             {!isOpen && (
@@ -115,6 +117,11 @@ export function AppShell({ children }: AppShellProps) {
                             {children}
                             <AskForm />
                         </div>
+
+                        {/* Bottom-Left Floating Avatar */}
+                        <div className="absolute bottom-4 left-4 z-20">
+                            <UserAvatar />
+                        </div>
                     </main>
 
                     {/* Right Panel (Desktop: Fixed 320/380px, Mobile: absolute/drawer behavior) 
@@ -124,10 +131,10 @@ export function AppShell({ children }: AppShellProps) {
                     <aside
                         className={`
             hidden md:flex shrink-0 transition-all duration-300 border-l bg-background z-20
-            ${isOpen ? 'w-80 xl:w-96' : 'w-0 border-l-0'}
+            ${isOpen ? 'w-80 xl:w-[480px]' : 'w-0 border-l-0'}
           `}
                     >
-                        <div className="w-80 xl:w-96 flex-shrink-0 h-full">
+                        <div className="w-80 xl:w-[480px] flex-shrink-0 h-full">
                             <RightPanelRouter />
                         </div>
                     </aside>

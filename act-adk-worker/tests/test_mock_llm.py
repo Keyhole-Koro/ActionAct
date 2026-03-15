@@ -55,3 +55,16 @@ async def test_mock_llm_includes_user_prompt():
         all_text += chunk.text
 
     assert "quantum computing" in all_text
+
+
+@pytest.mark.asyncio
+async def test_mock_llm_returns_japanese_for_japanese_prompt():
+    llm = MockLLM()
+    bundle = PromptBundle(user_prompt="awsについて教えて")
+    config = LLMConfig()
+
+    all_text = ""
+    async for chunk in llm.generate(bundle, config):
+        all_text += chunk.text
+
+    assert "回答対象" in all_text

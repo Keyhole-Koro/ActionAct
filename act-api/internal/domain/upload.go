@@ -12,6 +12,7 @@ type UploadInput struct {
 // UploadResult is returned after the upload is stored in GCS and recorded in Firestore.
 type UploadResult struct {
 	InputID string
+	TopicID string
 	GCSUri  string
 	Status  string // "uploaded"
 }

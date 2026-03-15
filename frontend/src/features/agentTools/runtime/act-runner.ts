@@ -54,6 +54,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
     ...(targetNodeId ? [targetNodeId] : []),
     ...(options?.contextNodeIds ?? selectedNodeIds),
   ]);
+  const existingFrontendRootNode = graphStore.actNodes.find((node) => node.id === frontendRootNodeId);
 
   if (effectiveWorkspaceId !== runContext.workspaceId || effectiveTopicId !== runContext.topicId) {
     runContext.setContext(effectiveWorkspaceId, effectiveTopicId);
@@ -64,6 +65,12 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
   }
 
   graphStore.setStreamRunning(true);
+  if (existingFrontendRootNode) {
+    graphStore.resetActNode(frontendRootNodeId, {
+      label: query,
+      referencedNodeIds,
+    });
+  }
   graphStore.addStreamingNode(frontendRootNodeId);
 
   const touchedNodeIds = new Set<string>();
@@ -79,6 +86,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
         await actDraftService.saveDraftSnapshot(effectiveWorkspaceId, effectiveTopicId, nodeId, {
           title: typeof node.data?.label === "string" ? node.data.label : query,
           kind: typeof node.data?.kind === "string" ? node.data.kind : "act",
+          createdBy: node.data?.createdBy === "user" ? "user" : "agent",
           contentMd: typeof node.data?.contentMd === "string" ? node.data.contentMd : "",
           referencedNodeIds: Array.isArray(node.data?.referencedNodeIds)
             ? node.data.referencedNodeIds.filter((value): value is string => typeof value === "string")
@@ -113,6 +121,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
             patch.data.label ??
             (existingNode ? undefined : query),
           kind: patch.data.kind ?? "act",
+          createdBy: patch.data.createdBy ?? (existingNode ? undefined : "agent"),
           referencedNodeIds:
             patch.data.referencedNodeIds ??
             (existingNode

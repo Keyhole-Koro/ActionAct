@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Node } from '@xyflow/react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MarkdownPane } from '@/features/nodeMarkdown/components/MarkdownPane';
+import { RichTextPane } from '@/features/nodeMarkdown/components/RichTextPane';
 import { ActionOrganizeBar } from '@/features/action/actionOrganize/components/ActionOrganizeBar';
 import { NodeSummaryCard } from './NodeSummaryCard';
 import { NodeEvidenceList } from './NodeEvidenceList';
@@ -92,7 +92,10 @@ export function NodeDetailPanel() {
                     <NodeSummaryCard contextSummary={contextSummary} detailHtml={detailHtml} />
 
                     {contentMd ? (
-                        <MarkdownPane content={contentMd} />
+                        <RichTextPane
+                            content={contentMd}
+                            markdownClassName="prose prose-sm dark:prose-invert max-w-none prose-headings:font-medium prose-a:text-primary"
+                        />
                     ) : (
                         (!contextSummary && !detailHtml) && (
                             <div className="text-sm italic text-muted-foreground py-4">No content generated yet.</div>

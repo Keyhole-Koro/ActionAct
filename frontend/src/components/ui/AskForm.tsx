@@ -1,37 +1,17 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { SendHorizonal, Loader2 } from 'lucide-react';
+import { SendHorizonal, Loader2, Globe, Sparkles } from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
-import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
+import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
+import { cn } from '@/lib/utils';
 
 export function AskForm() {
     const [query, setQuery] = useState('');
-    const { workspaceId, topicId, setContext } = useRunContextStore();
     const { useWebGrounding, setPreferences } = useStreamPreferencesStore();
-    const workspaceInputRef = useRef<HTMLInputElement>(null);
     const { isStreaming, startStream } = useActStream();
-    const router = useRouter();
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
-
-    const applyRunContext = () => {
-        const nextWorkspaceId = workspaceInputRef.current?.value.trim() || workspaceId;
-        const nextTopicId = topicId;
-
-        setContext(nextWorkspaceId, nextTopicId);
-        if (typeof window !== 'undefined') {
-            window.localStorage.setItem('run_context.workspaceId', nextWorkspaceId);
-        }
-
-        const params = new URLSearchParams(searchParams.toString());
-        params.set('workspaceId', nextWorkspaceId);
-        router.replace(`${pathname}?${params.toString()}`);
-    };
 
     const onSubmit = (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -43,41 +23,42 @@ export function AskForm() {
 
     return (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-10">
-            <div className="mb-2 rounded-xl border bg-background/90 p-2 shadow-sm backdrop-blur-sm">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                    <Input
-                        key={`workspace-${workspaceId}`}
-                        defaultValue={workspaceId}
-                        ref={workspaceInputRef}
-                        onBlur={applyRunContext}
-                        placeholder="workspaceId"
-                        className="h-8"
-                        disabled={isStreaming}
-                    />
-                    <Button type="button" variant="secondary" className="h-8 px-3" onClick={applyRunContext} disabled={isStreaming}>
-                        Set Workspace
-                    </Button>
-                </div>
-            </div>
             <form
                 onSubmit={onSubmit}
-                className="bg-background border shadow-lg rounded-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-shadow"
+                className="bg-background/95 border shadow-lg rounded-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-shadow backdrop-blur-sm"
             >
-                <label className="flex items-center gap-2 px-2 text-xs text-muted-foreground whitespace-nowrap">
-                    <input
-                        type="checkbox"
-                        checked={useWebGrounding}
-                        onChange={(e) => setPreferences({ useWebGrounding: e.target.checked })}
-                        disabled={isStreaming}
-                    />
-                    Web
-                </label>
+                <UploadButton compact className="shrink-0" />
+                <button
+                    type="button"
+                    onClick={() => setPreferences({ useWebGrounding: !useWebGrounding })}
+                    disabled={isStreaming}
+                    aria-pressed={useWebGrounding}
+                    className={cn(
+                        'group shrink-0 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200',
+                        'flex items-center gap-2 shadow-sm',
+                        useWebGrounding
+                            ? 'border-sky-300 bg-linear-to-r from-sky-500/15 via-cyan-500/10 to-transparent text-sky-700'
+                            : 'border-border/70 bg-muted/40 text-muted-foreground hover:bg-muted/70',
+                        isStreaming ? 'opacity-60 cursor-not-allowed' : 'hover:border-sky-300/80',
+                    )}
+                >
+                    <span
+                        className={cn(
+                            'flex h-6 w-6 items-center justify-center rounded-lg transition-colors',
+                            useWebGrounding ? 'bg-sky-500 text-white' : 'bg-background text-muted-foreground',
+                        )}
+                    >
+                        {useWebGrounding ? <Sparkles className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
+                    </span>
+                    <span className="hidden sm:inline">{useWebGrounding ? 'Web On' : 'Web Off'}</span>
+                    <span className="sm:hidden">Web</span>
+                </button>
                 <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Ask a question or provide context..."
-                    className="flex-1 bg-transparent border-none focus:outline-none px-4 text-sm"
+                    className="min-w-0 flex-1 bg-transparent border-none focus:outline-none px-3 text-sm"
                     disabled={isStreaming}
                 />
                 <Button

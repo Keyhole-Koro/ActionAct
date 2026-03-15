@@ -7,6 +7,7 @@ Future: read from Firestore/GCS to build full context.
 from __future__ import annotations
 
 from app.domain.models import PromptBundle
+from app.domain.language_policy import build_language_instruction
 
 
 class StubAssembly:
@@ -23,7 +24,8 @@ class StubAssembly:
         system_instruction = (
             "You are an AI research assistant. "
             "Analyze the user's question and provide structured, insightful answers. "
-            "Use markdown formatting with headers, lists, and emphasis."
+            "Use markdown formatting with headers, lists, and emphasis. "
+            f"{build_language_instruction(user_message)}"
         )
         return PromptBundle(
             system_instruction=system_instruction,

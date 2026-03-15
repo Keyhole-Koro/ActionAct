@@ -117,7 +117,8 @@ export const mockOrganizeService: OrganizePort = {
     uploadInput: async (_workspaceId, file) => {
         await new Promise(resolve => setTimeout(resolve, 800)); // simulate upload delay
         const inputId = `in_mock_${Date.now()}`;
+        const topicId = `topic:${inputId}`;
         console.log(`[Mock] Upload: ${file.name} → ${inputId}`);
-        return { inputId };
+        return { inputId, topicId };
     },
 };

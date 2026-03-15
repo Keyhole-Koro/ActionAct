@@ -119,10 +119,7 @@ export function GraphCanvas() {
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
-    const [renderedCardCount, setRenderedCardCount] = useState(0);
-    const [viewportDebug, setViewportDebug] = useState<{ x: number; y: number; zoom: number } | null>(null);
     const previousLayoutRef = useRef<Node[]>([]);
-    const lastDebugSignature = useRef<string>('');
     const nodeClickTimeoutRef = useRef<number | null>(null);
 
     useGraphCache({
@@ -149,6 +146,7 @@ export function GraphCanvas() {
                 position: { x: 120, y: index * 180 + 80 },
                 data: {
                     nodeSource: 'persisted',
+                    createdBy: node.createdBy,
                     topicId: node.topicId,
                     label: node.title,
                     kind: node.kind,
@@ -190,6 +188,7 @@ export function GraphCanvas() {
                 position: { x: 420, y: index * 180 + 120 },
                 data: {
                     nodeSource: 'act',
+                    createdBy: node.createdBy ?? 'agent',
                     topicId: node.topicId ?? topicId,
                     label: node.title,
                     kind: 'act',
@@ -260,57 +259,6 @@ export function GraphCanvas() {
         }),
         [actEdges, layoutInputEdges, layoutInputNodes, standaloneActNodes],
     );
-
-    // === DEBUG: trace display pipeline ===
-    useEffect(() => {
-        console.info('[GraphCanvas DEBUG] pipeline trace', {
-            persistedNodes: persistedNodes.length,
-            persistedEdges: persistedEdges.length,
-            actNodes: actNodes.length,
-            'persistedTree.visibleNodes': persistedTree.visibleNodes.length,
-            mergedTreeNodes: mergedTreeNodes.length,
-            standaloneActNodes: standaloneActNodes.length,
-            layoutInputNodes: layoutInputNodes.length,
-            layoutedNodes: layoutedNodes.length,
-            expandedBranchNodeIds,
-        });
-    }, [actNodes.length, expandedBranchNodeIds, layoutInputNodes.length, layoutedNodes.length, mergedTreeNodes.length, persistedEdges.length, persistedNodes.length, persistedTree.visibleNodes.length, standaloneActNodes.length]);
-    // === END DEBUG ===
-
-    useEffect(() => {
-        const debugNodes = [
-            ...persistedTree.visibleNodes.map((node) => ({
-                id: node.id,
-                source: 'persisted',
-                label: typeof node.data?.label === 'string' ? node.data.label : '',
-                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
-                contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
-            })),
-            ...actNodes.map((node) => ({
-                id: node.id,
-                source: 'act',
-                label: typeof node.data?.label === 'string' ? node.data.label : '',
-                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
-                contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
-            })),
-        ];
-
-        const signature = JSON.stringify({ workspaceId, topicId, nodes: debugNodes, selectionGroups: Object.keys(groups) });
-        if (signature === lastDebugSignature.current) {
-            return;
-        }
-        lastDebugSignature.current = signature;
-
-        console.info('[GraphCanvas] node sources', {
-            workspaceId,
-            topicId,
-            persistedCount: persistedNodes.length,
-            draftCount: 0,
-            actCount: actNodes.length,
-            selectionCount: Object.keys(groups).length,
-            nodes: debugNodes,
-        });
-    }, [actNodes, groups, persistedNodes.length, topicId, persistedTree.visibleNodes, workspaceId]);
 
     useEffect(() => {
         let mounted = true;
@@ -423,33 +371,6 @@ export function GraphCanvas() {
         () => buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges),
         [actEdges, layoutInputEdges, layoutedEdges, selectionOverlayEdges],
     );
-
-    // === DEBUG: final display stage ===
-    useEffect(() => {
-        console.info('[GraphCanvas DEBUG] display stage', {
-            regularDisplayNodes: regularDisplayNodes.length,
-            selectionOverlayNodes: selectionOverlayNodes.length,
-            displayNodes: displayNodes.length,
-            normalizedDisplayNodes: normalizedDisplayNodes.length,
-            invalidPositionNodes: displayNodes
-                .filter((node) => !isRenderableCoordinate(node.position?.x) || !isRenderableCoordinate(node.position?.y))
-                .map((node) => ({
-                    id: node.id,
-                    x: node.position?.x,
-                    y: node.position?.y,
-                })),
-            displayEdges: displayEdges.length,
-            first3: normalizedDisplayNodes.slice(0, 3).map(n => ({
-                id: n.id,
-                type: n.type,
-                x: n.position.x,
-                y: n.position.y,
-                hasData: !!n.data,
-                label: typeof n.data?.label === 'string' ? n.data.label.slice(0, 30) : '?',
-            })),
-        });
-    }, [displayEdges.length, displayNodes, normalizedDisplayNodes, regularDisplayNodes.length, selectionOverlayNodes.length]);
-    // === END DEBUG ===
 
     // fitView when node positions or counts change, but not on content/selection updates
     const positionSignature = useMemo(
@@ -568,61 +489,8 @@ export function GraphCanvas() {
         }
     }, []);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            return;
-        }
-
-        setRenderedCardCount(0);
-        const handleGraphNodeRender = () => {
-            setRenderedCardCount((count) => count + 1);
-        };
-        window.addEventListener('graph-node-card:render', handleGraphNodeRender);
-        return () => {
-            window.removeEventListener('graph-node-card:render', handleGraphNodeRender);
-        };
-    }, [positionSignature]);
-
-    useEffect(() => {
-        const updateViewportDebug = () => {
-            const viewport = reactFlowInstance.getViewport();
-            setViewportDebug({
-                x: Math.round(viewport.x),
-                y: Math.round(viewport.y),
-                zoom: Number(viewport.zoom.toFixed(2)),
-            });
-        };
-
-        updateViewportDebug();
-        const timerId = window.setInterval(updateViewportDebug, 500);
-        return () => {
-            window.clearInterval(timerId);
-        };
-    }, [reactFlowInstance]);
-
     return (
         <div className="relative w-full h-full pb-20">
-            <div className="absolute left-4 top-4 z-20 rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur-sm">
-                <div>displayNodes: {normalizedDisplayNodes.length}</div>
-                <div>renderedCards: {renderedCardCount}</div>
-                <div>edges: {displayEdges.length}</div>
-                <div>viewport: {viewportDebug ? `${viewportDebug.x}, ${viewportDebug.y}, z=${viewportDebug.zoom}` : 'n/a'}</div>
-                {normalizedDisplayNodes.slice(0, 2).map((node) => (
-                    <div key={node.id}>
-                        {node.id}: {Math.round(node.position.x)}, {Math.round(node.position.y)}
-                    </div>
-                ))}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 h-7 rounded-md bg-background/95 text-[11px]"
-                    onClick={() => {
-                        reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 150 });
-                    }}
-                >
-                    Reset Viewport
-                </Button>
-            </div>
             <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                     variant="outline"
@@ -653,6 +521,7 @@ export function GraphCanvas() {
                 edges={displayEdges}
                 onlyRenderVisibleElements={false}
                 defaultViewport={{ x: 0, y: 0, zoom: 0.9 }}
+                proOptions={{ hideAttribution: true }}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {

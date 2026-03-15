@@ -229,6 +229,7 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * persisted tree の主レイアウト軸は left-to-right とし、分岐は進行方向に対して上下へ展開する
 * persisted tree の親子関係の間に `act-draft-node` / `selection-node` を割り込ませない
 * `act-draft-node` は auxiliary lane に置く
+* `act-draft-node` は `created_by` または同等の frontend metadata を持ってよく、node card 上で `user` / `agent` の作成主体アイコンを表示してよい
 * `selection-node` は overlay layer とし、tree layout 入力には含めない
 * `New ACT` は新規 `act-draft-node` を作る主経路とする
 * double click は補助操作であり、node 作成の主経路にしない

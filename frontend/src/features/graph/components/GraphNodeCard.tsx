@@ -18,6 +18,8 @@ import {
     FolderTree,
     Boxes,
     Quote,
+    Bot,
+    UserRound,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
 import {
@@ -46,6 +48,7 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
     const isExpanded = data.isExpanded === true;
     const isNodeStreaming = data.isStreaming === true;
+    const createdBy = data.createdBy;
     const referencedNodes = Array.isArray(data.referencedNodes) ? data.referencedNodes : [];
     const hasChildNodes = data.hasChildNodes === true;
     const branchExpanded = data.branchExpanded === true;
@@ -54,18 +57,6 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const isEditing = data.isEditing === true;
     const [editValue, setEditValue] = useState(data.label);
     const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        console.info('[GraphNodeCard DEBUG] render', {
-            label: data.label,
-            kind: data.kind,
-            isExpanded,
-            hasChildNodes,
-        });
-        if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('graph-node-card:render'));
-        }
-    }, [data.kind, data.label, hasChildNodes, isExpanded]);
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -92,8 +83,6 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                     width: isExpanded ? GRAPH_NODE_EXPANDED_WIDTH : GRAPH_NODE_COLLAPSED_WIDTH,
                     minWidth: GRAPH_NODE_COLLAPSED_WIDTH,
                     maxWidth: GRAPH_NODE_EXPANDED_WIDTH,
-                    outline: '2px solid rgba(239,68,68,0.55)',
-                    outlineOffset: 0,
                 }}
                 className={`
                 group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
@@ -150,6 +139,19 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
 
                     <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-center justify-between gap-2 mb-1">
+                            {createdBy && (
+                                <span
+                                    className={[
+                                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                                        createdBy === 'agent'
+                                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                            : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                                    ].join(' ')}
+                                >
+                                    {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
+                                    {createdBy}
+                                </span>
+                            )}
                             {nodeKind && nodeKind !== 'act' && (
                                 <Badge
                                     variant="outline"
@@ -314,13 +316,13 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 type="target"
                 position={Position.Top}
                 isConnectable={isConnectable}
-                className="!w-4 !h-4 !bg-background !border-2 !border-primary !shadow-md !-top-2 hover:!scale-125 hover:!bg-primary transition-all duration-300 z-10"
+                className="!opacity-0 !pointer-events-none"
             />
             <Handle
                 type="source"
                 position={Position.Bottom}
                 isConnectable={isConnectable}
-                className="!w-4 !h-4 !bg-background !border-2 !border-primary !shadow-md !-bottom-2 hover:!scale-125 hover:!bg-primary transition-all duration-300 z-10"
+                className="!opacity-0 !pointer-events-none"
             />
         </div>
     );
