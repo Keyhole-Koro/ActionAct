@@ -105,6 +105,13 @@ export function SelectionNodeCard({ data, isConnectable }: NodeProps<Node>) {
                 </div>
 
                 {/* Content */}
+                {nodeData.reason && (
+                    <div className="relative px-3 pb-1.5 pl-10">
+                        <p className="text-[11px] text-amber-700/85 leading-relaxed">
+                            {nodeData.reason}
+                        </p>
+                    </div>
+                )}
                 {nodeData.content_md && (
                     <div className="relative px-3 pb-2.5 pl-10">
                         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">

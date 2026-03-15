@@ -4,6 +4,7 @@ export type SelectionStatus = 'pending' | 'selected' | 'expired' | 'cancelled';
 export interface SelectionOption {
     option_id: string;
     label: string;
+    reason?: string | null;
     content_md?: string | null;
     parameters?: Record<string, unknown> | null;
     selected: boolean;

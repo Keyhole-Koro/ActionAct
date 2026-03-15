@@ -18,6 +18,32 @@ from app.domain.ports import AssemblyPort, LLMPort
 logger = logging.getLogger(__name__)
 
 
+def _truncate(value: str, limit: int = 240) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3] + "..."
+
+
+def _bundle_debug_summary(input: RunActInput, *, system_instruction: str, user_prompt: str, context_blocks: list[str]) -> dict[str, object]:
+    return {
+        "trace_id": input.trace_id,
+        "request_id": input.request_id,
+        "topic_id": input.topic_id,
+        "workspace_id": input.workspace_id,
+        "anchor_node_id": input.anchor_node_id,
+        "context_node_ids": input.context_node_ids,
+        "user_message": _truncate(input.user_message, 160),
+        "system_instruction_preview": _truncate(system_instruction),
+        "user_prompt_preview": _truncate(user_prompt, 160),
+        "context_block_count": len(context_blocks),
+        "context_block_previews": [
+            _truncate(block, 240)
+            for block in context_blocks[:5]
+        ],
+    }
+
+
 class RunActUsecase:
     """Pipeline: Context Assembly → LLM Generate → Normalize to PatchOps → Yield events."""
 
@@ -51,6 +77,16 @@ class RunActUsecase:
                 ),
             )
             return
+
+        logger.info(
+            "PromptBundle assembled",
+            extra=_bundle_debug_summary(
+                input,
+                system_instruction=bundle.system_instruction,
+                user_prompt=bundle.user_prompt,
+                context_blocks=bundle.context_blocks,
+            ),
+        )
 
         # 2. Send initial upsert (block must exist before append_md)
         yield RunActEvent(

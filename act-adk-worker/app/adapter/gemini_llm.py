@@ -13,6 +13,21 @@ from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 logger = logging.getLogger(__name__)
 
 
+def _build_system_instruction(bundle: PromptBundle) -> str | None:
+    system_parts: list[str] = []
+    if bundle.system_instruction:
+        system_parts.append(bundle.system_instruction)
+    if bundle.context_blocks:
+        context_text = "\n\n---\n\n".join(bundle.context_blocks)
+        system_parts.append(
+            "Reference context is provided below. Treat it as supporting material, not as the user's latest request.\n\n"
+            f"{context_text}"
+        )
+    if not system_parts:
+        return None
+    return "\n\n".join(system_parts)
+
+
 class GeminiLLM:
     """Calls Gemini via the google-genai SDK with streaming."""
 
@@ -35,16 +50,12 @@ class GeminiLLM:
     ) -> AsyncIterator[LLMChunk]:
         model_name = config.model or "gemini-2.0-flash"
 
-        # Build contents
-        contents: list[Content] = []
-        if bundle.context_blocks:
-            context_text = "\n\n---\n\n".join(bundle.context_blocks)
-            contents.append(Content(role="user", parts=[Part(text=f"Context:\n{context_text}")]))
-        contents.append(Content(role="user", parts=[Part(text=bundle.user_prompt)]))
+        # Keep the current user message as the sole user turn.
+        contents = [Content(role="user", parts=[Part(text=bundle.user_prompt)])]
 
         tools = [Tool(googleSearch=GoogleSearch())] if config.enable_grounding else None
         gen_config = GenerateContentConfig(
-            systemInstruction=bundle.system_instruction or None,
+            systemInstruction=_build_system_instruction(bundle),
             tools=tools,
             thinkingConfig=ThinkingConfig(includeThoughts=True) if config.enable_thinking else None,
         )

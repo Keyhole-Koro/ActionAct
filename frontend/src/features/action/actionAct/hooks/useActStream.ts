@@ -2,8 +2,8 @@ import { useCallback, useMemo } from 'react';
 
 import { StreamActOptions } from '@/services/act/port';
 import { startActRun } from '@/features/agentTools/runtime/act-runner';
+import { createDirectFrontendToolClient } from '@/features/agentTools/runtime/frontend-tool-client';
 import { prepareSubmitAskRun } from '@/features/agentTools/runtime/frontend-tool-orchestrator';
-import { frontendToolServer } from '@/features/agentTools/runtime/frontend-tool-registry';
 import { useActClarificationStore } from '@/features/agentTools/store/act-clarification-store';
 import { useGraphStore } from '@/features/graph/store';
 
@@ -16,11 +16,7 @@ export function useActStream() {
     const continueWithoutContext = useActClarificationStore((state) => state.continueWithoutContext);
     const retryWithSelection = useActClarificationStore((state) => state.retryWithSelection);
 
-    const frontendToolClient = useMemo(() => ({
-        available: () => true,
-        listTools: () => frontendToolServer.listTools(),
-        invokeTool: (name: string, input: unknown) => frontendToolServer.invokeTool(name, input),
-    }), []);
+    const frontendToolClient = useMemo(() => createDirectFrontendToolClient(), []);
 
     const startStream = useCallback(async (targetNodeId: string | null, query: string, options?: StreamActOptions & { clear?: boolean }) => {
         if (targetNodeId) {

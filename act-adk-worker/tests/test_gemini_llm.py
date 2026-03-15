@@ -92,3 +92,32 @@ async def test_gemini_llm_enables_thinking_config():
 
     config = fake_aio.models.calls[0]["config"]
     assert config.model_dump(by_alias=True, exclude_none=True)["thinkingConfig"]["includeThoughts"] is True
+
+
+@pytest.mark.asyncio
+async def test_gemini_llm_keeps_context_out_of_user_turn():
+    llm = GeminiLLM(project="local-dev", api_key="test-key")
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
+
+    async for _ in llm.generate(
+        PromptBundle(
+            system_instruction="You are helpful.",
+            user_prompt="Tell me about Windows",
+            context_blocks=["## Topic\n- title: AWS", "## Focus Nodes\n- AWS basics"],
+        ),
+        LLMConfig(),
+    ):
+        pass
+
+    call = fake_aio.models.calls[0]
+    contents = call["contents"]
+    assert len(contents) == 1
+    assert contents[0].role == "user"
+    assert contents[0].parts[0].text == "Tell me about Windows"
+
+    system_instruction = call["config"].system_instruction
+    assert system_instruction is not None
+    assert "supporting material" in system_instruction
+    assert "AWS" in system_instruction
+    assert "You are helpful." in system_instruction

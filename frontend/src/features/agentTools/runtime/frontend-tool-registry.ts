@@ -479,6 +479,7 @@ const toolDefinitions: ToolDefinition[] = [
           return {
             option_id: optionId,
             label,
+            reason: optionalString(option, "reason") ?? null,
             content_md: optionalString(option, "content_md") ?? null,
             metadata: isRecord(option.metadata) ? option.metadata : null,
             parameters: null,

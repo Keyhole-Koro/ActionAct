@@ -4,8 +4,8 @@ import { useCallback } from 'react';
 
 import { useGraphStore } from '@/features/graph/store';
 import { startActRun } from '@/features/agentTools/runtime/act-runner';
+import { createDirectFrontendToolClient } from '@/features/agentTools/runtime/frontend-tool-client';
 import { prepareAnchoredActRun } from '@/features/agentTools/runtime/frontend-tool-orchestrator';
-import { frontendToolServer } from '@/features/agentTools/runtime/frontend-tool-registry';
 import { useActClarificationStore } from '@/features/agentTools/store/act-clarification-store';
 import { clearAllActNodes, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
 
@@ -25,11 +25,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
     } = useGraphStore();
     const setPendingClarification = useActClarificationStore((state) => state.setPendingClarification);
 
-    const frontendToolClient = {
-        available: () => true,
-        listTools: () => frontendToolServer.listTools(),
-        invokeTool: (name: string, input: unknown) => frontendToolServer.invokeTool(name, input),
-    };
+    const frontendToolClient = createDirectFrontendToolClient();
 
     const openDetails = useCallback((nodeId: string) => {
         setActiveNode(nodeId);
