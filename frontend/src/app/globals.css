@@ -146,3 +146,17 @@
     @apply font-sans;
   }
 }
+
+@layer components {
+  .react-flow__renderer,
+  .react-flow__viewport,
+  .react-flow__nodes,
+  .react-flow__node {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .react-flow__node {
+    z-index: 10;
+  }
+}

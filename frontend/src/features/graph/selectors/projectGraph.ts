@@ -68,31 +68,13 @@ export const projectPersistedTree = buildVisibleTree;
 
 export function mergeTreeWithActNodes(
     visiblePersistedNodes: GraphNodeBase[],
-    persistedNodes: GraphNodeBase[],
+    _persistedNodes: GraphNodeBase[],
     actNodes: GraphNodeBase[],
 ) {
-    const actNodesById = new Map(actNodes.map((node) => [node.id, node]));
-    const mergedTreeNodes = visiblePersistedNodes.map((node) => {
-        const draftNode = actNodesById.get(node.id);
-        if (!draftNode) {
-            return node;
-        }
-        // Merge act data but preserve persisted kind to prevent
-        // act draft's "act" kind from overwriting persisted "claim"/"cluster" etc.
-        const { kind: _actKind, ...draftDataWithoutKind } = draftNode.data ?? {};
-        return {
-            ...node,
-            position: draftNode.position ?? node.position,
-            data: {
-                ...node.data,
-                ...draftDataWithoutKind,
-            },
-        };
-    });
-
-    const persistedIdSet = new Set(persistedNodes.map((node) => node.id));
-    const standaloneActNodes = actNodes.filter((actNode) => !persistedIdSet.has(actNode.id));
-    return { mergedTreeNodes, standaloneActNodes };
+    return {
+        mergedTreeNodes: visiblePersistedNodes,
+        standaloneActNodes: actNodes,
+    };
 }
 
 export function buildLayoutInput(
@@ -223,6 +205,13 @@ export function buildDisplayNodes({
         return {
             ...mergedNode,
             selected: selectedNodeIdSet.has(node.id),
+            style: {
+                ...(mergedNode.style ?? {}),
+                opacity: 1,
+                visibility: 'visible',
+                zIndex: 50,
+                pointerEvents: 'all',
+            },
             data: renderData,
         };
     });

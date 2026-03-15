@@ -33,11 +33,63 @@ import { buildDisplayEdges, buildDisplayNodes, buildLayoutInput, buildVisibleTre
 import { getLayoutedElements } from '../utils/layout';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 
+class GraphNodeRenderBoundary extends React.Component<
+    { children: React.ReactNode; nodeId?: string; label?: string },
+    { hasError: boolean; errorMessage: string | null }
+> {
+    constructor(props: { children: React.ReactNode; nodeId?: string; label?: string }) {
+        super(props);
+        this.state = { hasError: false, errorMessage: null };
+    }
+
+    static getDerivedStateFromError(error: Error) {
+        return {
+            hasError: true,
+            errorMessage: error instanceof Error ? error.message : String(error),
+        };
+    }
+
+    componentDidCatch(error: Error) {
+        console.error('[GraphNodeCard DEBUG] render error', {
+            nodeId: this.props.nodeId,
+            label: this.props.label,
+            error,
+        });
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="w-[340px] rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive shadow-sm">
+                    <div className="font-semibold">GraphNodeCard render failed</div>
+                    <div className="mt-1 break-all">nodeId: {this.props.nodeId ?? 'unknown'}</div>
+                    <div className="mt-1 break-all">label: {this.props.label ?? ''}</div>
+                    <div className="mt-1 break-all">{this.state.errorMessage}</div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
+function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeCard>) {
+    const label = typeof props.data?.label === 'string' ? props.data.label : '';
+    return (
+        <GraphNodeRenderBoundary nodeId={props.id} label={label}>
+            <GraphNodeCard {...props} />
+        </GraphNodeRenderBoundary>
+    );
+}
+
 const nodeTypes = {
-    customTask: GraphNodeCard,
+    customTask: GraphNodeCardWithBoundary,
     selectionHeader: SelectionGroupHeader,
     selectionNode: SelectionNodeCard,
 };
+
+function isRenderableCoordinate(value: number | undefined) {
+    return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
+}
 
 export function GraphCanvas() {
     const {
@@ -67,6 +119,8 @@ export function GraphCanvas() {
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
+    const [renderedCardCount, setRenderedCardCount] = useState(0);
+    const [viewportDebug, setViewportDebug] = useState<{ x: number; y: number; zoom: number } | null>(null);
     const previousLayoutRef = useRef<Node[]>([]);
     const lastDebugSignature = useRef<string>('');
     const nodeClickTimeoutRef = useRef<number | null>(null);
@@ -81,8 +135,11 @@ export function GraphCanvas() {
 
     // Stable refs so subscription doesn't depend on store identity
     const setPersistedGraphRef = useRef(setPersistedGraph);
-    setPersistedGraphRef.current = setPersistedGraph;
     const persistedNodeCountRef = useRef(0);
+
+    useEffect(() => {
+        setPersistedGraphRef.current = setPersistedGraph;
+    }, [setPersistedGraph]);
 
     useEffect(() => {
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes) => {
@@ -323,6 +380,45 @@ export function GraphCanvas() {
         () => [...regularDisplayNodes, ...selectionOverlayNodes],
         [regularDisplayNodes, selectionOverlayNodes],
     );
+    const safeDisplayNodes = useMemo(
+        () => displayNodes.map((node, index) => {
+            const x = node.position?.x;
+            const y = node.position?.y;
+            if (isRenderableCoordinate(x) && isRenderableCoordinate(y)) {
+                return node;
+            }
+            return {
+                ...node,
+                position: {
+                    x: 120 + ((index % 4) * 360),
+                    y: 100 + (Math.floor(index / 4) * 220),
+                },
+            };
+        }),
+        [displayNodes],
+    );
+    const normalizedDisplayNodes = useMemo(() => {
+        if (safeDisplayNodes.length === 0) {
+            return safeDisplayNodes;
+        }
+
+        const minX = Math.min(...safeDisplayNodes.map((node) => node.position.x));
+        const minY = Math.min(...safeDisplayNodes.map((node) => node.position.y));
+        const offsetX = minX < 120 ? 120 - minX : 0;
+        const offsetY = minY < 100 ? 100 - minY : 0;
+
+        if (offsetX === 0 && offsetY === 0) {
+            return safeDisplayNodes;
+        }
+
+        return safeDisplayNodes.map((node) => ({
+            ...node,
+            position: {
+                x: node.position.x + offsetX,
+                y: node.position.y + offsetY,
+            },
+        }));
+    }, [safeDisplayNodes]);
     const displayEdges = useMemo(
         () => buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges),
         [actEdges, layoutInputEdges, layoutedEdges, selectionOverlayEdges],
@@ -334,45 +430,58 @@ export function GraphCanvas() {
             regularDisplayNodes: regularDisplayNodes.length,
             selectionOverlayNodes: selectionOverlayNodes.length,
             displayNodes: displayNodes.length,
+            normalizedDisplayNodes: normalizedDisplayNodes.length,
+            invalidPositionNodes: displayNodes
+                .filter((node) => !isRenderableCoordinate(node.position?.x) || !isRenderableCoordinate(node.position?.y))
+                .map((node) => ({
+                    id: node.id,
+                    x: node.position?.x,
+                    y: node.position?.y,
+                })),
             displayEdges: displayEdges.length,
-            first3: displayNodes.slice(0, 3).map(n => ({
+            first3: normalizedDisplayNodes.slice(0, 3).map(n => ({
                 id: n.id,
                 type: n.type,
-                pos: n.position,
+                x: n.position.x,
+                y: n.position.y,
                 hasData: !!n.data,
                 label: typeof n.data?.label === 'string' ? n.data.label.slice(0, 30) : '?',
             })),
         });
-    }, [displayEdges.length, displayNodes, regularDisplayNodes.length, selectionOverlayNodes.length]);
+    }, [displayEdges.length, displayNodes, normalizedDisplayNodes, regularDisplayNodes.length, selectionOverlayNodes.length]);
     // === END DEBUG ===
 
-    // fitView when node count changes (add/remove), but not on content-only updates
-    const previousNodeCountRef = useRef(0);
+    // fitView when node positions or counts change, but not on content/selection updates
+    const positionSignature = useMemo(
+        () => JSON.stringify(normalizedDisplayNodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y)])),
+        [normalizedDisplayNodes]
+    );
+    const previousPositionSignatureRef = useRef<string | null>(null);
+
     useEffect(() => {
-        if (displayNodes.length === 0) {
-            previousNodeCountRef.current = 0;
+        if (normalizedDisplayNodes.length === 0) {
+            previousPositionSignatureRef.current = null;
             return;
         }
 
-        // Only fit when node count actually changes (new nodes added or removed)
-        if (displayNodes.length === previousNodeCountRef.current) {
+        if (positionSignature === previousPositionSignatureRef.current) {
             return;
         }
-        previousNodeCountRef.current = displayNodes.length;
+        previousPositionSignatureRef.current = positionSignature;
 
-        const frame = window.requestAnimationFrame(() => {
+        const timeoutId = window.setTimeout(() => {
             reactFlowInstance.fitView({
                 duration: 250,
                 padding: 0.18,
                 minZoom: 0.2,
                 maxZoom: 1.2,
             });
-        });
+        }, 50);
 
         return () => {
-            window.cancelAnimationFrame(frame);
+            window.clearTimeout(timeoutId);
         };
-    }, [displayNodes, reactFlowInstance]);
+    }, [normalizedDisplayNodes.length, positionSignature, reactFlowInstance]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
         const position = reactFlowInstance.screenToFlowPosition({
@@ -459,8 +568,61 @@ export function GraphCanvas() {
         }
     }, []);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        setRenderedCardCount(0);
+        const handleGraphNodeRender = () => {
+            setRenderedCardCount((count) => count + 1);
+        };
+        window.addEventListener('graph-node-card:render', handleGraphNodeRender);
+        return () => {
+            window.removeEventListener('graph-node-card:render', handleGraphNodeRender);
+        };
+    }, [positionSignature]);
+
+    useEffect(() => {
+        const updateViewportDebug = () => {
+            const viewport = reactFlowInstance.getViewport();
+            setViewportDebug({
+                x: Math.round(viewport.x),
+                y: Math.round(viewport.y),
+                zoom: Number(viewport.zoom.toFixed(2)),
+            });
+        };
+
+        updateViewportDebug();
+        const timerId = window.setInterval(updateViewportDebug, 500);
+        return () => {
+            window.clearInterval(timerId);
+        };
+    }, [reactFlowInstance]);
+
     return (
         <div className="relative w-full h-full pb-20">
+            <div className="absolute left-4 top-4 z-20 rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur-sm">
+                <div>displayNodes: {normalizedDisplayNodes.length}</div>
+                <div>renderedCards: {renderedCardCount}</div>
+                <div>edges: {displayEdges.length}</div>
+                <div>viewport: {viewportDebug ? `${viewportDebug.x}, ${viewportDebug.y}, z=${viewportDebug.zoom}` : 'n/a'}</div>
+                {normalizedDisplayNodes.slice(0, 2).map((node) => (
+                    <div key={node.id}>
+                        {node.id}: {Math.round(node.position.x)}, {Math.round(node.position.y)}
+                    </div>
+                ))}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-7 rounded-md bg-background/95 text-[11px]"
+                    onClick={() => {
+                        reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 150 });
+                    }}
+                >
+                    Reset Viewport
+                </Button>
+            </div>
             <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                     variant="outline"
@@ -487,8 +649,10 @@ export function GraphCanvas() {
                 )}
             </div>
             <ReactFlow
-                nodes={displayNodes as GraphNodeRender[]}
+                nodes={normalizedDisplayNodes as GraphNodeRender[]}
                 edges={displayEdges}
+                onlyRenderVisibleElements={false}
+                defaultViewport={{ x: 0, y: 0, zoom: 0.9 }}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
@@ -532,6 +696,7 @@ export function GraphCanvas() {
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
+                nodesDraggable
                 panOnScroll
                 selectionOnDrag
                 panOnDrag={[1, 2]}

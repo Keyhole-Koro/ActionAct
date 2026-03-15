@@ -56,6 +56,18 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
+        console.info('[GraphNodeCard DEBUG] render', {
+            label: data.label,
+            kind: data.kind,
+            isExpanded,
+            hasChildNodes,
+        });
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('graph-node-card:render'));
+        }
+    }, [data.kind, data.label, hasChildNodes, isExpanded]);
+
+    useEffect(() => {
         if (isEditing && inputRef.current) {
             inputRef.current.focus();
             inputRef.current.select();
@@ -80,6 +92,8 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                     width: isExpanded ? GRAPH_NODE_EXPANDED_WIDTH : GRAPH_NODE_COLLAPSED_WIDTH,
                     minWidth: GRAPH_NODE_COLLAPSED_WIDTH,
                     maxWidth: GRAPH_NODE_EXPANDED_WIDTH,
+                    outline: '2px solid rgba(239,68,68,0.55)',
+                    outlineOffset: 0,
                 }}
                 className={`
                 group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
