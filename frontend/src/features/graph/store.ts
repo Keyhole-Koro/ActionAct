@@ -14,6 +14,7 @@ interface GraphState {
     edges: Edge[];
     selectedNodeIds: string[];
     expandedNodeIds: string[];
+    expandedBranchNodeIds: string[];
     activeNodeId: string | null;
     editingNodeId: string | null;
     isStreaming: boolean;
@@ -26,6 +27,7 @@ interface GraphState {
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
     toggleExpandedNode: (id: string) => void;
+    toggleExpandedBranchNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
     setStreamRunning: (value: boolean) => void;
     addStreamingNode: (nodeId: string) => void;
@@ -71,6 +73,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     edges: [],
     selectedNodeIds: [],
     expandedNodeIds: [],
+    expandedBranchNodeIds: [],
     activeNodeId: null,
     editingNodeId: null,
     isStreaming: false,
@@ -97,6 +100,11 @@ export const useGraphStore = create<GraphState>((set) => ({
         expandedNodeIds: state.expandedNodeIds.includes(id)
             ? state.expandedNodeIds.filter((expandedId) => expandedId !== id)
             : [...state.expandedNodeIds, id],
+    })),
+    toggleExpandedBranchNode: (id: string) => set((state) => ({
+        expandedBranchNodeIds: state.expandedBranchNodeIds.includes(id)
+            ? state.expandedBranchNodeIds.filter((expandedId) => expandedId !== id)
+            : [...state.expandedBranchNodeIds, id],
     })),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
     setStreamRunning: (value: boolean) => set({ isStreaming: value }),

@@ -21,6 +21,7 @@ import { organizeService } from '@/services/organize';
 import { TopicNode } from '@/services/organize/port';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { usePanelStore } from '@/features/layout/store/panel-store';
 
 import { SelectionGroupHeader } from './SelectionGroupHeader';
 import { SelectionNodeCard } from './SelectionNodeCard';
@@ -70,7 +71,6 @@ export function GraphCanvas() {
         edges: actEdges,
         setSelectedNodes,
         setActiveNode,
-        toggleExpandedNode,
         addEmptyNode,
         addQueryNode,
         setPersistedGraph,
@@ -78,8 +78,10 @@ export function GraphCanvas() {
         setActGraph,
         editingNodeId,
         selectedNodeIds,
+        expandedBranchNodeIds,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
+    const { openPanel } = usePanelStore();
     const [, , reactFlowOnNodesChange] = useNodesState<Node>([]);
     const [, , onEdgesChange] = useEdgesState<Edge>([]);
     const reactFlowInstance = useReactFlow();
@@ -186,26 +188,91 @@ export function GraphCanvas() {
         );
     }, [actEdges, actNodes, workspaceId]);
 
+    const persistedTreeChildrenByParent = useMemo(() => {
+        const byParent = new Map<string, string[]>();
+        persistedEdges.forEach((edge) => {
+            const children = byParent.get(edge.source) ?? [];
+            children.push(edge.target);
+            byParent.set(edge.source, children);
+        });
+        return byParent;
+    }, [persistedEdges]);
+    const visiblePersistedNodeIds = useMemo(() => {
+        const allPersistedIds = new Set(persistedNodes.map((node) => node.id));
+        const childIds = new Set(persistedEdges.map((edge) => edge.target));
+        const rootIds = persistedNodes
+            .map((node) => node.id)
+            .filter((nodeId) => !childIds.has(nodeId));
+        const visible = new Set(rootIds);
+        const queue = [...rootIds];
+
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            if (!expandedBranchNodeIds.includes(currentId)) {
+                continue;
+            }
+            const children = persistedTreeChildrenByParent.get(currentId) ?? [];
+            children.forEach((childId) => {
+                if (!allPersistedIds.has(childId) || visible.has(childId)) {
+                    return;
+                }
+                visible.add(childId);
+                queue.push(childId);
+            });
+        }
+
+        if (visible.size === 0) {
+            persistedNodes.forEach((node) => visible.add(node.id));
+        }
+
+        return visible;
+    }, [expandedBranchNodeIds, persistedEdges, persistedNodes, persistedTreeChildrenByParent]);
+    const visiblePersistedNodes = useMemo(
+        () => persistedNodes.filter((node) => visiblePersistedNodeIds.has(node.id)),
+        [persistedNodes, visiblePersistedNodeIds],
+    );
+    const visiblePersistedEdges = useMemo(
+        () => persistedEdges.filter((edge) => visiblePersistedNodeIds.has(edge.source) && visiblePersistedNodeIds.has(edge.target)),
+        [persistedEdges, visiblePersistedNodeIds],
+    );
+
     const { groups } = useAgentInteractionStore();
-    const selectionBaseNodes = useMemo(() => [...persistedNodes], [persistedNodes]);
+    const selectionBaseNodes = useMemo(() => [...visiblePersistedNodes], [visiblePersistedNodes]);
     const { nodes: selectionNodes, edges: selectionEdges } = useMemo(
         () => toSelectionFlow(groups, selectionBaseNodes),
         [groups, selectionBaseNodes],
     );
     const lastDebugSignature = useRef<string>('');
 
-    // Combine all node sources
-    const dedupedActNodes = useMemo(
-        () => actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id)),
-        [actNodes, persistedNodes],
+    // Combine node sources.
+    // If an act node reuses an existing node id, overlay draft fields on persisted nodes.
+    // Standalone act nodes are placed in a separate lane so they do not split persisted parent/child chains.
+    const { mergedTreeNodes, standaloneActNodes } = useMemo(() => {
+        const actNodesById = new Map(actNodes.map((node) => [node.id, node]));
+        const mergedPersistedNodes = visiblePersistedNodes.map((node) => {
+            const draftNode = actNodesById.get(node.id);
+            if (!draftNode) {
+                return node;
+            }
+            return {
+                ...node,
+                position: draftNode.position ?? node.position,
+                data: {
+                    ...node.data,
+                    ...draftNode.data,
+                },
+            };
+        });
+        const standaloneActNodes = actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id));
+        return { mergedTreeNodes: mergedPersistedNodes, standaloneActNodes };
+    }, [actNodes, persistedNodes, visiblePersistedNodes]);
+    const layoutInputNodes = useMemo(
+        () => [...mergedTreeNodes, ...selectionNodes],
+        [mergedTreeNodes, selectionNodes],
     );
-    const rawCombinedNodes = useMemo(
-        () => [...persistedNodes, ...dedupedActNodes, ...selectionNodes],
-        [dedupedActNodes, persistedNodes, selectionNodes],
-    );
-    const rawCombinedEdges = useMemo(
-        () => [...persistedEdges, ...actEdges, ...selectionEdges],
-        [actEdges, persistedEdges, selectionEdges],
+    const layoutInputEdges = useMemo(
+        () => [...visiblePersistedEdges, ...selectionEdges],
+        [selectionEdges, visiblePersistedEdges],
     );
 
     // State for auto-layouted nodes/edges
@@ -215,23 +282,23 @@ export function GraphCanvas() {
     const previousLayoutRef = useRef<Node[]>([]);
     const topologySignature = useMemo(
         () => JSON.stringify({
-            nodes: rawCombinedNodes.map((node) => ({
+            nodes: [...layoutInputNodes, ...standaloneActNodes].map((node) => ({
                 id: node.id,
                 type: node.type,
                 manual: Boolean(node.data?.isManualPosition),
             })),
-            edges: rawCombinedEdges.map((edge) => ({
+            edges: [...layoutInputEdges, ...actEdges].map((edge) => ({
                 id: edge.id,
                 source: edge.source,
                 target: edge.target,
             })),
         }),
-        [rawCombinedEdges, rawCombinedNodes],
+        [actEdges, layoutInputEdges, layoutInputNodes, standaloneActNodes],
     );
 
     useEffect(() => {
         const nodes = [
-            ...persistedNodes.map((node) => ({
+            ...visiblePersistedNodes.map((node) => ({
                 id: node.id,
                 source: 'persisted',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
@@ -274,13 +341,30 @@ export function GraphCanvas() {
             selectionCount: selectionNodes.length,
             nodes,
         });
-    }, [actNodes, persistedNodes, selectionNodes, topicId, workspaceId]);
+    }, [actNodes, selectionNodes, topicId, visiblePersistedNodes, workspaceId]);
 
     const displayNodes = useMemo(() => {
         const layoutById = new Map(layoutedNodes.map((node) => [node.id, node]));
-        return rawCombinedNodes.map((node) => {
+        const maxTreeX = layoutedNodes.reduce((max, node) => Math.max(max, node.position.x), 0);
+        const standaloneActNodesById = new Map(standaloneActNodes.map((node) => [node.id, node]));
+        const actLaneNodes = standaloneActNodes.map((node, index) => {
             const layoutedNode = layoutById.get(node.id);
-            const mergedNode = !layoutedNode
+            const sourceNode = layoutedNode ?? node;
+            return {
+                ...sourceNode,
+                position: {
+                    x: maxTreeX + 420,
+                    y: sourceNode.position.y + (index * 220),
+                },
+            };
+        });
+        const combinedNodes = [...layoutInputNodes, ...actLaneNodes];
+
+        return combinedNodes.map((node) => {
+            const layoutedNode = layoutById.get(node.id);
+            const mergedNode = standaloneActNodesById.has(node.id)
+                ? node
+                : !layoutedNode
                 ? node
                 : {
                     ...node,
@@ -288,11 +372,19 @@ export function GraphCanvas() {
                     sourcePosition: layoutedNode.sourcePosition,
                     targetPosition: layoutedNode.targetPosition,
                 };
+            const hasChildNodes = persistedTreeChildrenByParent.has(node.id);
+            const hiddenChildCount = (persistedTreeChildrenByParent.get(node.id) ?? []).filter((childId) => !visiblePersistedNodeIds.has(childId)).length;
 
             if (!manualNodeIds.includes(node.id)) {
                 return {
                     ...mergedNode,
                     selected: selectedNodeIds.includes(node.id),
+                    data: {
+                        ...mergedNode.data,
+                        hasChildNodes,
+                        branchExpanded: expandedBranchNodeIds.includes(node.id),
+                        hiddenChildCount,
+                    },
                 };
             }
 
@@ -302,20 +394,23 @@ export function GraphCanvas() {
                 data: {
                     ...mergedNode.data,
                     isManualPosition: true,
+                    hasChildNodes,
+                    branchExpanded: expandedBranchNodeIds.includes(node.id),
+                    hiddenChildCount,
                 },
             };
         });
-    }, [layoutedNodes, manualNodeIds, rawCombinedNodes, selectedNodeIds]);
+    }, [expandedBranchNodeIds, layoutInputNodes, layoutedNodes, manualNodeIds, persistedTreeChildrenByParent, selectedNodeIds, standaloneActNodes, visiblePersistedNodeIds]);
 
     const displayEdges = useMemo(
-        () => (layoutedEdges.length > 0 ? layoutedEdges : rawCombinedEdges),
-        [layoutedEdges, rawCombinedEdges],
+        () => [...(layoutedEdges.length > 0 ? layoutedEdges : layoutInputEdges), ...actEdges],
+        [actEdges, layoutInputEdges, layoutedEdges],
     );
 
     // Apply auto-layout asynchronously only when topology changes
     useEffect(() => {
         let mounted = true;
-        getLayoutedElements(rawCombinedNodes, rawCombinedEdges, 'TB', { nodes: previousLayoutRef.current }).then((res) => {
+        getLayoutedElements(layoutInputNodes, layoutInputEdges, 'TB', { nodes: previousLayoutRef.current }).then((res) => {
             if (mounted) {
                 setLayoutedNodes(res.nodes);
                 setLayoutedEdges(res.edges);
@@ -323,7 +418,7 @@ export function GraphCanvas() {
             }
         });
         return () => { mounted = false; };
-    }, [topologySignature, rawCombinedEdges, rawCombinedNodes]);
+    }, [layoutInputEdges, layoutInputNodes, topologySignature]);
 
     // Canvas double-click → create empty node
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
@@ -426,8 +521,8 @@ export function GraphCanvas() {
                     }
 
                     nodeClickTimeoutRef.current = window.setTimeout(() => {
-                        toggleExpandedNode(node.id);
                         setActiveNode(node.id);
+                        openPanel('node-detail', node.id);
                         nodeClickTimeoutRef.current = null;
                     }, 220);
                 }}

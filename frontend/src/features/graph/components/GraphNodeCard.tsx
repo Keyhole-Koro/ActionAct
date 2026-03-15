@@ -4,7 +4,21 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, PanelRightOpen } from 'lucide-react';
+import {
+    Play,
+    Sparkles,
+    FileText,
+    Search,
+    MessageSquare,
+    Pencil,
+    PanelRightOpen,
+    ChevronRight,
+    ChevronDown,
+    Network,
+    FolderTree,
+    Boxes,
+    Quote,
+} from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useGraphStore } from '@/features/graph/store';
 import { usePanelStore } from '@/features/layout/store/panel-store';
@@ -21,6 +35,9 @@ type CustomNode = Node<{
     contentMd?: string;
     contextSummary?: string;
     referencedNodeIds?: string[];
+    hasChildNodes?: boolean;
+    branchExpanded?: boolean;
+    hiddenChildCount?: number;
 }, 'customTask'>;
 
 const typeConfig: Record<string, { icon: React.ElementType; gradient: string; accent: string; glow: string }> = {
@@ -29,22 +46,29 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
     investigate: { icon: FileText, gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent', accent: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
     note: { icon: Pencil, gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent', accent: 'text-amber-500', glow: 'shadow-amber-500/20' },
     act: { icon: Play, gradient: 'from-blue-500/10 via-indigo-500/5 to-transparent', accent: 'text-blue-500', glow: 'shadow-blue-500/20' },
+    topic: { icon: Network, gradient: 'from-blue-500/20 via-cyan-500/10 to-transparent', accent: 'text-blue-600', glow: 'shadow-blue-500/25' },
+    cluster: { icon: FolderTree, gradient: 'from-teal-500/20 via-emerald-500/10 to-transparent', accent: 'text-teal-600', glow: 'shadow-teal-500/25' },
+    subcluster: { icon: Boxes, gradient: 'from-orange-500/20 via-amber-500/10 to-transparent', accent: 'text-orange-600', glow: 'shadow-orange-500/25' },
+    claim: { icon: Quote, gradient: 'from-rose-500/20 via-red-500/10 to-transparent', accent: 'text-rose-600', glow: 'shadow-rose-500/25' },
     default: { icon: Sparkles, gradient: 'from-slate-500/10 via-slate-400/5 to-transparent', accent: 'text-slate-500', glow: 'shadow-slate-500/20' },
 };
 
 export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
     const { startStream } = useActStream();
-    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode, streamingNodeIds } = useGraphStore();
+    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode, streamingNodeIds, toggleExpandedBranchNode } = useGraphStore();
     const { openPanel } = usePanelStore();
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const TypeIcon = cfg.icon;
+    const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
     const isExpanded = expandedNodeIds.includes(id);
     const isNodeStreaming = streamingNodeIds.includes(id);
     const referencedNodeIds = Array.isArray(data.referencedNodeIds)
         ? data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
         : [];
-    const allNodes = useGraphStore((state) => [...state.persistedNodes, ...state.nodes]);
+    const persistedNodes = useGraphStore((state) => state.persistedNodes);
+    const draftNodes = useGraphStore((state) => state.nodes);
+    const allNodes = [...persistedNodes, ...draftNodes];
     const referencedNodes = referencedNodeIds.map((nodeId) => {
         const matched = allNodes.find((node) => node.id === nodeId);
         const label = typeof matched?.data?.label === 'string' && matched.data.label.trim()
@@ -52,6 +76,9 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             : nodeId;
         return { id: nodeId, label };
     });
+    const hasChildNodes = data.hasChildNodes === true;
+    const branchExpanded = data.branchExpanded === true;
+    const hiddenChildCount = typeof data.hiddenChildCount === 'number' ? data.hiddenChildCount : 0;
 
     const isEditing = editingNodeId === id;
     const [editValue, setEditValue] = useState(data.label);
@@ -109,19 +136,35 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r ${cfg.gradient} opacity-80`} />
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
                 <div className="absolute right-3 top-3 z-10">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 rounded-lg bg-background/90 backdrop-blur-sm"
-                        onClick={(event: React.MouseEvent) => {
-                            event.stopPropagation();
-                            setActiveNode(id);
-                            openPanel('node-detail', id);
-                        }}
-                    >
-                        <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
-                        Details
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {hasChildNodes && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg bg-background/90 backdrop-blur-sm"
+                                onClick={(event: React.MouseEvent) => {
+                                    event.stopPropagation();
+                                    toggleExpandedBranchNode(id);
+                                }}
+                            >
+                                {branchExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                <span className="sr-only">Toggle children</span>
+                            </Button>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg bg-background/90 backdrop-blur-sm"
+                            onClick={(event: React.MouseEvent) => {
+                                event.stopPropagation();
+                                setActiveNode(id);
+                                openPanel('node-detail', id);
+                            }}
+                        >
+                            <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
+                            Details
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="relative p-4 pb-0 pr-24 flex gap-3">
@@ -194,6 +237,13 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                         +{referencedNodes.length - 3}
                                     </span>
                                 )}
+                            </div>
+                        )}
+                        {hasChildNodes && !branchExpanded && hiddenChildCount > 0 && (
+                            <div className="mt-2">
+                                <span className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                                    {hiddenChildCount} child{hiddenChildCount > 1 ? 'ren' : ''} hidden
+                                </span>
                             </div>
                         )}
                     </div>

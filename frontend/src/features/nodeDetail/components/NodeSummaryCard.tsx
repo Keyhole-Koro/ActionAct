@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Lightbulb } from 'lucide-react';
+import { MarkdownPane } from '@/features/nodeMarkdown/components/MarkdownPane';
 
 interface NodeSummaryCardProps {
     contextSummary?: string;
@@ -9,6 +10,8 @@ interface NodeSummaryCardProps {
 
 export function NodeSummaryCard({ contextSummary, detailHtml }: NodeSummaryCardProps) {
     if (!contextSummary && !detailHtml) return null;
+
+    const looksLikeHtml = (value: string) => /<\/?[a-z][\s\S]*>/i.test(value);
 
     return (
         <Card className="mb-6 bg-muted/30 border-primary/20 shadow-sm">
@@ -20,15 +23,23 @@ export function NodeSummaryCard({ contextSummary, detailHtml }: NodeSummaryCardP
             </CardHeader>
             <CardContent className="p-4 pt-0 flex flex-col gap-3">
                 {contextSummary && (
-                    <p className="text-sm text-foreground/90 font-medium leading-relaxed">
-                        {contextSummary}
-                    </p>
+                    <MarkdownPane
+                        content={contextSummary}
+                        className="prose prose-sm max-w-none text-foreground/90 prose-p:my-2 prose-headings:mt-3 prose-headings:mb-2 prose-a:text-primary"
+                    />
                 )}
                 {detailHtml && (
-                    <div
-                        className="text-sm text-muted-foreground prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-li:my-0 mt-1"
-                        dangerouslySetInnerHTML={{ __html: detailHtml }}
-                    />
+                    looksLikeHtml(detailHtml) ? (
+                        <div
+                            className="text-sm text-muted-foreground prose prose-sm dark:prose-invert prose-p:leading-relaxed prose-li:my-0 mt-1"
+                            dangerouslySetInnerHTML={{ __html: detailHtml }}
+                        />
+                    ) : (
+                        <MarkdownPane
+                            content={detailHtml}
+                            className="prose prose-sm max-w-none text-muted-foreground prose-p:my-2 prose-headings:mt-3 prose-headings:mb-2 prose-a:text-primary"
+                        />
+                    )
                 )}
             </CardContent>
         </Card>

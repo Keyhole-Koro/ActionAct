@@ -218,6 +218,9 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 3. Graph canvas
 * ReactFlow による主表示
 * node click で detail を開き、background click で選択解除する
+* tree 子ノードの開閉は node 本体クリックではなく、node card 内の chevron control で行う
+* chevron click では直下の子ノード群を表示/非表示し、孫以下は親の表示状態に従って従属的に隠れる
+* 初期表示は tree root のみでよい
 
 4. Right panel
 * `node-detail` と `topic-activity` の2モードを持つ
