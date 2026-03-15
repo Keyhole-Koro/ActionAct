@@ -33,6 +33,13 @@ import { buildDisplayEdges, buildDisplayNodes, buildLayoutInput, buildVisibleTre
 import { getLayoutedElements } from '../utils/layout';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 
+type RecentClickedNode = {
+    id: string;
+    title: string;
+};
+
+const MAX_RECENT_CLICKED_NODES = 8;
+
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
     { hasError: boolean; errorMessage: string | null }
@@ -120,7 +127,16 @@ export function GraphCanvas() {
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
+    const [recentClickedNodes, setRecentClickedNodes] = useState<RecentClickedNode[]>([]);
     const previousLayoutRef = useRef<Node[]>([]);
+
+    const getNodeDisplayTitle = useCallback((node: Node) => {
+        const label = typeof node.data?.label === 'string' ? node.data.label.trim() : '';
+        if (label) {
+            return label;
+        }
+        return node.id;
+    }, []);
 
     useGraphCache({
         kind: 'persisted',
@@ -371,6 +387,27 @@ export function GraphCanvas() {
         () => buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges),
         [actEdges, layoutInputEdges, layoutedEdges, selectionOverlayEdges],
     );
+    const visibleRecentClickedNodes = useMemo(() => {
+        const existingNodeIds = new Set(normalizedDisplayNodes.map((node) => node.id));
+        return recentClickedNodes.filter((item) => existingNodeIds.has(item.id));
+    }, [normalizedDisplayNodes, recentClickedNodes]);
+
+    const focusNode = useCallback((nodeId: string) => {
+        const targetNode = normalizedDisplayNodes.find((node) => node.id === nodeId);
+        if (!targetNode) {
+            return;
+        }
+
+        setActiveNode(targetNode.id);
+        const nextZoom = reactFlowInstance.getZoom() > 1.1
+            ? 0.92
+            : reactFlowInstance.getZoom();
+        reactFlowInstance.setCenter(
+            targetNode.position.x + 170,
+            targetNode.position.y + 90,
+            { duration: 240, zoom: nextZoom },
+        );
+    }, [normalizedDisplayNodes, reactFlowInstance, setActiveNode]);
 
     // fitView when node positions or counts change, but not on content/selection updates
     const positionSignature = useMemo(
@@ -477,6 +514,22 @@ export function GraphCanvas() {
 
     return (
         <div className="relative w-full h-full">
+            {visibleRecentClickedNodes.length > 0 && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(76vw,920px)] overflow-x-auto rounded-xl border border-border/50 bg-background/95 px-3 py-2 shadow-sm backdrop-blur-sm">
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Recent</span>
+                    {visibleRecentClickedNodes.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => focusNode(item.id)}
+                            className="max-w-52 shrink-0 truncate rounded-md border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                            title={item.title}
+                        >
+                            {item.title}
+                        </button>
+                    ))}
+                </div>
+            )}
             <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                     variant="outline"
@@ -511,6 +564,11 @@ export function GraphCanvas() {
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
+                    setRecentClickedNodes((current) => [
+                        { id: node.id, title: getNodeDisplayTitle(node) },
+                        ...current.filter((item) => item.id !== node.id),
+                    ].slice(0, MAX_RECENT_CLICKED_NODES));
+
                     if (event.shiftKey) {
                         setSelectedNodes(
                             selectedNodeIds.includes(node.id)
@@ -521,16 +579,8 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    setActiveNode(node.id);
                     toggleExpandedNode(node.id);
-                    const nextZoom = reactFlowInstance.getZoom() > 1.1
-                        ? 0.92
-                        : reactFlowInstance.getZoom();
-                    reactFlowInstance.setCenter(
-                        node.position.x + 170,
-                        node.position.y + 90,
-                        { duration: 240, zoom: nextZoom },
-                    );
+                    focusNode(node.id);
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
                     reactFlowInstance.setCenter(
