@@ -6,11 +6,10 @@ terraform {
       version = "~> 6.0"
     }
   }
-  # 本番運用では backend "gcs" を推奨
-  # backend "gcs" {
-  #   bucket = "<YOUR_STATE_BUCKET>"
-  #   prefix = "terraform/action/frontend"
-  # }
+  backend "gcs" {
+    bucket = "action-490203-tfstate"
+    prefix = "terraform/actionact/frontend"
+  }
 }
 
 provider "google" {
