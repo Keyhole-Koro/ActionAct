@@ -1,6 +1,6 @@
 "use client";
 
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 
 import { config } from "@/lib/config";
@@ -15,11 +15,16 @@ export async function ensureLocalWorkspaceAccess(
     return;
   }
 
+  const workspaceRef = doc(firestore, `workspaces/${workspaceId}`);
+  const workspaceSnapshot = await getDoc(workspaceRef);
+  const currentName = workspaceSnapshot.exists() ? workspaceSnapshot.data()?.name : null;
+  const hasName = typeof currentName === "string" && currentName.trim().length > 0;
+
   await setDoc(
-    doc(firestore, `workspaces/${workspaceId}`),
+    workspaceRef,
     {
       workspaceId,
-      name: workspaceId,
+      ...(hasName ? {} : { name: workspaceId }),
       status: "active",
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
