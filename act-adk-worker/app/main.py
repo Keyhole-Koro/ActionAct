@@ -12,7 +12,8 @@ from app.adapter.firestore_assembly import FirestoreAssembly
 from app.adapter.mock_llm import MockLLM
 from app.adapter.gemini_llm import GeminiLLM
 from app.usecase.run_act import RunActUsecase
-from app.handler import run_act_handler
+from app.usecase.resolve_node_candidates import ResolveNodeCandidatesUsecase
+from app.handler import run_act_handler, resolve_node_candidates_handler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,12 +43,15 @@ else:
 
 # Usecase
 usecase = RunActUsecase(assembly=assembly, llm=llm)
+candidate_usecase = ResolveNodeCandidatesUsecase(llm=llm)
 
 # Inject usecase into handler
 run_act_handler.set_usecase(usecase)
+resolve_node_candidates_handler.set_usecase(candidate_usecase)
 
 # Register routes
 app.include_router(run_act_handler.router)
+app.include_router(resolve_node_candidates_handler.router)
 
 
 @app.get("/healthz")

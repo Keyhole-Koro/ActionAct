@@ -21,7 +21,7 @@ type CreateWorkspaceInput = {
   uid: string;
   email?: string | null;
   displayName?: string | null;
-  workspaceName: string;
+  workspaceName?: string;
   topicName?: string;
 };
 
@@ -31,7 +31,7 @@ type CreateWorkspaceResult = {
 };
 
 export async function createWorkspace(input: CreateWorkspaceInput): Promise<CreateWorkspaceResult> {
-  const workspaceId = buildId("ws", input.workspaceName);
+  const workspaceId = "ws-" + crypto.randomUUID();
   const topicLabel = input.topicName?.trim() || "topic-1";
   const topicId = buildId("topic", topicLabel);
 
@@ -41,7 +41,7 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Crea
     doc(firestore, `workspaces/${workspaceId}`),
     {
       workspaceId,
-      name: input.workspaceName.trim(),
+      name: input.workspaceName?.trim() ?? "",
       createdBy: input.uid,
       status: "active",
       createdAt: serverTimestamp(),

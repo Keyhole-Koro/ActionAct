@@ -5,8 +5,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
+import { emitAuthContext } from "@/features/auth/session";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
+import { createWorkspace } from "@/features/workspace/services/create-workspace";
 
 type AuthGateProps = {
   children: ReactNode;
@@ -23,6 +25,39 @@ export function AuthGate({ children }: AuthGateProps) {
       setBootstrapping(false);
       setBootstrapError(null);
       return;
+    }
+
+    // New user: no workspace yet → auto-create one
+    if (!workspaceId) {
+      let cancelled = false;
+      setBootstrapping(true);
+      setBootstrapError(null);
+
+      void (async () => {
+        try {
+          const result = await createWorkspace({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+          });
+          if (cancelled) return;
+          emitAuthContext({ workspaceId: result.workspaceId, topicId: result.topicId });
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("run_context.workspaceId", result.workspaceId);
+            window.localStorage.setItem("run_context.topicId", result.topicId);
+          }
+          // bootstrapping stays true; re-render with new workspaceId will complete bootstrap
+        } catch (nextError) {
+          if (!cancelled) {
+            setBootstrapError(nextError instanceof Error ? nextError.message : String(nextError));
+            setBootstrapping(false);
+          }
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
     }
 
     let cancelled = false;

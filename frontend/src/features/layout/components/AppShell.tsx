@@ -54,8 +54,8 @@ export function AppShell({ children }: AppShellProps) {
         }
 
         if (typeof window !== 'undefined') {
-            window.localStorage.setItem('run_context.workspaceId', nextWorkspaceId);
-            window.localStorage.setItem('run_context.topicId', nextTopicId);
+            if (nextWorkspaceId) window.localStorage.setItem('run_context.workspaceId', nextWorkspaceId);
+            if (nextTopicId) window.localStorage.setItem('run_context.topicId', nextTopicId);
         }
     }, [searchParams, setContext, topicId, workspaceId]);
 

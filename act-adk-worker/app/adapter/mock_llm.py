@@ -17,6 +17,14 @@ class MockLLM:
         bundle: PromptBundle,
         config: LLMConfig,
     ) -> AsyncIterator[LLMChunk]:
+        if "CANDIDATE_SELECTION_JSON" in bundle.system_instruction:
+            yield LLMChunk(
+                text='{"candidates":[{"node_id":"node-1","label":"Node 1","reason":"Closest visible title match."},{"node_id":"node-2","label":"Node 2","reason":"Another nearby visible candidate."}]}',
+                is_thought=False,
+            )
+            yield LLMChunk(text="", is_done=True)
+            return
+
         response_language = detect_response_language(bundle.user_prompt)
         # Simulate a thinking phase
         if config.enable_thinking:

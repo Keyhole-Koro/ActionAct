@@ -9,8 +9,8 @@ interface RunContextState {
 }
 
 export const useRunContextStore = create<RunContextState>((set) => ({
-  workspaceId: 'workspace-1',
-  topicId: 'topic-1',
+  workspaceId: '',
+  topicId: '',
   setWorkspaceId: (workspaceId) => set({ workspaceId }),
   setTopicId: (topicId) => set({ topicId }),
   setContext: (workspaceId, topicId) => set({ workspaceId, topicId }),

@@ -108,6 +108,8 @@ func main() {
 	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
 	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
 	addWorkspaceMemberUC := usecase.NewAddWorkspaceMemberUsecase(authVerifier, workspaceMemberManager)
+	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL)
+	resolveNodeCandidatesUC := usecase.NewResolveNodeCandidatesUsecase(authVerifier, authzVerifier, nodeCandidateResolver)
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)
@@ -121,6 +123,7 @@ func main() {
 	workspaceRenameHandler := handler.NewWorkspaceRenameHandler(renameWorkspaceUC)
 	workspaceMemberSearchHandler := handler.NewWorkspaceMemberSearchHandler(searchWorkspaceUsersUC)
 	workspaceMemberAddHandler := handler.NewWorkspaceMemberAddHandler(addWorkspaceMemberUC)
+	resolveNodeCandidatesHandler := handler.NewResolveNodeCandidatesHandler(resolveNodeCandidatesUC)
 
 	mux := http.NewServeMux()
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
@@ -130,6 +133,7 @@ func main() {
 	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
 	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)
 	mux.Handle("/api/workspace/members/add", workspaceMemberAddHandler)
+	mux.Handle("/api/resolve-node-candidates", resolveNodeCandidatesHandler)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

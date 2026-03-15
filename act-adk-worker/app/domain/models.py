@@ -30,6 +30,26 @@ class RunActInput(BaseModel):
     llm_config: Optional[LLMConfig] = None
 
 
+class CandidateGraphNode(BaseModel):
+    node_id: str
+    title: str
+    content_md: Optional[str] = None
+    selected: bool = False
+    source: Optional[str] = None
+
+
+class CandidateResolutionInput(BaseModel):
+    trace_id: str
+    uid: str
+    topic_id: str
+    workspace_id: str
+    user_message: str
+    active_node_id: Optional[str] = None
+    selected_node_ids: list[str] = Field(default_factory=list)
+    max_candidates: int = 4
+    nodes: list[CandidateGraphNode] = Field(default_factory=list)
+
+
 # ── Internal ──
 
 
@@ -65,6 +85,16 @@ class ErrorInfo(BaseModel):
     stage: str = ""
     trace_id: str = ""
     retry_after_ms: int = 0
+
+
+class CandidateNode(BaseModel):
+    node_id: str
+    label: str
+    reason: Optional[str] = None
+
+
+class CandidateResolutionOutput(BaseModel):
+    candidates: list[CandidateNode] = Field(default_factory=list)
 
 
 class RunActEvent(BaseModel):

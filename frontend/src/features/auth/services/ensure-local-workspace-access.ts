@@ -17,14 +17,15 @@ export async function ensureLocalWorkspaceAccess(
 
   const workspaceRef = doc(firestore, `workspaces/${workspaceId}`);
   const workspaceSnapshot = await getDoc(workspaceRef);
-  const currentName = workspaceSnapshot.exists() ? workspaceSnapshot.data()?.name : null;
-  const hasName = typeof currentName === "string" && currentName.trim().length > 0;
+  const currentName = workspaceSnapshot.exists() ? workspaceSnapshot.data()?.name : undefined;
+  // Only set name if not already present in the document (preserve empty string)
+  const hasName = typeof currentName === "string";
 
   await setDoc(
     workspaceRef,
     {
       workspaceId,
-      ...(hasName ? {} : { name: workspaceId }),
+      ...(hasName ? {} : { name: "" }),
       status: "active",
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),

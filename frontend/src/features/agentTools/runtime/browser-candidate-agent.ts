@@ -1,5 +1,7 @@
 "use client";
 
+import { useRunContextStore } from "@/features/context/store/run-context-store";
+import { resolveNodeCandidates } from "@/features/agentTools/services/node-candidate-service";
 import type { FrontendToolClient } from "@/features/agentTools/runtime/frontend-tool-client";
 
 type TitledNodeCandidate = {
@@ -133,6 +135,38 @@ function extractVisibleCandidates(output: Record<string, unknown>) {
   return { titledNodeIds, selectedNodeIds, activeNodeId };
 }
 
+function extractVisibleGraphNodes(output: Record<string, unknown>) {
+  const nodes = Array.isArray(output.nodes) ? output.nodes : [];
+  return nodes
+    .map((node) => {
+      if (!node || typeof node !== "object") {
+        return null;
+      }
+      const value = node as Record<string, unknown>;
+      const nodeId = typeof value.node_id === "string" ? value.node_id : null;
+      const title = typeof value.title === "string" ? value.title.trim() : "";
+      if (!nodeId || !title || nodeId.startsWith("sg-")) {
+        return null;
+      }
+      return {
+        node_id: nodeId,
+        title,
+        content_md: typeof value.content_md === "string" ? value.content_md : null,
+        selected: value.selected === true,
+        source: typeof value.source === "string" ? value.source : null,
+      };
+    })
+    .filter((
+      node,
+    ): node is {
+      node_id: string;
+      title: string;
+      content_md: string | null;
+      selected: boolean;
+      source: string | null;
+    } => node !== null);
+}
+
 function rankCandidates(
   candidates: TitledNodeCandidate[],
   query: string,
@@ -164,14 +198,50 @@ export async function createClarificationSelectionGroup(
   }
 
   const output = visibleGraph.output as Record<string, unknown>;
+  const visibleGraphNodes = extractVisibleGraphNodes(output);
   const { titledNodeIds, selectedNodeIds, activeNodeId } = extractVisibleCandidates(output);
-  const candidates = rankCandidates(
-    titledNodeIds,
-    params.query,
-    activeNodeId,
-    selectedNodeIds,
-    params.maxCandidates ?? 4,
-  );
+  let candidates: ScoredNodeCandidate[] = [];
+
+  try {
+    const runContext = useRunContextStore.getState();
+    const resolved = await resolveNodeCandidates({
+      workspaceId: runContext.workspaceId,
+      topicId: runContext.topicId,
+      userMessage: params.query,
+      nodes: visibleGraphNodes,
+      activeNodeId,
+      selectedNodeIds,
+      maxCandidates: params.maxCandidates ?? 4,
+    });
+
+    const byId = new Map(
+      titledNodeIds.map((node) => [node.nodeId, node]),
+    );
+    candidates = resolved
+      .map((candidate) => {
+        const matched = byId.get(candidate.node_id);
+        if (!matched) {
+          return null;
+        }
+        return {
+          ...matched,
+          score: 1000,
+          reason: typeof candidate.reason === "string" && candidate.reason.trim()
+            ? candidate.reason.trim()
+            : buildCandidateReason(matched, tokenizeQuery(params.query), activeNodeId, selectedNodeIds),
+        };
+      })
+      .filter((candidate): candidate is ScoredNodeCandidate => candidate !== null);
+  } catch {
+    candidates = rankCandidates(
+      titledNodeIds,
+      params.query,
+      activeNodeId,
+      selectedNodeIds,
+      params.maxCandidates ?? 4,
+    );
+  }
+
   if (candidates.length < 2) {
     return null;
   }

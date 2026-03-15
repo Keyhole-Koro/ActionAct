@@ -28,11 +28,6 @@ export function CreateWorkspaceControl() {
       toast.error("Sign in first");
       return;
     }
-    if (!workspaceName.trim()) {
-      toast.error("Workspace name is required");
-      return;
-    }
-
     setSubmitting(true);
     try {
       const { workspaceId, topicId } = await createWorkspace({
