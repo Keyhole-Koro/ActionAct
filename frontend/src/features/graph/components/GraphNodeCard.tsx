@@ -16,7 +16,7 @@ import {
 
 type CustomNode = Node<{
     label: string;
-    type: string;
+    kind?: string;
     actions?: { label: string, execute: string }[];
     contentMd?: string;
     contextSummary?: string;
@@ -35,7 +35,8 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
     const { startStream, isStreaming } = useActStream();
     const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode } = useGraphStore();
     const { openPanel } = usePanelStore();
-    const cfg = typeConfig[data.type] || typeConfig.default;
+    const nodeKind = data.kind;
+    const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const TypeIcon = cfg.icon;
     const isExpanded = expandedNodeIds.includes(id);
 
@@ -57,7 +58,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
 
             // If it's a newly created act node starting with no previous valid label, 
             // trigger the stream automatically from what user typed!
-            if (data.type === 'act' && !data.label) {
+            if (data.kind === 'act' && !data.label) {
                 // Ensure nodes are selected contextually if needed, but here we just fire it
                 setSelectedNodes([id]);
                 startStream(id, trimmed, { clear: false });
@@ -66,7 +67,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             // Empty label → remove the node
             removeNode(id);
         }
-    }, [id, editValue, updateNodeLabel, removeNode, data.type, data.label, setSelectedNodes, startStream]);
+    }, [id, editValue, updateNodeLabel, removeNode, data.kind, data.label, setSelectedNodes, startStream]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
@@ -112,7 +113,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
 
                 <div className="relative p-4 pb-0 pr-24 flex gap-3">
                     {/* Icon Container with active styling */}
-                    {data.type !== 'act' && (
+                    {data.kind !== 'act' && (
                         <div className="relative shrink-0 mt-0.5 group">
                             <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-10 group-hover:opacity-20 blur-sm transition-opacity duration-300`} />
                             <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background border border-border/50 shadow-sm group-hover:shadow transition-shadow ${cfg.accent}`}>
@@ -123,12 +124,12 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
 
                     <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-center justify-between gap-2 mb-1">
-                            {data.type !== 'act' && (
+                            {nodeKind && nodeKind !== 'act' && (
                                 <Badge
                                     variant="outline"
                                     className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
                                 >
-                                    {data.type}
+                                    {nodeKind}
                                 </Badge>
                             )}
                             {isStreaming && (

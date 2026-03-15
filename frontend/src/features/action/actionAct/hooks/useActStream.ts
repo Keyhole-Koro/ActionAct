@@ -32,7 +32,7 @@ export function useActStream() {
                     }
                     await actDraftService.saveDraftSnapshot(workspaceId, topicId, nodeId, {
                         title: typeof node.data?.label === 'string' ? node.data.label : query,
-                        kind: typeof node.data?.type === 'string' ? node.data.type : 'act',
+                        kind: typeof node.data?.kind === 'string' ? node.data.kind : 'act',
                         contentMd: typeof node.data?.contentMd === 'string' ? node.data.contentMd : '',
                     });
                 }),
@@ -46,7 +46,7 @@ export function useActStream() {
                 touchedNodeIds.add(normalizedNodeId);
 
                 if (patch.type === 'upsert' && patch.data) {
-                    addOrUpdateNode(normalizedNodeId, patch.data.label || 'Unknown', patch.data.type || 'unknown');
+                    addOrUpdateNode(normalizedNodeId, patch.data.label || 'Unknown', patch.data.kind || 'act');
                 } else if (patch.type === 'append_md' && patch.data?.contentMd) {
                     appendContent(normalizedNodeId, patch.data.contentMd);
                 }

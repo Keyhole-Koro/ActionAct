@@ -26,7 +26,7 @@ interface GraphState {
     toggleExpandedNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
 
-    addOrUpdateNode: (nodeId: string, label: string, type: string) => void;
+    addOrUpdateNode: (nodeId: string, label: string, kind: string) => void;
     addEmptyNode: (position: { x: number; y: number }) => string;
     addQueryNode: (position: { x: number; y: number }, initialLabel: string) => string;
     updateNodeLabel: (nodeId: string, label: string) => void;
@@ -36,7 +36,9 @@ interface GraphState {
 
 function sameIds(left: string[], right: string[]) {
     if (left.length !== right.length) return false;
-    return left.every((id, index) => id === right[index]);
+    const leftSorted = [...left].sort();
+    const rightSorted = [...right].sort();
+    return leftSorted.every((id, index) => id === rightSorted[index]);
 }
 
 function preserveNodePositions(previousNodes: Node[], nextNodes: Node[]) {
@@ -91,12 +93,12 @@ export const useGraphStore = create<GraphState>((set) => ({
     })),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
 
-    addOrUpdateNode: (nodeId, label, type) => set((state) => {
+    addOrUpdateNode: (nodeId, label, kind) => set((state) => {
         const exists = state.nodes.find(n => n.id === nodeId);
         if (exists) {
             return {
                 nodes: state.nodes.map(n =>
-                    n.id === nodeId ? { ...n, data: { ...n.data, label, type } } : n
+                    n.id === nodeId ? { ...n, data: { ...n.data, label, kind } } : n
                 )
             };
         }
@@ -105,7 +107,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             id: nodeId,
             type: 'customTask',
             position: { x: 200 + (state.nodes.length * 10), y: 150 + (state.nodes.length * 100) },
-            data: { label, type, contentMd: '' }
+            data: { label, kind, contentMd: '' }
         };
 
         const newEdges = [...state.edges];
@@ -140,7 +142,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: '', type: 'act', contentMd: '', isManualPosition: true }
+                data: { label: '', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             editingNodeId: id,
             activeNodeId: id,
@@ -158,7 +160,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: initialLabel, type: 'act', contentMd: '', isManualPosition: true }
+                data: { label: initialLabel, kind: 'act', contentMd: '', isManualPosition: true }
             }],
             edges: [
                 ...state.edges,

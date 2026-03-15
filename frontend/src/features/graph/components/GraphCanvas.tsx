@@ -133,7 +133,7 @@ export function GraphCanvas() {
                 data: {
                     topicId: n.topicId,
                     label: n.title,
-                    type: n.type,
+                    kind: n.kind,
                     contextSummary: n.contextSummary,
                     detailHtml: n.detailHtml,
                     contentMd: n.contentMd,
@@ -235,21 +235,21 @@ export function GraphCanvas() {
                 id: node.id,
                 source: 'persisted',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
-                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
                 contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
             })),
             ...actNodes.map((node) => ({
                 id: node.id,
                 source: 'act',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
-                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
                 contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
             })),
             ...selectionNodes.map((node) => ({
                 id: node.id,
                 source: 'selection',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
-                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
                 contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
             })),
         ];
@@ -411,15 +411,12 @@ export function GraphCanvas() {
                 edges={displayEdges}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
-                onSelectionChange={({ nodes }: { nodes: Node[] }) => {
-                    setSelectedNodes(nodes.map((n: Node) => n.id));
-                }}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
                     if (event.shiftKey) {
                         setSelectedNodes(
                             selectedNodeIds.includes(node.id)
-                                ? selectedNodeIds.filter((selectedId) => selectedId !== node.id)
-                                : [...selectedNodeIds, node.id],
+                                ? selectedNodeIds.filter((selectedId) => selectedId !== node.id).sort()
+                                : [...selectedNodeIds, node.id].sort(),
                         );
                         setActiveNode(node.id);
                         return;

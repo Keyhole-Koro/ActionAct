@@ -49,7 +49,7 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
       nodeId: op.nodeId,
       data: {
         label: label.length > 0 ? label : "Node",
-        type: "concept",
+        kind: "act",
         contentMd: op.content ?? "",
       },
     };

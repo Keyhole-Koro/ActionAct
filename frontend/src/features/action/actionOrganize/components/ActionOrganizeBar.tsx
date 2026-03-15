@@ -27,7 +27,7 @@ export function ActionOrganizeBar({ workspaceId, topicId, nodeId, currentTitle, 
     };
 
     const handleDelete = async () => {
-        if (confirm('Are you sure you want to delete this root node/concept?')) {
+        if (confirm('Are you sure you want to delete this node?')) {
             await deleteNode(nodeId);
             if (onDeleteSuccess) {
                 onDeleteSuccess();

@@ -44,7 +44,7 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
   return {
     id: nodeId,
     title: readString(data.title) ?? nodeId,
-    type: readString(data.kind) ?? "act",
+    kind: readString(data.kind) ?? "act",
     contentMd: readString(data.contentMd),
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
@@ -96,7 +96,7 @@ export const actDraftService = {
     const payload = {
       nodeId: patch.nodeId,
       title: patch.data?.label ?? queryText,
-      kind: patch.data?.type ?? "act",
+      kind: patch.data?.kind ?? "act",
       contentMd: patch.data?.contentMd ?? "",
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),

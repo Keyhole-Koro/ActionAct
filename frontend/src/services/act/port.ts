@@ -1,7 +1,7 @@
 export interface PatchOp {
     type: 'upsert' | 'append_md' | 'remove';
     nodeId: string;
-    data?: Partial<{ label: string; type: string; contentMd: string; actions: { label: string, execute: string }[] }>;
+    data?: Partial<{ label: string; kind: string; contentMd: string; actions: { label: string, execute: string }[] }>;
 }
 
 export interface StreamResponse {

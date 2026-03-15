@@ -73,7 +73,7 @@ async function mapTopicNode(
     id: nodeId,
     topicId,
     title: readString(data.title) ?? nodeId,
-    type: readString(data.kind) ?? "concept",
+    kind: readString(data.kind),
     parentId: readString(data.parentId),
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
@@ -162,17 +162,16 @@ export const firestoreOrganizeService: OrganizePort = {
     });
   },
 
-  uploadInput: async (workspaceId, topicId, file) => {
+  uploadInput: async (workspaceId, file) => {
     const { getFirebaseIdToken } = await import("@/services/firebase/token");
     const token = await getFirebaseIdToken();
 
     const formData = new FormData();
     formData.append("workspace_id", workspaceId);
-    formData.append("topic_id", topicId);
     formData.append("file", file);
 
-    const apiBase = process.env.NEXT_PUBLIC_ACT_API_URL || "http://localhost:8080";
-    const res = await fetch(`${apiBase}/api/upload`, {
+    const { config } = await import("@/lib/config");
+    const res = await fetch(`${config.actApiBaseUrl}/api/upload`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,

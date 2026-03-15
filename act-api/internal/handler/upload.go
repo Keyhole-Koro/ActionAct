@@ -43,12 +43,6 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Required: topic_id
-	topicID := r.FormValue("topic_id")
-	if topicID == "" {
-		http.Error(w, "topic_id is required", http.StatusBadRequest)
-		return
-	}
 
 	// Required: file
 	file, header, err := r.FormFile("file")
@@ -73,9 +67,9 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract auth header
 	authHeader := r.Header.Get("Authorization")
 
-	result, err := h.uc.Execute(r.Context(), authHeader, workspaceID, topicID, header.Filename, contentType, data)
+	result, err := h.uc.Execute(r.Context(), authHeader, workspaceID, header.Filename, contentType, data)
 	if err != nil {
-		slog.Error("upload execute failed", "err", err, "workspaceId", workspaceID, "topicId", topicID)
+		slog.Error("upload execute failed", "err", err, "workspaceId", workspaceID)
 		http.Error(w, "upload failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
