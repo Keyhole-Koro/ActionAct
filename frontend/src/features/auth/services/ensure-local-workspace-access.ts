@@ -38,6 +38,7 @@ export async function ensureLocalWorkspaceAccess(
       uid: user.uid,
       email: user.email ?? null,
       displayName: user.displayName ?? null,
+      role: "owner",
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
     },

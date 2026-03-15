@@ -105,6 +105,7 @@ export function GraphCanvas() {
         setActiveNode,
         toggleExpandedNode,
         addQueryActNode,
+        addEmptyActNode,
         setPersistedGraph,
         setActGraph,
         editingNodeId,
@@ -404,6 +405,25 @@ export function GraphCanvas() {
         );
     }, [normalizedDisplayNodes, reactFlowInstance, setActiveNode]);
 
+    const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+        const pane = target.closest('.react-flow__pane');
+        const node = target.closest('.react-flow__node');
+        const control = target.closest('button, input, textarea, [role="button"]');
+        if (!pane || node || control) {
+            return;
+        }
+
+        const flowPosition = reactFlowInstance.screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+        });
+        addEmptyActNode(flowPosition);
+    }, [addEmptyActNode, reactFlowInstance]);
+
     // fitView when node positions or counts change, but not on content/selection updates
     const positionSignature = useMemo(
         () => JSON.stringify(normalizedDisplayNodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y)])),
@@ -496,7 +516,7 @@ export function GraphCanvas() {
     }, [handleSelectionTyping]);
 
     return (
-        <div className="relative w-full h-full">
+        <div className="relative w-full h-full" onDoubleClick={handlePaneDoubleClick}>
             {visibleRecentClickedNodes.length > 0 && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(76vw,920px)] overflow-x-auto rounded-xl border border-border/50 bg-background/95 px-3 py-2 shadow-sm backdrop-blur-sm">
                     <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Recent</span>

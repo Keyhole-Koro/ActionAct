@@ -48,7 +48,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
             explicitContextNodeIds: [nodeId],
         });
         if (prepared.status !== 'ready') {
-            setPendingClarification({
+            await setPendingClarification({
                 clarification: prepared.clarification,
                 pendingRun: {
                     targetNodeId: nodeId,
@@ -80,7 +80,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
                 explicitContextNodeIds: [nodeId],
             });
             if (prepared.status !== 'ready') {
-                setPendingClarification({
+                await setPendingClarification({
                     clarification: prepared.clarification,
                     pendingRun: {
                         targetNodeId: nodeId,

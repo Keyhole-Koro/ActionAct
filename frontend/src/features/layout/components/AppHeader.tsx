@@ -5,6 +5,7 @@ import { signOutCurrentUser } from '@/services/firebase/auth';
 import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
+import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
 import { Sparkles, FolderKanban, LogOut, Settings } from 'lucide-react';
 import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
 import {
@@ -54,6 +55,7 @@ export function AppHeader() {
                 {/* Status & User */}
                 <div className="flex items-center gap-4">
                     {!isMock ? <CreateWorkspaceControl /> : null}
+                    {!isMock ? <AddMemberControl workspaceId={workspaceId} /> : null}
                     <UploadButton />
 
                     {isMock && (

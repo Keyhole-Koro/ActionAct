@@ -34,7 +34,7 @@ export function useActStream() {
             explicitContextNodeIds: options?.contextNodeIds,
         });
         if (prepared.status !== 'ready') {
-            setPendingClarification({
+            await setPendingClarification({
                 clarification: prepared.clarification,
                 pendingRun: {
                     targetNodeId: null,

@@ -99,12 +99,15 @@ func main() {
 	}
 	inputRecorder := adapter.NewFirestoreInputRecorder(fsClient)
 	workspaceRenamer := adapter.NewFirestoreWorkspaceRenamer(fsClient)
+	workspaceMemberManager := adapter.NewFirestoreWorkspaceMemberManager(fsClient, authClient)
 	defer inputRecorder.Close()
 
 	// ── Usecase layer ──
 	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 	uploadUC := usecase.NewUploadUsecase(authVerifier, gcsStorage, inputRecorder, pubsubPublisher)
 	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
+	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
+	addWorkspaceMemberUC := usecase.NewAddWorkspaceMemberUsecase(authVerifier, workspaceMemberManager)
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)
@@ -116,6 +119,8 @@ func main() {
 	)
 	uploadHandler := handler.NewUploadHandler(uploadUC)
 	workspaceRenameHandler := handler.NewWorkspaceRenameHandler(renameWorkspaceUC)
+	workspaceMemberSearchHandler := handler.NewWorkspaceMemberSearchHandler(searchWorkspaceUsersUC)
+	workspaceMemberAddHandler := handler.NewWorkspaceMemberAddHandler(addWorkspaceMemberUC)
 
 	mux := http.NewServeMux()
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
@@ -123,6 +128,8 @@ func main() {
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
 	mux.Handle("/api/upload", uploadHandler)
 	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
+	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)
+	mux.Handle("/api/workspace/members/add", workspaceMemberAddHandler)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

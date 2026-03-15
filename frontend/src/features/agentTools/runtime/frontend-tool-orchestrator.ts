@@ -130,7 +130,7 @@ async function resolveContextNodeIds(
     if (needsUiContext) {
       return clarification(
         "TRANSPORT_UNAVAILABLE",
-        "UI context is needed but frontend tool transport is unavailable",
+        "この質問は画面上のノード文脈が必要です。ノードを選んでから試すか、そのまま文脈なしで続けてください。",
         "select_node",
       );
     }
@@ -146,7 +146,7 @@ async function resolveContextNodeIds(
     if (needsUiContext) {
       return clarification(
         "REQUIRED_TOOL_UNAVAILABLE",
-        "UI context tools are unavailable in the current frontend tool server",
+        "この質問に必要なノード文脈を今は取得できません。ノードを選んでから再実行するか、文脈なしで続けてください。",
         "select_node",
       );
     }
@@ -170,7 +170,7 @@ async function resolveContextNodeIds(
   if (needsUiContext) {
     return clarification(
       "MISSING_UI_CONTEXT",
-      "No selected or active node is available for the requested UI-context-dependent act run",
+      "どのノードを見ればよいか分かるように、対象のノードを選んでからもう一度実行してください。",
       "select_node",
     );
   }

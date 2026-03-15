@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { workspaceService, type WorkspaceData } from '@/features/workspace/services/workspace-service';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
+import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
 import { FolderKanban } from 'lucide-react';
 import { config } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
@@ -108,6 +109,7 @@ export function FloatingHeader() {
                     <div className="h-5 w-px bg-border/60 mx-1" />
 
                     {!isMock && <CreateWorkspaceControl />}
+                    {!isMock && <AddMemberControl workspaceId={workspaceId} />}
                 </div>
             </div>
 
