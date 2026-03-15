@@ -10,6 +10,8 @@ export interface StreamResponse {
 
 export interface StreamActOptions {
     enableGrounding?: boolean;
+    anchorNodeId?: string;
+    contextNodeIds?: string[];
 }
 
 export interface ActPort {

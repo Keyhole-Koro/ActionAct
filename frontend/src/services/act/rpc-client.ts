@@ -43,14 +43,11 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
   }
 
   if (op.op === "upsert") {
-    const label = (op.content ?? "").trim();
     return {
       type: "upsert",
       nodeId: op.nodeId,
       data: {
-        label: label.length > 0 ? label : "Node",
         kind: "act",
-        contentMd: op.content ?? "",
       },
     };
   }
@@ -70,11 +67,7 @@ function handleEvent(event: RunActEvent, onPatch: (patch: PatchOp) => void, onDo
   }
 
   if (event.event.case === "textDelta") {
-    onPatch({
-      type: "append_md",
-      nodeId: "root",
-      data: { contentMd: event.event.value.text },
-    });
+    // Spec: text_delta is a transient stream buffer, not canonical node content.
     return;
   }
 
@@ -118,6 +111,8 @@ export function createRpcActService(): ActPort {
               requestId: uuidv4(),
               actType: ActType.EXPLORE,
               userMessage: query,
+              anchorNodeId: options?.anchorNodeId ?? "",
+              contextNodeIds: options?.contextNodeIds ?? [],
               llmConfig: {
                 enableGrounding: options?.enableGrounding ?? false,
               },

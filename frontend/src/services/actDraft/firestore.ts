@@ -97,7 +97,7 @@ export const actDraftService = {
       nodeId: patch.nodeId,
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
-      contentMd: patch.data?.contentMd ?? "",
+      ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),

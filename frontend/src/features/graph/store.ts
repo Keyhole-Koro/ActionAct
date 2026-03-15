@@ -26,7 +26,7 @@ interface GraphState {
     toggleExpandedNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
 
-    addOrUpdateNode: (nodeId: string, label: string, kind: string) => void;
+    addOrUpdateNode: (nodeId: string, payload: { label?: string; kind?: string }) => void;
     addEmptyNode: (position: { x: number; y: number }) => string;
     addQueryNode: (position: { x: number; y: number }, initialLabel: string) => string;
     updateNodeLabel: (nodeId: string, label: string) => void;
@@ -93,12 +93,21 @@ export const useGraphStore = create<GraphState>((set) => ({
     })),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
 
-    addOrUpdateNode: (nodeId, label, kind) => set((state) => {
+    addOrUpdateNode: (nodeId, payload) => set((state) => {
         const exists = state.nodes.find(n => n.id === nodeId);
         if (exists) {
             return {
                 nodes: state.nodes.map(n =>
-                    n.id === nodeId ? { ...n, data: { ...n.data, label, kind } } : n
+                    n.id === nodeId
+                        ? {
+                            ...n,
+                            data: {
+                                ...n.data,
+                                ...(payload.label !== undefined ? { label: payload.label } : {}),
+                                ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                            },
+                        }
+                        : n
                 )
             };
         }
@@ -107,7 +116,11 @@ export const useGraphStore = create<GraphState>((set) => ({
             id: nodeId,
             type: 'customTask',
             position: { x: 200 + (state.nodes.length * 10), y: 150 + (state.nodes.length * 100) },
-            data: { label, kind, contentMd: '' }
+            data: {
+                label: payload.label ?? '',
+                kind: payload.kind ?? 'act',
+                contentMd: '',
+            }
         };
 
         const newEdges = [...state.edges];

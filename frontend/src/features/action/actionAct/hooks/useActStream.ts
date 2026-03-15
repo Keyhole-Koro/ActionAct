@@ -20,6 +20,7 @@ export function useActStream() {
 
     const startStream = useCallback((targetNodeId: string | null, query: string, options?: StreamActOptions & { clear?: boolean }) => {
         setIsStreaming(true);
+        const { selectedNodeIds } = useGraphStore.getState();
         const touchedNodeIds = new Set<string>();
         const persistTouchedNodes = async () => {
             const { nodes } = useGraphStore.getState();
@@ -46,7 +47,17 @@ export function useActStream() {
                 touchedNodeIds.add(normalizedNodeId);
 
                 if (patch.type === 'upsert' && patch.data) {
-                    addOrUpdateNode(normalizedNodeId, patch.data.label || 'Unknown', patch.data.kind || 'act');
+                    const existingNode = useGraphStore.getState().nodes.find((node) => node.id === normalizedNodeId);
+                    addOrUpdateNode(normalizedNodeId, {
+                        label: patch.data.label ?? (
+                            existingNode
+                                ? undefined
+                                : targetNodeId === null
+                                    ? query
+                                    : undefined
+                        ),
+                        kind: patch.data.kind ?? 'act',
+                    });
                 } else if (patch.type === 'append_md' && patch.data?.contentMd) {
                     appendContent(normalizedNodeId, patch.data.contentMd);
                 }
@@ -61,7 +72,11 @@ export function useActStream() {
                 console.error("Stream error:", error);
                 setIsStreaming(false);
             },
-            options,
+            {
+                ...options,
+                anchorNodeId: targetNodeId ?? options?.anchorNodeId,
+                contextNodeIds: options?.contextNodeIds ?? selectedNodeIds,
+            },
         );
 
         return cancel;
