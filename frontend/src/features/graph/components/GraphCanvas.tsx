@@ -313,6 +313,7 @@ export function GraphCanvas() {
                 void commands.commitActNodeLabel(nodeId, label);
             },
             onRunAction: commands.runActFromNode,
+            onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
         }),
         [
             allReferenceableNodes,
@@ -490,6 +491,18 @@ export function GraphCanvas() {
         event.preventDefault();
     }, [addQueryActNode, editingNodeId, regularDisplayNodes, selectedNodeIds]);
 
+    useEffect(() => {
+        const handleFocusNode = (e: Event) => {
+            const customEvent = e as CustomEvent<{ nodeId: string }>;
+            if (customEvent.detail?.nodeId) {
+                toggleExpandedNode(customEvent.detail.nodeId);
+                focusNode(customEvent.detail.nodeId);
+            }
+        };
+        window.addEventListener('action:focus-node', handleFocusNode);
+        return () => window.removeEventListener('action:focus-node', handleFocusNode);
+    }, [focusNode, toggleExpandedNode]);
+
     const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
         reactFlowOnNodesChange(changes);
 
@@ -549,6 +562,14 @@ export function GraphCanvas() {
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
+                    const target = event.target;
+                    if (
+                        target instanceof HTMLElement
+                        && target.closest('button, input, textarea, label, [role="button"], [data-stop-node-click="true"]')
+                    ) {
+                        return;
+                    }
+
                     if (event.shiftKey) {
                         setSelectedNodes(
                             selectedNodeIds.includes(node.id)

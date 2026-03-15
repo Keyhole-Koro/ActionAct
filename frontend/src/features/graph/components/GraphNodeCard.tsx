@@ -10,6 +10,8 @@ import {
     ChevronDown,
     Bot,
     UserRound,
+    FileUp,
+    Loader2,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
 import {
@@ -48,8 +50,11 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const branchExpanded = data.branchExpanded === true;
     const hiddenChildCount = typeof data.hiddenChildCount === 'number' ? data.hiddenChildCount : 0;
     const isEditing = data.isEditing === true;
+    const actStage = data.actStage;
     const [editValue, setEditValue] = useState(data.label);
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const isActNode = data.kind === 'act';
+    const isDraftAct = isActNode && actStage === 'draft';
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
@@ -59,7 +64,17 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const cardMaxWidth = isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH;
     const expandedMaxHeight = isActNode ? GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT : GRAPH_NODE_EXPANDED_MAX_HEIGHT;
     const inputRef = useRef<HTMLInputElement>(null);
+    const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
+    const hasBodyText = Boolean(data.contextSummary || data.contentMd);
+    const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
+    const actStageLabel = actStage === 'thinking'
+        ? 'Thinking'
+        : actStage === 'ready'
+            ? 'Ready'
+            : actStage === 'draft'
+                ? 'Draft'
+                : undefined;
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -87,8 +102,31 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
         }
     }, [commitEdit, data]);
 
+    const handleMediaFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !data.onAddMedia) {
+            return;
+        }
+        setIsUploadingMedia(true);
+        try {
+            await data.onAddMedia(file);
+        } finally {
+            setIsUploadingMedia(false);
+            if (mediaInputRef.current) {
+                mediaInputRef.current.value = '';
+            }
+        }
+    }, [data]);
+
     return (
         <div className="relative group">
+            <input
+                ref={mediaInputRef}
+                type="file"
+                className="hidden"
+                onChange={(event) => void handleMediaFileChange(event)}
+                accept=".txt,.md,.pdf,.html,.csv,.json,.doc,.docx,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.mp4,.mov"
+            />
             {/* Main Card Container */}
             <div
                 style={{
@@ -102,7 +140,9 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
                 border
                 ${isActNode
-                    ? 'rounded-[22px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] backdrop-blur-md shadow-[0_14px_34px_-22px_rgba(15,23,42,0.42)] hover:shadow-[0_18px_40px_-22px_rgba(37,99,235,0.32)]'
+                    ? (isDraftAct
+                        ? 'rounded-[20px] border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.28)] hover:shadow-[0_14px_30px_-18px_rgba(37,99,235,0.2)]'
+                        : 'rounded-[22px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] backdrop-blur-md shadow-[0_14px_34px_-22px_rgba(15,23,42,0.42)] hover:shadow-[0_18px_40px_-22px_rgba(37,99,235,0.32)]')
                     : 'border-border/40 bg-background shadow-md hover:shadow-xl'}
                 ${selected || isExpanded
                     ? (isActNode
@@ -114,8 +154,8 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
             >
                 {/* Subtle top primary line accent */}
                 <div className={`absolute top-0 left-0 right-0 ${isActNode ? 'h-px opacity-70' : 'h-1 opacity-80'} rounded-t-2xl bg-gradient-to-r ${cfg.gradient}`} />
-                {isExpanded && <div className={`absolute inset-y-3 left-0 ${isActNode ? 'w-[3px]' : 'hidden'} rounded-r-full bg-gradient-to-b from-blue-500/75 via-sky-400/55 to-transparent`} />}
-                {isExpanded && <div className={`absolute top-0 right-0 ${isActNode ? 'w-20 h-20 -mr-10 -mt-10 bg-blue-100/50' : 'w-32 h-32 -mr-16 -mt-16 bg-white/5'} rounded-full blur-3xl pointer-events-none`} />}
+                {isExpanded && !isDraftAct && <div className={`absolute inset-y-3 left-0 ${isActNode ? 'w-[3px]' : 'hidden'} rounded-r-full bg-gradient-to-b from-blue-500/75 via-sky-400/55 to-transparent`} />}
+                {isExpanded && !isDraftAct && <div className={`absolute top-0 right-0 ${isActNode ? 'w-20 h-20 -mr-10 -mt-10 bg-blue-100/50' : 'w-32 h-32 -mr-16 -mt-16 bg-white/5'} rounded-full blur-3xl pointer-events-none`} />}
                 <div className={`absolute ${isActNode ? 'right-2.5 top-2.5' : 'right-3 top-3'} z-10`}>
                     <div className="flex items-center gap-2">
                         {hasChildNodes && (
@@ -140,26 +180,39 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 <div
                     className={`relative ${
                         isActNode
-                            ? (hasChildNodes ? `px-3.5 ${isExpanded ? 'pt-3 pb-0' : 'py-2.5'} pr-10` : `px-3.5 ${isExpanded ? 'pt-3 pb-0' : 'py-2.5'}`)
+                            ? (hasChildNodes ? `px-3.5 ${isExpanded ? (isDraftAct ? 'pt-2.5 pb-0' : 'pt-3 pb-0') : 'py-2.5'} pr-10` : `px-3.5 ${isExpanded ? (isDraftAct ? 'pt-2.5 pb-0' : 'pt-3 pb-0') : 'py-2.5'}`)
                             : (hasChildNodes ? `px-3.5 ${isExpanded ? 'pt-3.5 pb-0' : 'py-3'} pr-12` : `px-3.5 ${isExpanded ? 'pt-3.5 pb-0' : 'py-3'}`)
                     }`}
                 >
                     <div className={`flex-1 min-w-0 ${isExpanded ? 'pt-0.5' : 'pt-0'}`}>
                         {showMetaRow && (
                             <div className="mb-1 flex items-center justify-between gap-2">
-                            {isExpanded && createdBy && (
-                                <span
-                                    className={[
-                                        `inline-flex items-center gap-1 rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium`,
-                                        createdBy === 'agent'
-                                            ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                            : 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                                    ].join(' ')}
-                                >
-                                    {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
-                                    {createdBy === 'agent' ? 'AI' : 'You'}
-                                </span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                                {isExpanded && actStageLabel && (
+                                    <span className={`inline-flex items-center rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium ${
+                                        actStage === 'thinking'
+                                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                            : actStage === 'ready'
+                                                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                : 'border-slate-200 bg-slate-50 text-slate-700'
+                                    }`}>
+                                        {actStageLabel}
+                                    </span>
+                                )}
+                                {isExpanded && !isDraftAct && createdBy && (
+                                    <span
+                                        className={[
+                                            `inline-flex items-center gap-1 rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium`,
+                                            createdBy === 'agent'
+                                                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                                        ].join(' ')}
+                                    >
+                                        {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
+                                        {createdBy === 'agent' ? 'AI' : 'You'}
+                                    </span>
+                                )}
+                            </div>
                             {isExpanded && nodeKind && nodeKind !== 'act' && (
                                 <Badge
                                     variant="outline"
@@ -230,10 +283,10 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 </div>
 
                 {isExpanded && (
-                    <div className={`relative border-t ${isActNode ? 'border-slate-200/70 bg-slate-50/60' : 'border-border/20 bg-muted/10'}`}>
+                    <div className={`relative ${isDraftAct && !hasBodyText ? 'bg-transparent' : `border-t ${isActNode ? 'border-slate-200/70 bg-slate-50/60' : 'border-border/20 bg-muted/10'}`}`}>
                         <div
                             style={{ maxHeight: expandedMaxHeight }}
-                            className={`overflow-y-auto ${isActNode ? 'px-3 py-2.5' : 'px-4 py-3'}`}
+                            className={`overflow-y-auto ${isActNode ? (isDraftAct ? 'px-3.5 py-2' : 'px-3 py-2.5') : 'px-4 py-3'}`}
                             onWheel={(event) => {
                                 event.stopPropagation();
                             }}
@@ -250,7 +303,39 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                             ) : null}
 
                             {data.actions && data.actions.length > 0 && (
-                                <div className={`flex flex-wrap gap-2 border-t border-border/20 ${isActNode ? 'mt-3 pt-2.5' : 'mt-4 pt-3'}`}>
+                                <div className={`flex flex-wrap gap-2 ${isDraftAct && !hasBodyText ? 'mt-0 pt-0' : `border-t border-border/20 ${isActNode ? 'mt-3 pt-2.5' : 'mt-4 pt-3'}`}`}>
+                                    {isActNode && actStage === 'draft' && data.onAddMedia && (
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            className={[
+                                                `${isActNode ? 'h-7 text-[11px] px-2.5 rounded-md' : 'h-8 text-xs px-3 rounded-lg'} font-semibold shadow-sm border border-border/50`,
+                                                'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                                'transition-all duration-300 nodrag nopan',
+                                                isUploadingMedia ? 'opacity-60 pointer-events-none' : '',
+                                            ].join(' ')}
+                                            onPointerDown={(e: React.PointerEvent) => {
+                                                e.stopPropagation();
+                                            }}
+                                            onPointerUp={(e: React.PointerEvent) => {
+                                                e.stopPropagation();
+                                            }}
+                                            onMouseDown={(e: React.MouseEvent) => {
+                                                e.stopPropagation();
+                                            }}
+                                            onClick={(e: React.MouseEvent) => {
+                                                e.stopPropagation();
+                                                mediaInputRef.current?.click();
+                                            }}
+                                        >
+                                            {isUploadingMedia ? (
+                                                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                            ) : (
+                                                <FileUp className="w-3.5 h-3.5 mr-1.5" />
+                                            )}
+                                            Add Media
+                                        </Button>
+                                    )}
                                     {data.actions.map((action: { label: string, execute: string }, idx: number) => (
                                         <Button
                                             key={idx}
@@ -271,6 +356,40 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                                             {action.label}
                                         </Button>
                                     ))}
+                                </div>
+                            )}
+                            {isActNode && actStage === 'draft' && data.onAddMedia && (!data.actions || data.actions.length === 0) && (
+                                <div className={`flex flex-wrap gap-2 ${isDraftAct && !hasActionButtons && !hasBodyText ? 'mt-0 pt-0' : `border-t border-border/20 ${isActNode ? 'mt-3 pt-2.5' : 'mt-4 pt-3'}`}`}>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className={[
+                                            `${isActNode ? 'h-7 text-[11px] px-2.5 rounded-md' : 'h-8 text-xs px-3 rounded-lg'} font-semibold shadow-sm border border-border/50`,
+                                            'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                            'transition-all duration-300 nodrag nopan',
+                                            isUploadingMedia ? 'opacity-60 pointer-events-none' : '',
+                                        ].join(' ')}
+                                        onPointerDown={(e: React.PointerEvent) => {
+                                            e.stopPropagation();
+                                        }}
+                                        onPointerUp={(e: React.PointerEvent) => {
+                                            e.stopPropagation();
+                                        }}
+                                        onMouseDown={(e: React.MouseEvent) => {
+                                            e.stopPropagation();
+                                        }}
+                                        onClick={(e: React.MouseEvent) => {
+                                            e.stopPropagation();
+                                            mediaInputRef.current?.click();
+                                        }}
+                                    >
+                                        {isUploadingMedia ? (
+                                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                        ) : (
+                                            <FileUp className="w-3.5 h-3.5 mr-1.5" />
+                                        )}
+                                        Add Media
+                                    </Button>
                                 </div>
                             )}
                         </div>

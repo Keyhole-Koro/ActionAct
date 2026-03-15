@@ -64,7 +64,7 @@ export function UploadButton({ compact = false, className }: UploadButtonProps) 
                 type="file"
                 className="hidden"
                 onChange={(e) => void handleFileChange(e)}
-                accept=".txt,.md,.pdf,.html,.csv,.json,.doc,.docx,.png,.jpg,.jpeg,.webp"
+                accept=".txt,.md,.pdf,.html,.csv,.json,.doc,.docx,.png,.jpg,.jpeg,.webp,.zip"
             />
             <Button
                 type="button"

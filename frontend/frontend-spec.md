@@ -227,6 +227,12 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * persisted tree の親子関係の間に `act-draft-node` / `selection-node` を割り込ませない
 * `act-draft-node` は auxiliary lane に置く
 * `act-draft-node` は `created_by` または同等の frontend metadata を持ってよく、node card 上で `user` / `agent` の作成主体アイコンを表示してよい
+* `act-draft-node` は current MVP で `Draft` / `Thinking` / `Ready` の簡潔な状態ラベルを持ってよい
+* 状態ラベルの意味は以下とする
+  * `Draft`: prompt 送信前の下書き状態
+  * `Thinking`: request 送信後、streaming 中
+  * `Ready`: 最初の応答が返り、内容を読める状態
+* expanded した `act-draft-node` は `Draft` 状態のときに限り `Add Media` control を持ってよく、ここから upload した media は current workspace/topic context へ投入してよい
 * `selection-node` は overlay layer とし、tree layout 入力には含めない
 * `New ACT` は新規 `act-draft-node` を作る主経路とする
 * double click は補助操作であり、node 作成の主経路にしない

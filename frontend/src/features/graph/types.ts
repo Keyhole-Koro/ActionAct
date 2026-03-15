@@ -48,6 +48,7 @@ export type SelectionOptionNodeData = UiSelectionOption & {
 export type GraphNodeBaseData = PersistedNodeData | ActNodeData;
 
 export type GraphNodeRenderData = GraphNodeBaseData & {
+    actStage?: 'draft' | 'thinking' | 'ready';
     referencedNodes?: ReferencedNodeView[];
     hasChildNodes?: boolean;
     branchExpanded?: boolean;

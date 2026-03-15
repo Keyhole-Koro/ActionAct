@@ -234,10 +234,19 @@ export function buildDisplayNodes({
         const referencedNodeIds = Array.isArray(mergedNodeData.referencedNodeIds)
             ? mergedNodeData.referencedNodeIds.filter((value): value is string => typeof value === 'string')
             : [];
+        const hasResolvedActContent = [
+            mergedNodeData.contentMd,
+            mergedNodeData.contextSummary,
+            mergedNodeData.detailHtml,
+        ].some((value) => typeof value === 'string' && value.trim().length > 0);
+        const actStage = mergedNodeData.kind === 'act'
+            ? (isNodeStreaming(node.id) ? 'thinking' : (hasResolvedActContent ? 'ready' : 'draft'))
+            : undefined;
 
         const renderData: GraphNodeRenderData = {
             ...(mergedNode.data as GraphNodeRenderData),
             ...(manualNodeIdSet.has(node.id) ? { isManualPosition: true } : {}),
+            actStage,
             referencedNodes: resolveReferencedNodes(referencedNodeIds, allReferenceableNodes),
             hasChildNodes,
             branchExpanded: expandedBranchSet.has(node.id),

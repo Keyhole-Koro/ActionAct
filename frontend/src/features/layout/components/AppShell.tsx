@@ -91,14 +91,15 @@ export function AppShell({ children }: AppShellProps) {
                     <main className="flex-1 relative flex flex-col min-w-0 bg-muted/20">
                         {/* Top-Left Floating Controls */}
                         <FloatingHeader />
+                        <div className="absolute top-20 left-4 z-20 pointer-events-none flex flex-col gap-2">
+                            <UploadProgressList />
+                        </div>
 
                         <div className="flex-1 h-full w-full relative">
                             {children}
                             <AskForm />
                         </div>
                     </main>
-
-                    <UploadProgressList />
                 </div>
             </AuthGate>
         </div>
