@@ -16,6 +16,8 @@ interface GraphState {
     expandedNodeIds: string[];
     activeNodeId: string | null;
     editingNodeId: string | null;
+    isStreaming: boolean;
+    streamingNodeIds: string[];
 
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
@@ -25,8 +27,11 @@ interface GraphState {
     setActiveNode: (id: string | null) => void;
     toggleExpandedNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
+    setStreamRunning: (value: boolean) => void;
+    addStreamingNode: (nodeId: string) => void;
+    clearStreamingNodes: (nodeIds?: string[]) => void;
 
-    addOrUpdateNode: (nodeId: string, payload: { label?: string; kind?: string }) => void;
+    addOrUpdateNode: (nodeId: string, payload: { label?: string; kind?: string; referencedNodeIds?: string[] }) => void;
     addEmptyNode: (position: { x: number; y: number }) => string;
     addQueryNode: (position: { x: number; y: number }, initialLabel: string) => string;
     updateNodeLabel: (nodeId: string, label: string) => void;
@@ -68,6 +73,8 @@ export const useGraphStore = create<GraphState>((set) => ({
     expandedNodeIds: [],
     activeNodeId: null,
     editingNodeId: null,
+    isStreaming: false,
+    streamingNodeIds: [],
 
     setSelectedNodes: (ids) => set((state) => (
         sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
@@ -92,6 +99,21 @@ export const useGraphStore = create<GraphState>((set) => ({
             : [...state.expandedNodeIds, id],
     })),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
+    setStreamRunning: (value: boolean) => set({ isStreaming: value }),
+    addStreamingNode: (nodeId: string) => set((state) => (
+        state.streamingNodeIds.includes(nodeId)
+            ? state
+            : { streamingNodeIds: [...state.streamingNodeIds, nodeId] }
+    )),
+    clearStreamingNodes: (nodeIds?: string[]) => set((state) => {
+        if (!nodeIds || nodeIds.length === 0) {
+            return { streamingNodeIds: [] };
+        }
+        const toClear = new Set(nodeIds);
+        return {
+            streamingNodeIds: state.streamingNodeIds.filter((nodeId) => !toClear.has(nodeId)),
+        };
+    }),
 
     addOrUpdateNode: (nodeId, payload) => set((state) => {
         const exists = state.nodes.find(n => n.id === nodeId);
@@ -105,6 +127,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...n.data,
                                 ...(payload.label !== undefined ? { label: payload.label } : {}),
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                                ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                             },
                         }
                         : n
@@ -119,6 +142,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             data: {
                 label: payload.label ?? '',
                 kind: payload.kind ?? 'act',
+                referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',
             }
         };

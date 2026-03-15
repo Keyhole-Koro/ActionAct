@@ -21,6 +21,11 @@ export const useAgentInteractionStore = create<AgentInteractionState>((set) => (
     createGroup: (group) => set((state) => {
         const now = Date.now();
         const expiresAt = group.expires_in_ms ? now + group.expires_in_ms : null;
+        if (group.expires_in_ms) {
+            window.setTimeout(() => {
+                useAgentInteractionStore.getState().expireGroup(group.selection_group_id);
+            }, group.expires_in_ms);
+        }
 
         return {
             groups: {

@@ -11,6 +11,7 @@ export interface TopicNode {
     title: string;
     kind?: string;
     parentId?: string;
+    referencedNodeIds?: string[];
 
     // Detailed fields (often populated by A7 summary agent)
     contextSummary?: string;

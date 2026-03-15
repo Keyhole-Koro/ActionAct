@@ -7,11 +7,12 @@ import { Input } from '@/components/ui/input';
 import { SendHorizonal, Loader2 } from 'lucide-react';
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 
 export function AskForm() {
     const [query, setQuery] = useState('');
-    const [enableGrounding, setEnableGrounding] = useState(false);
     const { workspaceId, topicId, setContext } = useRunContextStore();
+    const { useWebGrounding, setPreferences } = useStreamPreferencesStore();
     const workspaceInputRef = useRef<HTMLInputElement>(null);
     const { isStreaming, startStream } = useActStream();
     const router = useRouter();
@@ -36,7 +37,7 @@ export function AskForm() {
         e?.preventDefault();
         if (!query.trim() || isStreaming) return;
 
-        startStream(null, query, { enableGrounding });
+        startStream(null, query, { enableGrounding: useWebGrounding });
         setQuery(''); // clear after submit
     };
 
@@ -65,8 +66,8 @@ export function AskForm() {
                 <label className="flex items-center gap-2 px-2 text-xs text-muted-foreground whitespace-nowrap">
                     <input
                         type="checkbox"
-                        checked={enableGrounding}
-                        onChange={(e) => setEnableGrounding(e.target.checked)}
+                        checked={useWebGrounding}
+                        onChange={(e) => setPreferences({ useWebGrounding: e.target.checked })}
                         disabled={isStreaming}
                     />
                     Web

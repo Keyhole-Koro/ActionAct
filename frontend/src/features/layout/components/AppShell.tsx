@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { AskForm } from '@/components/ui/AskForm';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { emitAuthContext } from '@/features/auth/session';
+import { FrontendToolBridge } from '@/features/agentTools/components/FrontendToolBridge';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -89,6 +90,7 @@ export function AppShell({ children }: AppShellProps) {
 
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
+            <FrontendToolBridge />
             <AppHeader />
             <AuthGate>
                 <div className="flex-1 flex overflow-hidden relative">

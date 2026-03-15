@@ -20,6 +20,7 @@ type CustomNode = Node<{
     actions?: { label: string, execute: string }[];
     contentMd?: string;
     contextSummary?: string;
+    referencedNodeIds?: string[];
 }, 'customTask'>;
 
 const typeConfig: Record<string, { icon: React.ElementType; gradient: string; accent: string; glow: string }> = {
@@ -32,13 +33,25 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
 };
 
 export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
-    const { startStream, isStreaming } = useActStream();
-    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode } = useGraphStore();
+    const { startStream } = useActStream();
+    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode, streamingNodeIds } = useGraphStore();
     const { openPanel } = usePanelStore();
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const TypeIcon = cfg.icon;
     const isExpanded = expandedNodeIds.includes(id);
+    const isNodeStreaming = streamingNodeIds.includes(id);
+    const referencedNodeIds = Array.isArray(data.referencedNodeIds)
+        ? data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+        : [];
+    const allNodes = useGraphStore((state) => [...state.persistedNodes, ...state.nodes]);
+    const referencedNodes = referencedNodeIds.map((nodeId) => {
+        const matched = allNodes.find((node) => node.id === nodeId);
+        const label = typeof matched?.data?.label === 'string' && matched.data.label.trim()
+            ? matched.data.label
+            : nodeId;
+        return { id: nodeId, label };
+    });
 
     const isEditing = editingNodeId === id;
     const [editValue, setEditValue] = useState(data.label);
@@ -89,7 +102,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 bg-background border border-border/40
                 shadow-md hover:shadow-xl
                 ${selected || isExpanded ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
-                ${isStreaming ? 'animate-pulse-subtle' : ''}
+                ${isNodeStreaming ? 'animate-pulse-subtle' : ''}
             `}
             >
                 {/* Subtle top primary line accent */}
@@ -132,7 +145,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                     {nodeKind}
                                 </Badge>
                             )}
-                            {isStreaming && (
+                            {isNodeStreaming && (
                                 <span className="flex h-2 w-2 ml-auto">
                                     <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -156,6 +169,32 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                             >
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
+                        )}
+                        {referencedNodes.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                                    Referenced From
+                                </span>
+                                {referencedNodes.slice(0, 3).map((node) => (
+                                    <button
+                                        key={node.id}
+                                        type="button"
+                                        className="rounded-full border border-border/60 bg-muted/50 px-2 py-0.5 text-[11px] text-foreground/80 transition-colors hover:bg-muted"
+                                        onClick={(event: React.MouseEvent) => {
+                                            event.stopPropagation();
+                                            setActiveNode(node.id);
+                                            openPanel('node-detail', node.id);
+                                        }}
+                                    >
+                                        {node.label}
+                                    </button>
+                                ))}
+                                {referencedNodes.length > 3 && (
+                                    <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground">
+                                        +{referencedNodes.length - 3}
+                                    </span>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -200,7 +239,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                                 'h-8 text-xs px-3 rounded-lg font-semibold shadow-sm border border-border/50',
                                                 'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
                                                 'transition-all duration-300 group/btn',
-                                                isStreaming ? 'opacity-50 pointer-events-none' : '',
+                                                isNodeStreaming ? 'opacity-50 pointer-events-none' : '',
                                             ].join(' ')}
                                             onClick={(e: React.MouseEvent) => {
                                                 e.stopPropagation();
@@ -230,7 +269,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                     'h-8 text-xs px-3 rounded-lg font-semibold shadow-sm border border-border/50',
                                     'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
                                     'transition-all duration-300 group/btn',
-                                    isStreaming ? 'opacity-50 pointer-events-none' : '',
+                                    isNodeStreaming ? 'opacity-50 pointer-events-none' : '',
                                 ].join(' ')}
                                 onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
@@ -246,7 +285,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 )}
 
                 {/* Streaming Progress Bar */}
-                {isStreaming && (
+                {isNodeStreaming && (
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30 overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-primary/40 via-primary to-primary/40 animate-[shimmer_1.5s_infinite] w-[200%] -ml-[50%]" />
                     </div>

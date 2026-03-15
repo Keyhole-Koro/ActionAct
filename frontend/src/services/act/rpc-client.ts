@@ -13,6 +13,18 @@ function getBaseUrl(): string {
   return config.rpcBaseUrl;
 }
 
+function mapActType(actType: StreamActOptions["actType"]): ActType {
+  switch (actType) {
+    case "consult":
+      return ActType.CONSULT;
+    case "investigate":
+      return ActType.INVESTIGATE;
+    case "explore":
+    default:
+      return ActType.EXPLORE;
+  }
+}
+
 async function buildHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {};
 
@@ -102,19 +114,22 @@ export function createRpcActService(): ActPort {
 
       void (async () => {
         try {
-          const { workspaceId, topicId } = useRunContextStore.getState();
+          const runContext = useRunContextStore.getState();
+          const workspaceId = options?.workspaceId ?? runContext.workspaceId;
+          const topicId = options?.topicId ?? runContext.topicId;
           const headers = await buildHeaders();
           const response = client.runAct(
             {
               topicId,
               workspaceId,
-              requestId: uuidv4(),
-              actType: ActType.EXPLORE,
+              requestId: options?.requestId ?? uuidv4(),
+              actType: mapActType(options?.actType),
               userMessage: query,
               anchorNodeId: options?.anchorNodeId ?? "",
               contextNodeIds: options?.contextNodeIds ?? [],
               llmConfig: {
                 enableGrounding: options?.enableGrounding ?? false,
+                enableThinking: options?.includeThoughts ?? false,
               },
             },
             {
