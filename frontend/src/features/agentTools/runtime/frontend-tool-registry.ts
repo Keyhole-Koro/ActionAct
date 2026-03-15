@@ -8,6 +8,7 @@ import { toSelectionFlow } from "@/features/graph/selectors/toSelectionFlow";
 import { mergeTreeWithActNodes, projectPersistedTree } from "@/features/graph/selectors/projectGraph";
 import { useGraphStore } from "@/features/graph/store";
 import { startActRun } from "@/features/agentTools/runtime/act-runner";
+import { prepareAnchoredActRun, prepareSubmitAskRun } from "@/features/agentTools/runtime/frontend-tool-orchestrator";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
 import type { GraphNodeBase } from "@/features/graph/types";
 
@@ -557,32 +558,54 @@ const toolDefinitions: ToolDefinition[] = [
     output_schema: {
       type: "object",
       properties: {
-        request_id: { type: "string" },
+        request_id: { type: ["string", "null"] },
         accepted: { type: "boolean" },
-        stream_state: { type: "string", enum: ["running", "error"] },
+        stream_state: { type: ["string", "null"], enum: ["running", "error", null] },
+        clarification: {
+          type: ["object", "null"],
+          properties: {
+            code: { type: "string" },
+            message: { type: "string" },
+            suggested_action: { type: "string", enum: ["select_node", "retry_without_context", "none"] },
+          },
+          required: ["code", "message", "suggested_action"],
+          additionalProperties: false,
+        },
       },
-      required: ["request_id", "accepted", "stream_state"],
+      required: ["request_id", "accepted", "stream_state", "clarification"],
       additionalProperties: false,
     },
-    invoke(input) {
+    async invoke(input) {
       const parsed = requireObject(input);
       rejectUnknownKeys(parsed, ["user_message", "act_type", "topic_id", "workspace_id", "tree_id", "context_node_ids", "llm_config", "grounding_config", "thinking_config", "research_config"]);
       const query = requiredString(parsed, "user_message");
       const actType = requiredString(parsed, "act_type") as "explore" | "consult" | "investigate";
       const workspaceId = requiredString(parsed, "workspace_id");
       const topicId = requiredString(parsed, "topic_id");
-      const contextNodeIds = optionalStringArray(parsed, "context_node_ids") ?? [];
-      if (contextNodeIds.length > 0) {
-        ensureNodesExist(contextNodeIds);
+      const explicitContextNodeIds = optionalStringArray(parsed, "context_node_ids") ?? [];
+      if (explicitContextNodeIds.length > 0) {
+        ensureNodesExist(explicitContextNodeIds);
+      }
+      const prepared = await prepareSubmitAskRun(localFrontendToolClient, {
+        userMessage: query,
+        explicitContextNodeIds,
+      });
+      if (prepared.status !== "ready") {
+        return {
+          request_id: null,
+          accepted: false,
+          stream_state: null,
+          clarification: prepared.clarification,
+        };
       }
       const { requestId } = startActRun({
         targetNodeId: null,
         query,
         workspaceId,
         topicId,
-        options: { actType, contextNodeIds },
+        options: { actType, contextNodeIds: prepared.contextNodeIds },
       });
-      return { request_id: requestId, accepted: true, stream_state: "running" };
+      return { request_id: requestId, accepted: true, stream_state: "running", clarification: null };
     },
   },
   {
@@ -602,30 +625,61 @@ const toolDefinitions: ToolDefinition[] = [
     output_schema: {
       type: "object",
       properties: {
-        request_id: { type: "string" },
+        request_id: { type: ["string", "null"] },
         accepted: { type: "boolean" },
         anchor_node_id: { type: "string" },
+        stream_state: { type: ["string", "null"], enum: ["running", "error", null] },
+        clarification: {
+          type: ["object", "null"],
+          properties: {
+            code: { type: "string" },
+            message: { type: "string" },
+            suggested_action: { type: "string", enum: ["select_node", "retry_without_context", "none"] },
+          },
+          required: ["code", "message", "suggested_action"],
+          additionalProperties: false,
+        },
       },
-      required: ["request_id", "accepted", "anchor_node_id"],
+      required: ["request_id", "accepted", "anchor_node_id", "stream_state", "clarification"],
       additionalProperties: false,
     },
-    invoke(input) {
+    async invoke(input) {
       const parsed = requireObject(input);
       rejectUnknownKeys(parsed, ["anchor_node_id", "user_message", "context_node_ids", "act_type", "llm_config", "grounding_config", "thinking_config", "research_config"]);
       const anchorNodeId = requiredString(parsed, "anchor_node_id");
       ensureNodesExist([anchorNodeId]);
       const query = requiredString(parsed, "user_message");
       const actType = requiredString(parsed, "act_type") as "explore" | "consult" | "investigate";
-      const contextNodeIds = optionalStringArray(parsed, "context_node_ids") ?? [];
-      if (contextNodeIds.length > 0) {
-        ensureNodesExist(contextNodeIds);
+      const explicitContextNodeIds = optionalStringArray(parsed, "context_node_ids") ?? [];
+      if (explicitContextNodeIds.length > 0) {
+        ensureNodesExist(explicitContextNodeIds);
+      }
+      const prepared = await prepareAnchoredActRun(localFrontendToolClient, {
+        anchorNodeId,
+        userMessage: query,
+        explicitContextNodeIds,
+      });
+      if (prepared.status !== "ready") {
+        return {
+          request_id: null,
+          accepted: false,
+          anchor_node_id: anchorNodeId,
+          stream_state: null,
+          clarification: prepared.clarification,
+        };
       }
       const { requestId } = startActRun({
         targetNodeId: anchorNodeId,
         query,
-        options: { actType, contextNodeIds },
+        options: { actType, contextNodeIds: prepared.contextNodeIds },
       });
-      return { request_id: requestId, accepted: true, anchor_node_id: anchorNodeId };
+      return {
+        request_id: requestId,
+        accepted: true,
+        anchor_node_id: anchorNodeId,
+        stream_state: "running",
+        clarification: null,
+      };
     },
   },
   {
@@ -721,6 +775,12 @@ const toolDefinitions: ToolDefinition[] = [
 ];
 
 const toolMap = new Map(toolDefinitions.map((tool) => [tool.name, tool]));
+
+const localFrontendToolClient = {
+  available: () => true,
+  listTools: () => frontendToolServer.listTools(),
+  invokeTool: (name: string, input: unknown) => frontendToolServer.invokeTool(name, input),
+};
 
 export const frontendToolServer = {
   server_name: "action-frontend-tools",
