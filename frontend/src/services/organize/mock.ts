@@ -1,4 +1,4 @@
-import { OrganizePort, TopicNode } from './port';
+import type { OrganizePort, TopicNode, InputProgressStatus } from "./port";
 
 // Internal mock state
 let mockNodes: TopicNode[] = [
@@ -47,7 +47,48 @@ export const mockOrganizeService: OrganizePort = {
         };
     },
 
-    renameNode: async (workspaceId, topicId, nodeId, newTitle) => {
+    subscribeInputProgress: (_workspaceId, topicId, inputId, callback) => {
+        let isSubscribed = true;
+        const phases: InputProgressStatus[] = [
+            "uploaded",
+            "extracting",
+            "atomizing",
+            "resolving_topic",
+            "updating_draft",
+            "completed"
+        ];
+
+        // Return null initially
+        callback(null);
+
+        let phaseIndex = 0;
+
+        const advancePhase = () => {
+            if (!isSubscribed) return;
+            if (phaseIndex >= phases.length) return;
+
+            callback({
+                inputId,
+                topicId,
+                workspaceId: _workspaceId,
+                status: phases[phaseIndex],
+            });
+
+            phaseIndex++;
+            if (phaseIndex < phases.length) {
+                setTimeout(advancePhase, 2000);
+            }
+        };
+
+        // Start simulation after short delay
+        setTimeout(advancePhase, 500);
+
+        return () => {
+            isSubscribed = false;
+        };
+    },
+
+    renameNode: async (_workspaceId, _topicId, nodeId, newTitle) => {
         await new Promise(resolve => setTimeout(resolve, 300)); // fake network
         mockNodes = mockNodes.map(n => n.id === nodeId ? { ...n, title: newTitle } : n);
         notifySubscribers();

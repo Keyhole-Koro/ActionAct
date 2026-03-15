@@ -71,8 +71,8 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
 
   const touchedNodeIds = new Set<string>();
   const persistTouchedNodes = async () => {
-    const { nodes } = useGraphStore.getState();
-    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    const { actNodes } = useGraphStore.getState();
+    const nodesById = new Map(actNodes.map((node) => [node.id, node]));
     await Promise.all(
       [...touchedNodeIds].map(async (nodeId) => {
         const node = nodesById.get(nodeId);
@@ -99,8 +99,8 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       useGraphStore.getState().addStreamingNode(normalizedNodeId);
 
       if (patch.type === "upsert" && patch.data) {
-        const existingNode = useGraphStore.getState().nodes.find((node) => node.id === normalizedNodeId);
-        useGraphStore.getState().addOrUpdateNode(normalizedNodeId, {
+        const existingNode = useGraphStore.getState().actNodes.find((node) => node.id === normalizedNodeId);
+        useGraphStore.getState().addOrUpdateActNode(normalizedNodeId, {
           label:
             patch.data.label ??
             (existingNode ? undefined : targetNodeId === null ? query : undefined),
@@ -115,7 +115,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       }
 
       if (patch.type === "append_md" && patch.data?.contentMd) {
-        useGraphStore.getState().appendContent(normalizedNodeId, patch.data.contentMd);
+        useGraphStore.getState().appendActNodeContent(normalizedNodeId, patch.data.contentMd);
       }
     },
     async () => {

@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { firestore } from "@/services/firebase/firestore";
-import type { EvidenceRef, OrganizePort, TopicNode } from "./port";
+import type { EvidenceRef, InputProgress, InputProgressStatus, OrganizePort, TopicNode } from "./port";
 
 function topicsCollection(workspaceId: string) {
   return collection(firestore, `workspaces/${workspaceId}/topics`);
@@ -23,6 +23,10 @@ function topicNodesCollection(workspaceId: string, topicId: string) {
 
 function topicNodeDoc(workspaceId: string, topicId: string, nodeId: string) {
   return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/nodes/${nodeId}`);
+}
+
+function inputProgressDoc(workspaceId: string, topicId: string, inputId: string) {
+  return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/inputProgress/${inputId}`);
 }
 
 function evidenceCollection(workspaceId: string, topicId: string, nodeId: string) {
@@ -88,6 +92,31 @@ function flattenTopicNodes(topicNodesByTopic: Map<string, TopicNode[]>): TopicNo
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
+function readInputProgress(
+  workspaceId: string,
+  topicId: string,
+  inputId: string,
+  data: Record<string, unknown> | undefined,
+): InputProgress | null {
+  if (!data) {
+    return null;
+  }
+
+  const status = readString(data.status) as InputProgressStatus | undefined;
+  if (!status) {
+    return null;
+  }
+
+  return {
+    inputId: readString(data.inputId) ?? inputId,
+    topicId: readString(data.topicId) ?? topicId,
+    workspaceId: readString(data.workspaceId) ?? workspaceId,
+    status,
+    currentPhase: readString(data.currentPhase),
+    lastEventType: readString(data.lastEventType),
+  };
+}
+
 export const firestoreOrganizeService: OrganizePort = {
   subscribeTree: (workspaceId, _topicId, callback) => {
     const topicNodesByTopic = new Map<string, TopicNode[]>();
@@ -145,6 +174,18 @@ export const firestoreOrganizeService: OrganizePort = {
       }
     };
   },
+
+  subscribeInputProgress: (workspaceId, topicId, inputId, callback) => onSnapshot(
+    inputProgressDoc(workspaceId, topicId, inputId),
+    (snapshot) => {
+      callback(readInputProgress(
+        workspaceId,
+        topicId,
+        inputId,
+        snapshot.exists() ? snapshot.data() as Record<string, unknown> : undefined,
+      ));
+    },
+  ),
 
   renameNode: async (workspaceId, topicId, nodeId, newTitle) => {
     await updateDoc(topicNodeDoc(workspaceId, topicId, nodeId), {

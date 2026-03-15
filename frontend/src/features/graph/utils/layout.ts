@@ -66,7 +66,7 @@ function overlaps(left: Node, right: Node) {
     );
 }
 
-function resolveOverlaps(nodes: Node[], movableNodeIds: Set<string>) {
+function resolveOverlaps(nodes: Node[], movableNodeIds: Set<string>, direction: 'TB' | 'LR') {
     const resolvedNodes = [...nodes].sort((left, right) => {
         if (left.position.y !== right.position.y) {
             return left.position.y - right.position.y;
@@ -87,6 +87,14 @@ function resolveOverlaps(nodes: Node[], movableNodeIds: Set<string>) {
                 continue;
             }
 
+            if (direction === 'LR') {
+                currentNode.position = {
+                    x: currentNode.position.x,
+                    y: comparedNode.position.y + getNodeDimensions(comparedNode).height + nodePaddingY,
+                };
+                continue;
+            }
+
             currentNode.position = {
                 x: comparedNode.position.x + getNodeDimensions(comparedNode).width + nodePaddingX,
                 y: currentNode.position.y,
@@ -100,7 +108,7 @@ function resolveOverlaps(nodes: Node[], movableNodeIds: Set<string>) {
 export async function getLayoutedElements(
     nodes: Node[],
     edges: Edge[],
-    direction = 'TB',
+    direction: 'TB' | 'LR' = 'TB',
     previousLayout?: PreviousLayout,
 ): Promise<{ nodes: Node[], edges: Edge[] }> {
     const isHorizontal = direction === 'LR';
@@ -112,8 +120,9 @@ export async function getLayoutedElements(
         layoutOptions: {
             'elk.algorithm': 'layered',
             'elk.direction': direction === 'TB' ? 'DOWN' : 'RIGHT',
-            'elk.layered.spacing.nodeNodeBetweenLayers': '60',
-            'elk.spacing.nodeNode': '40',
+            'elk.layered.spacing.nodeNodeBetweenLayers': direction === 'LR' ? '140' : '60',
+            'elk.spacing.nodeNode': direction === 'LR' ? '72' : '40',
+            'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
         },
         children: nodes.map((node) => {
             const dimensions = getNodeDimensions(node);
@@ -159,7 +168,7 @@ export async function getLayoutedElements(
             };
         });
 
-        return { nodes: resolveOverlaps(newNodes, movableNodeIds), edges };
+        return { nodes: resolveOverlaps(newNodes, movableNodeIds, direction), edges };
     } catch (e) {
         console.error("ELK layout failed", e);
         return { nodes, edges };

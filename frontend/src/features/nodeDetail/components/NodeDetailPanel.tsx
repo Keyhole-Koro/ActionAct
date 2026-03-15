@@ -13,7 +13,7 @@ import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useGraphStore } from '@/features/graph/store';
 
 export function NodeDetailPanel() {
-    const { activeNodeId, persistedNodes, nodes, setActiveNode } = useGraphStore();
+    const { activeNodeId, persistedNodes, actNodes, setActiveNode } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
 
     if (!activeNodeId) {
@@ -24,7 +24,7 @@ export function NodeDetailPanel() {
         );
     }
 
-    const activeNode = [...persistedNodes, ...nodes].find((n: Node) => n.id === activeNodeId);
+    const activeNode = [...persistedNodes, ...actNodes].find((n: Node) => n.id === activeNodeId);
 
     if (!activeNode) {
         return (

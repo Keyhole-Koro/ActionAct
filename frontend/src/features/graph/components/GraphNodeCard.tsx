@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,26 +19,12 @@ import {
     Boxes,
     Quote,
 } from 'lucide-react';
-import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
-import { useGraphStore } from '@/features/graph/store';
-import { usePanelStore } from '@/features/layout/store/panel-store';
+import type { GraphNodeRender } from '@/features/graph/types';
 import {
     GRAPH_NODE_COLLAPSED_WIDTH,
     GRAPH_NODE_EXPANDED_MAX_HEIGHT,
     GRAPH_NODE_EXPANDED_WIDTH,
 } from '../constants/nodeDimensions';
-
-type CustomNode = Node<{
-    label: string;
-    kind?: string;
-    actions?: { label: string, execute: string }[];
-    contentMd?: string;
-    contextSummary?: string;
-    referencedNodeIds?: string[];
-    hasChildNodes?: boolean;
-    branchExpanded?: boolean;
-    hiddenChildCount?: number;
-}, 'customTask'>;
 
 const typeConfig: Record<string, { icon: React.ElementType; gradient: string; accent: string; glow: string }> = {
     explore: { icon: Search, gradient: 'from-violet-500/10 via-indigo-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
@@ -53,34 +39,19 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
     default: { icon: Sparkles, gradient: 'from-slate-500/10 via-slate-400/5 to-transparent', accent: 'text-slate-500', glow: 'shadow-slate-500/20' },
 };
 
-export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
-    const { startStream } = useActStream();
-    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode, streamingNodeIds, toggleExpandedBranchNode } = useGraphStore();
-    const { openPanel } = usePanelStore();
+export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<GraphNodeRender>) {
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const TypeIcon = cfg.icon;
     const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
-    const isExpanded = expandedNodeIds.includes(id);
-    const isNodeStreaming = streamingNodeIds.includes(id);
-    const referencedNodeIds = Array.isArray(data.referencedNodeIds)
-        ? data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
-        : [];
-    const persistedNodes = useGraphStore((state) => state.persistedNodes);
-    const draftNodes = useGraphStore((state) => state.nodes);
-    const allNodes = [...persistedNodes, ...draftNodes];
-    const referencedNodes = referencedNodeIds.map((nodeId) => {
-        const matched = allNodes.find((node) => node.id === nodeId);
-        const label = typeof matched?.data?.label === 'string' && matched.data.label.trim()
-            ? matched.data.label
-            : nodeId;
-        return { id: nodeId, label };
-    });
+    const isExpanded = data.isExpanded === true;
+    const isNodeStreaming = data.isStreaming === true;
+    const referencedNodes = Array.isArray(data.referencedNodes) ? data.referencedNodes : [];
     const hasChildNodes = data.hasChildNodes === true;
     const branchExpanded = data.branchExpanded === true;
     const hiddenChildCount = typeof data.hiddenChildCount === 'number' ? data.hiddenChildCount : 0;
 
-    const isEditing = editingNodeId === id;
+    const isEditing = data.isEditing === true;
     const [editValue, setEditValue] = useState(data.label);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -92,22 +63,8 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
     }, [isEditing]);
 
     const commitEdit = useCallback(() => {
-        const trimmed = editValue.trim();
-        if (trimmed) {
-            updateNodeLabel(id, trimmed);
-
-            // If it's a newly created act node starting with no previous valid label, 
-            // trigger the stream automatically from what user typed!
-            if (data.kind === 'act' && !data.label) {
-                // Ensure nodes are selected contextually if needed, but here we just fire it
-                setSelectedNodes([id]);
-                startStream(id, trimmed, { clear: false });
-            }
-        } else {
-            // Empty label → remove the node
-            removeNode(id);
-        }
-    }, [id, editValue, updateNodeLabel, removeNode, data.kind, data.label, setSelectedNodes, startStream]);
+        data.onCommitLabel?.(editValue);
+    }, [data, editValue]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
@@ -144,7 +101,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 className="h-8 w-8 rounded-lg bg-background/90 backdrop-blur-sm"
                                 onClick={(event: React.MouseEvent) => {
                                     event.stopPropagation();
-                                    toggleExpandedBranchNode(id);
+                                    data.onToggleBranch?.();
                                 }}
                             >
                                 {branchExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -157,8 +114,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                             className="h-8 rounded-lg bg-background/90 backdrop-blur-sm"
                             onClick={(event: React.MouseEvent) => {
                                 event.stopPropagation();
-                                setActiveNode(id);
-                                openPanel('node-detail', id);
+                                data.onOpenDetails?.();
                             }}
                         >
                             <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
@@ -185,7 +141,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                     variant="outline"
                                     className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
                                 >
-                                    {nodeKind}
+                                    {kindLabel}
                                 </Badge>
                             )}
                             {isNodeStreaming && (
@@ -225,8 +181,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                         className="rounded-full border border-border/60 bg-muted/50 px-2 py-0.5 text-[11px] text-foreground/80 transition-colors hover:bg-muted"
                                         onClick={(event: React.MouseEvent) => {
                                             event.stopPropagation();
-                                            setActiveNode(node.id);
-                                            openPanel('node-detail', node.id);
+                                            data.onOpenReferencedNode?.(node.id);
                                         }}
                                     >
                                         {node.label}
@@ -293,8 +248,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                             ].join(' ')}
                                             onClick={(e: React.MouseEvent) => {
                                                 e.stopPropagation();
-                                                setSelectedNodes([id]);
-                                                startStream(id, action.label, { clear: false });
+                                                data.onRunAction?.(action.label);
                                             }}
                                         >
                                             <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
@@ -323,8 +277,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 ].join(' ')}
                                 onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
-                                    setSelectedNodes([id]);
-                                    startStream(id, action.label, { clear: false });
+                                    data.onRunAction?.(action.label);
                                 }}
                             >
                                 <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />

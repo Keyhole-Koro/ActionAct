@@ -20,8 +20,27 @@ export interface TopicNode {
     evidenceRefs?: EvidenceRef[];
 }
 
+export type InputProgressStatus =
+    | "uploaded"
+    | "extracting"
+    | "atomizing"
+    | "resolving_topic"
+    | "updating_draft"
+    | "completed"
+    | "failed";
+
+export interface InputProgress {
+    inputId: string;
+    topicId: string;
+    workspaceId: string;
+    status: InputProgressStatus;
+    currentPhase?: string;
+    lastEventType?: string;
+}
+
 export interface OrganizePort {
     subscribeTree: (workspaceId: string, topicId: string, callback: (nodes: TopicNode[]) => void) => () => void;
+    subscribeInputProgress: (workspaceId: string, topicId: string, inputId: string, callback: (progress: InputProgress | null) => void) => () => void;
 
     // Mutating actions
     renameNode: (workspaceId: string, topicId: string, nodeId: string, newTitle: string) => Promise<void>;

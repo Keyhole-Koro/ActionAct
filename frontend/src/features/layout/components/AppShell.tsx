@@ -14,6 +14,7 @@ import { AskForm } from '@/components/ui/AskForm';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { emitAuthContext } from '@/features/auth/session';
 import { FrontendToolBridge } from '@/features/agentTools/components/FrontendToolBridge';
+import { UploadProgressList } from '@/features/action/actionOrganize/components/UploadProgressCard';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -140,6 +141,7 @@ export function AppShell({ children }: AppShellProps) {
                         </Sheet>
                     </div>
 
+                    <UploadProgressList />
                 </div>
             </AuthGate>
         </div>

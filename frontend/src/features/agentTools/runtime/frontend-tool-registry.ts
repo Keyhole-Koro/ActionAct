@@ -5,10 +5,12 @@ import type { Node, Edge } from "@xyflow/react";
 import type { SelectionMode } from "@/features/agentInteraction/types";
 import { useAgentInteractionStore } from "@/features/agentInteraction/store/interactionStore";
 import { toSelectionFlow } from "@/features/graph/selectors/toSelectionFlow";
+import { mergeTreeWithActNodes, projectPersistedTree } from "@/features/graph/selectors/projectGraph";
 import { useGraphStore } from "@/features/graph/store";
 import { usePanelStore } from "@/features/layout/store/panel-store";
 import { startActRun } from "@/features/agentTools/runtime/act-runner";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
+import type { GraphNodeBase } from "@/features/graph/types";
 
 type ToolErrorCode = "INVALID_INPUT" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE" | "INTERNAL";
 
@@ -106,18 +108,32 @@ function optionalInteger(input: Record<string, unknown>, key: string): number | 
 }
 
 function currentRegularNodes(): Node[] {
-  const { persistedNodes, nodes: actNodes } = useGraphStore.getState();
-  const dedupedActNodes = actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id));
-  return [...persistedNodes, ...dedupedActNodes];
+  const graphStore = useGraphStore.getState();
+  const persistedTree = projectPersistedTree(
+    graphStore.persistedNodes as GraphNodeBase[],
+    graphStore.persistedEdges,
+    graphStore.expandedBranchNodeIds,
+  );
+  const { mergedTreeNodes, standaloneActNodes } = mergeTreeWithActNodes(
+    persistedTree.visibleNodes,
+    graphStore.persistedNodes as GraphNodeBase[],
+    graphStore.actNodes as GraphNodeBase[],
+  );
+  return [...mergedTreeNodes, ...standaloneActNodes];
 }
 
 function currentVisibleGraph(): { nodes: Node[]; edges: Edge[] } {
   const graphStore = useGraphStore.getState();
   const regularNodes = currentRegularNodes();
-  const regularEdges = [...graphStore.persistedEdges, ...graphStore.edges];
+  const persistedTree = projectPersistedTree(
+    graphStore.persistedNodes as GraphNodeBase[],
+    graphStore.persistedEdges,
+    graphStore.expandedBranchNodeIds,
+  );
+  const regularEdges = [...persistedTree.visibleEdges, ...graphStore.actEdges];
   const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(
     useAgentInteractionStore.getState().groups,
-    graphStore.persistedNodes,
+    persistedTree.visibleNodes,
   );
 
   return {
