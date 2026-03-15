@@ -518,7 +518,7 @@ export function GraphCanvas() {
     return (
         <div className="relative w-full h-full" onDoubleClick={handlePaneDoubleClick}>
             {visibleRecentClickedNodes.length > 0 && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(80vw,980px)] overflow-x-auto px-1 py-1">
+                <div className="pointer-events-none absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(62vw,760px)] overflow-x-auto px-1 py-1">
                     <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground whitespace-nowrap uppercase">Recent</span>
                     {visibleRecentClickedNodes.map((item, index) => (
                         <React.Fragment key={item.id}>
@@ -530,11 +530,11 @@ export function GraphCanvas() {
                             <button
                                 type="button"
                                 onClick={() => focusNode(item.id)}
-                                className="group relative grid h-8 w-8 shrink-0 place-items-center rounded-full border border-primary/35 bg-gradient-to-b from-background to-muted/35 text-[11px] font-bold uppercase text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:shadow-md"
+                                className="pointer-events-auto max-w-44 shrink-0 truncate rounded-lg border border-primary/35 bg-gradient-to-b from-background to-muted/35 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:shadow-md"
                                 title={item.title}
                                 aria-label={`Focus ${item.title}`}
                             >
-                                {item.title.trim().slice(0, 1) || "?"}
+                                {item.title || "Untitled"}
                             </button>
                         </React.Fragment>
                     ))}
@@ -549,11 +549,6 @@ export function GraphCanvas() {
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
-                    setRecentClickedNodes((current) => [
-                        { id: node.id, title: getNodeDisplayTitle(node) },
-                        ...current.filter((item) => item.id !== node.id),
-                    ].slice(0, MAX_RECENT_CLICKED_NODES));
-
                     if (event.shiftKey) {
                         setSelectedNodes(
                             selectedNodeIds.includes(node.id)
@@ -563,6 +558,11 @@ export function GraphCanvas() {
                         setActiveNode(node.id);
                         return;
                     }
+
+                    setRecentClickedNodes((current) => [
+                        { id: node.id, title: getNodeDisplayTitle(node) },
+                        ...current.filter((item) => item.id !== node.id),
+                    ].slice(0, MAX_RECENT_CLICKED_NODES));
 
                     toggleExpandedNode(node.id);
                     focusNode(node.id);
