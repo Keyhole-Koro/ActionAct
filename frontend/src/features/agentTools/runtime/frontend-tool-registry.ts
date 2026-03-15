@@ -568,6 +568,19 @@ const toolDefinitions: ToolDefinition[] = [
             code: { type: "string" },
             message: { type: "string" },
             suggested_action: { type: "string", enum: ["select_node", "retry_without_context", "none"] },
+            candidate_options: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  node_id: { type: "string" },
+                  label: { type: "string" },
+                  reason: { type: ["string", "null"] },
+                },
+                required: ["node_id", "label"],
+                additionalProperties: false,
+              },
+            },
           },
           required: ["code", "message", "suggested_action"],
           additionalProperties: false,
@@ -636,6 +649,19 @@ const toolDefinitions: ToolDefinition[] = [
             code: { type: "string" },
             message: { type: "string" },
             suggested_action: { type: "string", enum: ["select_node", "retry_without_context", "none"] },
+            candidate_options: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  node_id: { type: "string" },
+                  label: { type: "string" },
+                  reason: { type: ["string", "null"] },
+                },
+                required: ["node_id", "label"],
+                additionalProperties: false,
+              },
+            },
           },
           required: ["code", "message", "suggested_action"],
           additionalProperties: false,

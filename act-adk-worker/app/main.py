@@ -10,9 +10,10 @@ from fastapi.responses import JSONResponse
 from app.config import Config
 from app.adapter.firestore_assembly import FirestoreAssembly
 from app.adapter.gemini_llm import GeminiLLM
+from app.handler import decide_act_action_handler, resolve_node_candidates_handler, run_act_handler
+from app.usecase.decide_act_action import DecideActActionUsecase
 from app.usecase.run_act import RunActUsecase
 from app.usecase.resolve_node_candidates import ResolveNodeCandidatesUsecase
-from app.handler import run_act_handler, resolve_node_candidates_handler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,14 +43,17 @@ else:
 # Usecase
 usecase = RunActUsecase(assembly=assembly, llm=llm)
 candidate_usecase = ResolveNodeCandidatesUsecase(llm=llm)
+decision_usecase = DecideActActionUsecase(llm=llm)
 
 # Inject usecase into handler
 run_act_handler.set_usecase(usecase)
 resolve_node_candidates_handler.set_usecase(candidate_usecase)
+decide_act_action_handler.set_usecase(decision_usecase)
 
 # Register routes
 app.include_router(run_act_handler.router)
 app.include_router(resolve_node_candidates_handler.router)
+app.include_router(decide_act_action_handler.router)
 
 
 @app.get("/healthz")

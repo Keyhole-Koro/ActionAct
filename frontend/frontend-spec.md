@@ -372,6 +372,7 @@ node detail は `MarkdownPane` 1つ中心で完結。
 * `submit_ask` は新規 ACT draft node を開始する
 * `run_act_with_context` は ACT draft node を開始し、`anchor_node_id` / `context_node_ids` は relation metadata として保持する
 * `submit_ask` / `run_act_with_context` は UI 文脈が不足する場合、stream を開始せず clarification を返してよい
+* current MVP では browser-attached orchestrator が backend decision DTO を先に取得し、その結果に応じて clarification / candidate selection / `RunAct` を分岐してよい
 * `select_nodes` / `open_node_detail` は UI state 操作のみで、knowledge 正本は更新しない
 * `open_node_detail` は current MVP では active node 設定と node card 展開を意味する
 * `create_selectable_nodes` は `selection-node` を作るだけで、knowledge node は作らない

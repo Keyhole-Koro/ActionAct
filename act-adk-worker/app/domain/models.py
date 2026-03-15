@@ -50,6 +50,18 @@ class CandidateResolutionInput(BaseModel):
     nodes: list[CandidateGraphNode] = Field(default_factory=list)
 
 
+class ActDecisionInput(BaseModel):
+    trace_id: str
+    uid: str
+    topic_id: str
+    workspace_id: str
+    user_message: str
+    active_node_id: Optional[str] = None
+    selected_node_ids: list[str] = Field(default_factory=list)
+    available_tools: list[str] = Field(default_factory=list)
+    nodes: list[CandidateGraphNode] = Field(default_factory=list)
+
+
 # ── Internal ──
 
 
@@ -95,6 +107,20 @@ class CandidateNode(BaseModel):
 
 class CandidateResolutionOutput(BaseModel):
     candidates: list[CandidateNode] = Field(default_factory=list)
+
+
+class ActDecisionCandidate(BaseModel):
+    node_id: str
+    label: str
+    reason: Optional[str] = None
+
+
+class ActDecisionOutput(BaseModel):
+    action: str
+    message: Optional[str] = None
+    suggested_action: Optional[str] = None
+    context_node_ids: list[str] = Field(default_factory=list)
+    candidates: list[ActDecisionCandidate] = Field(default_factory=list)
 
 
 class RunActEvent(BaseModel):

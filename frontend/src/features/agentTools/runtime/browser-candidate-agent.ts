@@ -20,6 +20,12 @@ type CreateSelectionGroupParams = {
   maxCandidates?: number;
 };
 
+type DirectCandidate = {
+  node_id: string;
+  label: string;
+  reason?: string | null;
+};
+
 function uniqueNodeIds(nodeIds: string[]) {
   const seen = new Set<string>();
   const ordered: string[] = [];
@@ -109,6 +115,42 @@ function chooseSelectionGroupCopy(query: string, instruction: string) {
     title: "Which node did you mean?",
     instruction: `${instruction} Pick the closest one.`.trim(),
   };
+}
+
+async function createSelectionGroup(
+  client: FrontendToolClient,
+  params: {
+    instruction: string;
+    query: string;
+    activeNodeId: string | null;
+    candidates: Array<{ option_id: string; label: string; reason?: string | null }>;
+  },
+): Promise<string | null> {
+  if (params.candidates.length < 2) {
+    return null;
+  }
+
+  const copy = chooseSelectionGroupCopy(params.query, params.instruction);
+  const created = await client.invokeTool("create_selectable_nodes", {
+    title: copy.title,
+    instruction: copy.instruction,
+    selection_mode: "single",
+    anchor_node_id: params.activeNodeId,
+    expires_in_ms: 120000,
+    options: params.candidates.map((candidate) => ({
+      option_id: candidate.option_id,
+      label: candidate.label,
+      reason: candidate.reason ?? null,
+      content_md: null,
+      metadata: { node_id: candidate.option_id, kind: "clarification_candidate" },
+    })),
+  });
+  if (!created.ok) {
+    return null;
+  }
+
+  const createdOutput = created.output as Record<string, unknown>;
+  return typeof createdOutput.selection_group_id === "string" ? createdOutput.selection_group_id : null;
 }
 
 function extractVisibleCandidates(output: Record<string, unknown>) {
@@ -242,29 +284,35 @@ export async function createClarificationSelectionGroup(
     );
   }
 
-  if (candidates.length < 2) {
-    return null;
-  }
-
-  const copy = chooseSelectionGroupCopy(params.query, params.instruction);
-  const created = await client.invokeTool("create_selectable_nodes", {
-    title: copy.title,
-    instruction: copy.instruction,
-    selection_mode: "single",
-    anchor_node_id: activeNodeId,
-    expires_in_ms: 120000,
-    options: candidates.map((candidate) => ({
+  return createSelectionGroup(client, {
+    instruction: params.instruction,
+    query: params.query,
+    activeNodeId,
+    candidates: candidates.map((candidate) => ({
       option_id: candidate.nodeId,
       label: candidate.title,
       reason: candidate.reason,
-      content_md: null,
-      metadata: { node_id: candidate.nodeId, kind: "clarification_candidate" },
     })),
   });
-  if (!created.ok) {
-    return null;
-  }
+}
 
-  const createdOutput = created.output as Record<string, unknown>;
-  return typeof createdOutput.selection_group_id === "string" ? createdOutput.selection_group_id : null;
+export async function createClarificationSelectionGroupFromCandidates(
+  client: FrontendToolClient,
+  params: {
+    instruction: string;
+    query: string;
+    candidates: DirectCandidate[];
+    activeNodeId?: string | null;
+  },
+): Promise<string | null> {
+  return createSelectionGroup(client, {
+    instruction: params.instruction,
+    query: params.query,
+    activeNodeId: params.activeNodeId ?? null,
+    candidates: params.candidates.map((candidate) => ({
+      option_id: candidate.node_id,
+      label: candidate.label,
+      reason: candidate.reason ?? null,
+    })),
+  });
 }

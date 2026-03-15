@@ -6,7 +6,10 @@ import type { StreamActOptions } from "@/services/act/port";
 import { useAgentInteractionStore } from "@/features/agentInteraction/store/interactionStore";
 import { prepareAnchoredActRun, prepareSubmitAskRun, type ActRunClarification } from "@/features/agentTools/runtime/frontend-tool-orchestrator";
 import { startActRun } from "@/features/agentTools/runtime/act-runner";
-import { createClarificationSelectionGroup } from "@/features/agentTools/runtime/browser-candidate-agent";
+import {
+  createClarificationSelectionGroup,
+  createClarificationSelectionGroupFromCandidates,
+} from "@/features/agentTools/runtime/browser-candidate-agent";
 import { createDirectFrontendToolClient } from "@/features/agentTools/runtime/frontend-tool-client";
 import { useGraphStore } from "@/features/graph/store";
 
@@ -51,10 +54,18 @@ export const useActClarificationStore = create<ActClarificationState>((set, get)
       useAgentInteractionStore.getState().cancelGroup(previousGroupId);
     }
     const selectionGroupId = clarification.suggested_action === "select_node"
-      ? await createClarificationSelectionGroup(frontendToolClient, {
-          instruction: clarification.message,
-          query: pendingRun.query,
-        })
+      ? (
+        Array.isArray(clarification.candidate_options) && clarification.candidate_options.length >= 2
+          ? await createClarificationSelectionGroupFromCandidates(frontendToolClient, {
+              instruction: clarification.message,
+              query: pendingRun.query,
+              candidates: clarification.candidate_options,
+            })
+          : await createClarificationSelectionGroup(frontendToolClient, {
+              instruction: clarification.message,
+              query: pendingRun.query,
+            })
+      )
       : null;
     set({
       clarification,
