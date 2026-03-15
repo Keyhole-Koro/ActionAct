@@ -15,14 +15,21 @@ export type FrontendConfig = {
 
 const staticConfig = process.env.NODE_ENV === "production" ? prodConfig : localConfig;
 
+function readRequiredString(value: unknown, fieldName: keyof FrontendConfig): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${fieldName} is required`);
+  }
+  return value;
+}
+
 export const config: FrontendConfig = {
   useMocks: staticConfig.useMocks,
-  rpcBaseUrl: staticConfig.rpcBaseUrl,
-  actApiBaseUrl: staticConfig.actApiBaseUrl,
-  firebaseApiKey: staticConfig.firebaseApiKey,
-  firebaseAuthDomain: staticConfig.firebaseAuthDomain,
-  firebaseAppId: staticConfig.firebaseAppId,
-  firebaseAuthEmulatorHost: staticConfig.firebaseAuthEmulatorHost,
-  firestoreEmulatorHost: staticConfig.firestoreEmulatorHost,
-  gcloudProject: staticConfig.gcloudProject,
+  rpcBaseUrl: readRequiredString(staticConfig.rpcBaseUrl, "rpcBaseUrl"),
+  actApiBaseUrl: readRequiredString(staticConfig.actApiBaseUrl, "actApiBaseUrl"),
+  firebaseApiKey: readRequiredString(staticConfig.firebaseApiKey, "firebaseApiKey"),
+  firebaseAuthDomain: readRequiredString(staticConfig.firebaseAuthDomain, "firebaseAuthDomain"),
+  firebaseAppId: readRequiredString(staticConfig.firebaseAppId, "firebaseAppId"),
+  firebaseAuthEmulatorHost: readRequiredString(staticConfig.firebaseAuthEmulatorHost, "firebaseAuthEmulatorHost"),
+  firestoreEmulatorHost: readRequiredString(staticConfig.firestoreEmulatorHost, "firestoreEmulatorHost"),
+  gcloudProject: readRequiredString(staticConfig.gcloudProject, "gcloudProject"),
 };

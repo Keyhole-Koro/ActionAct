@@ -1,7 +1,7 @@
 export interface PatchOp {
     type: 'upsert' | 'append_md' | 'remove';
     nodeId: string;
-    data?: Partial<{ label: string; type: string; contentMd: string; actions: { label: string, execute: string }[] }>;
+    data?: Partial<{ label: string; kind: string; contentMd: string; referencedNodeIds: string[]; actions: { label: string, execute: string }[] }>;
 }
 
 export interface StreamResponse {
@@ -10,6 +10,14 @@ export interface StreamResponse {
 
 export interface StreamActOptions {
     enableGrounding?: boolean;
+    anchorNodeId?: string;
+    contextNodeIds?: string[];
+    requestId?: string;
+    includeThoughts?: boolean;
+    workspaceId?: string;
+    topicId?: string;
+    actType?: 'explore' | 'consult' | 'investigate';
+    modelProfile?: 'flash' | 'deep_research';
 }
 
 export interface ActPort {

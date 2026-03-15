@@ -13,6 +13,18 @@ function getBaseUrl(): string {
   return config.rpcBaseUrl;
 }
 
+function mapActType(actType: StreamActOptions["actType"]): ActType {
+  switch (actType) {
+    case "consult":
+      return ActType.CONSULT;
+    case "investigate":
+      return ActType.INVESTIGATE;
+    case "explore":
+    default:
+      return ActType.EXPLORE;
+  }
+}
+
 async function buildHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {};
 
@@ -43,14 +55,11 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
   }
 
   if (op.op === "upsert") {
-    const label = (op.content ?? "").trim();
     return {
       type: "upsert",
       nodeId: op.nodeId,
       data: {
-        label: label.length > 0 ? label : "Node",
-        type: "concept",
-        contentMd: op.content ?? "",
+        kind: "act",
       },
     };
   }
@@ -70,11 +79,7 @@ function handleEvent(event: RunActEvent, onPatch: (patch: PatchOp) => void, onDo
   }
 
   if (event.event.case === "textDelta") {
-    onPatch({
-      type: "append_md",
-      nodeId: "root",
-      data: { contentMd: event.event.value.text },
-    });
+    // Spec: text_delta is a transient stream buffer, not canonical node content.
     return;
   }
 
@@ -109,17 +114,22 @@ export function createRpcActService(): ActPort {
 
       void (async () => {
         try {
-          const { workspaceId, topicId } = useRunContextStore.getState();
+          const runContext = useRunContextStore.getState();
+          const workspaceId = options?.workspaceId ?? runContext.workspaceId;
+          const topicId = options?.topicId ?? runContext.topicId;
           const headers = await buildHeaders();
           const response = client.runAct(
             {
               topicId,
               workspaceId,
-              requestId: uuidv4(),
-              actType: ActType.EXPLORE,
+              requestId: options?.requestId ?? uuidv4(),
+              actType: mapActType(options?.actType),
               userMessage: query,
+              anchorNodeId: options?.anchorNodeId ?? "",
+              contextNodeIds: options?.contextNodeIds ?? [],
               llmConfig: {
                 enableGrounding: options?.enableGrounding ?? false,
+                enableThinking: options?.includeThoughts ?? false,
               },
             },
             {

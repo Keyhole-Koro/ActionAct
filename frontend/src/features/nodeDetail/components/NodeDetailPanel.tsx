@@ -38,7 +38,7 @@ export function NodeDetailPanel() {
     const data = activeNode.data || {};
     const nodeTopicId = (data.topicId as string) || topicId;
     const title = (data.label as string) || 'Untitled';
-    const typeLabel = (data.type as string) || 'concept';
+    const kindLabel = typeof data.kind === 'string' ? data.kind : undefined;
     const contentMd = (data.contentMd as string) || '';
     const contextSummary = data.contextSummary as string | undefined;
     const detailHtml = data.detailHtml as string | undefined;
@@ -50,7 +50,7 @@ export function NodeDetailPanel() {
             <div className="p-4 border-b flex-shrink-0 bg-muted/20">
                 <div className="flex items-center justify-between mb-1">
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        {typeLabel}
+                        {kindLabel ?? 'node'}
                     </div>
                     {/* Action Organize Bar for Rename/Delete */}
                     <ActionOrganizeBar

@@ -1,14 +1,12 @@
 import { Node, Edge, Position } from '@xyflow/react';
 import ELK from 'elkjs/lib/elk.bundled';
+import {
+    GRAPH_NODE_COLLAPSED_WIDTH,
+    GRAPH_NODE_LAYOUT_HEIGHT,
+    getLayoutDimensionsForNodeType,
+} from '../constants/nodeDimensions';
 
 const elk = new ELK();
-
-const defaultNodeWidth = 340;
-const defaultNodeHeight = 180;
-const selectionHeaderWidth = 420;
-const selectionHeaderHeight = 220;
-const selectionNodeWidth = 260;
-const selectionNodeHeight = 160;
 const nodePaddingX = 40;
 const nodePaddingY = 32;
 
@@ -24,15 +22,11 @@ function getNodeDimensions(node: Node) {
         return { width: measuredWidth, height: measuredHeight };
     }
 
-    if (node.type === 'selectionHeader') {
-        return { width: selectionHeaderWidth, height: selectionHeaderHeight };
-    }
-
-    if (node.type === 'selectionNode') {
-        return { width: selectionNodeWidth, height: selectionNodeHeight };
-    }
-
-    return { width: defaultNodeWidth, height: defaultNodeHeight };
+    const layoutDimensions = getLayoutDimensionsForNodeType(node.type);
+    return {
+        width: layoutDimensions.width ?? GRAPH_NODE_COLLAPSED_WIDTH,
+        height: layoutDimensions.height ?? GRAPH_NODE_LAYOUT_HEIGHT,
+    };
 }
 
 function collectMovableNodeIds(nodes: Node[], edges: Edge[], previousById: Map<string, Node>) {

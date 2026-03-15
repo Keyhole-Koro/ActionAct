@@ -75,9 +75,12 @@ func (u *UploadUsecase) Execute(
 	slog.Info("recorded input in Firestore", "inputId", inputID, "workspaceId", workspaceID)
 
 	// 5. Publish event to Pub/Sub
-	if err := u.publisher.Publish(ctx, "input.received", map[string]string{
+	topicID := "topic:" + inputID
+	idempotencyKey := fmt.Sprintf("type:input.received/topicId:%s/inputId:%s", topicID, inputID)
+	if err := u.publisher.Publish(ctx, "input.received", workspaceID, topicID, idempotencyKey, map[string]string{
 		"inputId":     inputID,
 		"workspaceId": workspaceID,
+		"topicId":     topicID,
 	}); err != nil {
 		// Non-fatal: log error but still return success to user.
 		// The event can be replayed from Firestore state.

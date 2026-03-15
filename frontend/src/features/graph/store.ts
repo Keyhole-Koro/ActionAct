@@ -13,8 +13,11 @@ interface GraphState {
     nodes: Node[];
     edges: Edge[];
     selectedNodeIds: string[];
+    expandedNodeIds: string[];
     activeNodeId: string | null;
     editingNodeId: string | null;
+    isStreaming: boolean;
+    streamingNodeIds: string[];
 
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
@@ -22,9 +25,13 @@ interface GraphState {
     setActGraph: (nodes: Node[], edges: Edge[]) => void;
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
+    toggleExpandedNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
+    setStreamRunning: (value: boolean) => void;
+    addStreamingNode: (nodeId: string) => void;
+    clearStreamingNodes: (nodeIds?: string[]) => void;
 
-    addOrUpdateNode: (nodeId: string, label: string, type: string) => void;
+    addOrUpdateNode: (nodeId: string, payload: { label?: string; kind?: string; referencedNodeIds?: string[] }) => void;
     addEmptyNode: (position: { x: number; y: number }) => string;
     addQueryNode: (position: { x: number; y: number }, initialLabel: string) => string;
     updateNodeLabel: (nodeId: string, label: string) => void;
@@ -34,7 +41,9 @@ interface GraphState {
 
 function sameIds(left: string[], right: string[]) {
     if (left.length !== right.length) return false;
-    return left.every((id, index) => id === right[index]);
+    const leftSorted = [...left].sort();
+    const rightSorted = [...right].sort();
+    return leftSorted.every((id, index) => id === rightSorted[index]);
 }
 
 function preserveNodePositions(previousNodes: Node[], nextNodes: Node[]) {
@@ -61,8 +70,11 @@ export const useGraphStore = create<GraphState>((set) => ({
     nodes: [],
     edges: [],
     selectedNodeIds: [],
+    expandedNodeIds: [],
     activeNodeId: null,
     editingNodeId: null,
+    isStreaming: false,
+    streamingNodeIds: [],
 
     setSelectedNodes: (ids) => set((state) => (
         sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
@@ -81,14 +93,44 @@ export const useGraphStore = create<GraphState>((set) => ({
     })),
     clearSelection: () => set({ selectedNodeIds: [] }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
+    toggleExpandedNode: (id: string) => set((state) => ({
+        expandedNodeIds: state.expandedNodeIds.includes(id)
+            ? state.expandedNodeIds.filter((expandedId) => expandedId !== id)
+            : [...state.expandedNodeIds, id],
+    })),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
+    setStreamRunning: (value: boolean) => set({ isStreaming: value }),
+    addStreamingNode: (nodeId: string) => set((state) => (
+        state.streamingNodeIds.includes(nodeId)
+            ? state
+            : { streamingNodeIds: [...state.streamingNodeIds, nodeId] }
+    )),
+    clearStreamingNodes: (nodeIds?: string[]) => set((state) => {
+        if (!nodeIds || nodeIds.length === 0) {
+            return { streamingNodeIds: [] };
+        }
+        const toClear = new Set(nodeIds);
+        return {
+            streamingNodeIds: state.streamingNodeIds.filter((nodeId) => !toClear.has(nodeId)),
+        };
+    }),
 
-    addOrUpdateNode: (nodeId, label, type) => set((state) => {
+    addOrUpdateNode: (nodeId, payload) => set((state) => {
         const exists = state.nodes.find(n => n.id === nodeId);
         if (exists) {
             return {
                 nodes: state.nodes.map(n =>
-                    n.id === nodeId ? { ...n, data: { ...n.data, label, type } } : n
+                    n.id === nodeId
+                        ? {
+                            ...n,
+                            data: {
+                                ...n.data,
+                                ...(payload.label !== undefined ? { label: payload.label } : {}),
+                                ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                                ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
+                            },
+                        }
+                        : n
                 )
             };
         }
@@ -97,7 +139,12 @@ export const useGraphStore = create<GraphState>((set) => ({
             id: nodeId,
             type: 'customTask',
             position: { x: 200 + (state.nodes.length * 10), y: 150 + (state.nodes.length * 100) },
-            data: { label, type, contentMd: '' }
+            data: {
+                label: payload.label ?? '',
+                kind: payload.kind ?? 'act',
+                referencedNodeIds: payload.referencedNodeIds ?? [],
+                contentMd: '',
+            }
         };
 
         const newEdges = [...state.edges];
@@ -132,10 +179,13 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: '', type: 'act', contentMd: '', isManualPosition: true }
+                data: { label: '', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             editingNodeId: id,
             activeNodeId: id,
+            expandedNodeIds: state.expandedNodeIds.includes(id)
+                ? state.expandedNodeIds
+                : [...state.expandedNodeIds, id],
         }));
         return id;
     },
@@ -147,7 +197,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: initialLabel, type: 'act', contentMd: '', isManualPosition: true }
+                data: { label: initialLabel, kind: 'act', contentMd: '', isManualPosition: true }
             }],
             edges: [
                 ...state.edges,
@@ -161,6 +211,9 @@ export const useGraphStore = create<GraphState>((set) => ({
             ],
             editingNodeId: id,
             activeNodeId: id,
+            expandedNodeIds: state.expandedNodeIds.includes(id)
+                ? state.expandedNodeIds
+                : [...state.expandedNodeIds, id],
             selectedNodeIds: [],
         }));
         return id;
@@ -184,6 +237,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     removeNode: (nodeId) => set((state) => ({
         nodes: state.nodes.filter(n => n.id !== nodeId),
         edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+        expandedNodeIds: state.expandedNodeIds.filter((id) => id !== nodeId),
         activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
         editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
     })),

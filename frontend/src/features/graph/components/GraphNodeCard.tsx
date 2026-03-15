@@ -8,13 +8,19 @@ import { Play, Sparkles, FileText, Search, MessageSquare, Pencil, PanelRightOpen
 import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useGraphStore } from '@/features/graph/store';
 import { usePanelStore } from '@/features/layout/store/panel-store';
+import {
+    GRAPH_NODE_COLLAPSED_WIDTH,
+    GRAPH_NODE_EXPANDED_MAX_HEIGHT,
+    GRAPH_NODE_EXPANDED_WIDTH,
+} from '../constants/nodeDimensions';
 
 type CustomNode = Node<{
     label: string;
-    type: string;
+    kind?: string;
     actions?: { label: string, execute: string }[];
     contentMd?: string;
     contextSummary?: string;
+    referencedNodeIds?: string[];
 }, 'customTask'>;
 
 const typeConfig: Record<string, { icon: React.ElementType; gradient: string; accent: string; glow: string }> = {
@@ -27,12 +33,25 @@ const typeConfig: Record<string, { icon: React.ElementType; gradient: string; ac
 };
 
 export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<CustomNode>) {
-    const { startStream, isStreaming } = useActStream();
-    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, activeNodeId } = useGraphStore();
+    const { startStream } = useActStream();
+    const { setSelectedNodes, editingNodeId, updateNodeLabel, removeNode, expandedNodeIds, setActiveNode, streamingNodeIds } = useGraphStore();
     const { openPanel } = usePanelStore();
-    const cfg = typeConfig[data.type] || typeConfig.default;
+    const nodeKind = data.kind;
+    const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const TypeIcon = cfg.icon;
-    const isExpanded = activeNodeId === id;
+    const isExpanded = expandedNodeIds.includes(id);
+    const isNodeStreaming = streamingNodeIds.includes(id);
+    const referencedNodeIds = Array.isArray(data.referencedNodeIds)
+        ? data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+        : [];
+    const allNodes = useGraphStore((state) => [...state.persistedNodes, ...state.nodes]);
+    const referencedNodes = referencedNodeIds.map((nodeId) => {
+        const matched = allNodes.find((node) => node.id === nodeId);
+        const label = typeof matched?.data?.label === 'string' && matched.data.label.trim()
+            ? matched.data.label
+            : nodeId;
+        return { id: nodeId, label };
+    });
 
     const isEditing = editingNodeId === id;
     const [editValue, setEditValue] = useState(data.label);
@@ -52,7 +71,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
 
             // If it's a newly created act node starting with no previous valid label, 
             // trigger the stream automatically from what user typed!
-            if (data.type === 'act' && !data.label) {
+            if (data.kind === 'act' && !data.label) {
                 // Ensure nodes are selected contextually if needed, but here we just fire it
                 setSelectedNodes([id]);
                 startStream(id, trimmed, { clear: false });
@@ -61,7 +80,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
             // Empty label → remove the node
             removeNode(id);
         }
-    }, [id, editValue, updateNodeLabel, removeNode, data.type, data.label, setSelectedNodes, startStream]);
+    }, [id, editValue, updateNodeLabel, removeNode, data.kind, data.label, setSelectedNodes, startStream]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
@@ -73,21 +92,41 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
         <div className="relative group">
             {/* Main Card Container */}
             <div
+                style={{
+                    width: isExpanded ? GRAPH_NODE_EXPANDED_WIDTH : GRAPH_NODE_COLLAPSED_WIDTH,
+                    minWidth: GRAPH_NODE_COLLAPSED_WIDTH,
+                    maxWidth: GRAPH_NODE_EXPANDED_WIDTH,
+                }}
                 className={`
-                group relative w-[340px] rounded-2xl transition-all duration-300
+                group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
                 bg-background border border-border/40
                 shadow-md hover:shadow-xl
                 ${selected || isExpanded ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl' : 'hover:border-primary/30'}
-                ${isStreaming ? 'animate-pulse-subtle' : ''}
+                ${isNodeStreaming ? 'animate-pulse-subtle' : ''}
             `}
             >
                 {/* Subtle top primary line accent */}
                 <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-gradient-to-r ${cfg.gradient} opacity-80`} />
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
+                <div className="absolute right-3 top-3 z-10">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg bg-background/90 backdrop-blur-sm"
+                        onClick={(event: React.MouseEvent) => {
+                            event.stopPropagation();
+                            setActiveNode(id);
+                            openPanel('node-detail', id);
+                        }}
+                    >
+                        <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
+                        Details
+                    </Button>
+                </div>
 
-                <div className="relative p-4 pb-0 flex gap-3">
+                <div className="relative p-4 pb-0 pr-24 flex gap-3">
                     {/* Icon Container with active styling */}
-                    {data.type !== 'act' && (
+                    {data.kind !== 'act' && (
                         <div className="relative shrink-0 mt-0.5 group">
                             <div className={`absolute inset-0 bg-gradient-to-br ${cfg.gradient} opacity-10 group-hover:opacity-20 blur-sm transition-opacity duration-300`} />
                             <div className={`relative flex items-center justify-center w-10 h-10 rounded-xl bg-background border border-border/50 shadow-sm group-hover:shadow transition-shadow ${cfg.accent}`}>
@@ -98,15 +137,15 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
 
                     <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-center justify-between gap-2 mb-1">
-                            {data.type !== 'act' && (
+                            {nodeKind && nodeKind !== 'act' && (
                                 <Badge
                                     variant="outline"
                                     className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
                                 >
-                                    {data.type}
+                                    {nodeKind}
                                 </Badge>
                             )}
-                            {isStreaming && (
+                            {isNodeStreaming && (
                                 <span className="flex h-2 w-2 ml-auto">
                                     <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -131,45 +170,95 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
                         )}
+                        {referencedNodes.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                                    Referenced From
+                                </span>
+                                {referencedNodes.slice(0, 3).map((node) => (
+                                    <button
+                                        key={node.id}
+                                        type="button"
+                                        className="rounded-full border border-border/60 bg-muted/50 px-2 py-0.5 text-[11px] text-foreground/80 transition-colors hover:bg-muted"
+                                        onClick={(event: React.MouseEvent) => {
+                                            event.stopPropagation();
+                                            setActiveNode(node.id);
+                                            openPanel('node-detail', node.id);
+                                        }}
+                                    >
+                                        {node.label}
+                                    </button>
+                                ))}
+                                {referencedNodes.length > 3 && (
+                                    <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground">
+                                        +{referencedNodes.length - 3}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Content preview */}
-                {data.contentMd && (
+                {!isExpanded && data.contentMd && (
                     <div className="relative px-4 pt-3 pb-4">
-                        <p className={`text-sm text-foreground/80 leading-relaxed font-medium ${isExpanded ? '' : 'line-clamp-3'}`}>
+                        <p className="text-sm text-foreground/80 leading-relaxed font-medium line-clamp-3">
                             {data.contentMd}
                         </p>
                     </div>
                 )}
-                {!data.contentMd && <div className="h-4"></div>}
+                {!isExpanded && !data.contentMd && <div className="h-4"></div>}
 
                 {isExpanded && (
-                    <div className="relative px-4 pb-4 pt-2 border-t border-border/20 bg-muted/10">
-                        {data.contextSummary ? (
-                            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                                {data.contextSummary}
-                            </p>
-                        ) : null}
-                        <div className="flex justify-end">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 rounded-lg"
-                                onClick={(event: React.MouseEvent) => {
-                                    event.stopPropagation();
-                                    openPanel('node-detail', id);
-                                }}
-                            >
-                                <PanelRightOpen className="mr-1.5 h-3.5 w-3.5" />
-                                Details
-                            </Button>
+                    <div className="relative border-t border-border/20 bg-muted/10">
+                        <div
+                            style={{ maxHeight: GRAPH_NODE_EXPANDED_MAX_HEIGHT }}
+                            className="overflow-y-auto px-4 py-3"
+                            onWheel={(event) => {
+                                event.stopPropagation();
+                            }}
+                        >
+                            {data.contextSummary ? (
+                                <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                                    {data.contextSummary}
+                                </p>
+                            ) : null}
+                            {data.contentMd ? (
+                                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                                    {data.contentMd}
+                                </div>
+                            ) : null}
+
+                            {data.actions && data.actions.length > 0 && (
+                                <div className="mt-4 flex flex-wrap gap-2 border-t border-border/20 pt-3">
+                                    {data.actions.map((action: { label: string, execute: string }, idx: number) => (
+                                        <Button
+                                            key={idx}
+                                            variant="secondary"
+                                            size="sm"
+                                            className={[
+                                                'h-8 text-xs px-3 rounded-lg font-semibold shadow-sm border border-border/50',
+                                                'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                                'transition-all duration-300 group/btn',
+                                                isNodeStreaming ? 'opacity-50 pointer-events-none' : '',
+                                            ].join(' ')}
+                                            onClick={(e: React.MouseEvent) => {
+                                                e.stopPropagation();
+                                                setSelectedNodes([id]);
+                                                startStream(id, action.label, { clear: false });
+                                            }}
+                                        >
+                                            <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
+                                            {action.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* Actions Area */}
-                {data.actions && data.actions.length > 0 && (
+                {!isExpanded && data.actions && data.actions.length > 0 && (
                     <div className="relative px-4 pb-4 pt-2 flex flex-wrap gap-2 border-t border-border/20 bg-muted/10">
                         {data.actions.map((action: { label: string, execute: string }, idx: number) => (
                             <Button
@@ -180,7 +269,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                                     'h-8 text-xs px-3 rounded-lg font-semibold shadow-sm border border-border/50',
                                     'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
                                     'transition-all duration-300 group/btn',
-                                    isStreaming ? 'opacity-50 pointer-events-none' : '',
+                                    isNodeStreaming ? 'opacity-50 pointer-events-none' : '',
                                 ].join(' ')}
                                 onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
@@ -196,7 +285,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable }: NodeProps<C
                 )}
 
                 {/* Streaming Progress Bar */}
-                {isStreaming && (
+                {isNodeStreaming && (
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30 overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-primary/40 via-primary to-primary/40 animate-[shimmer_1.5s_infinite] w-[200%] -ml-[50%]" />
                     </div>

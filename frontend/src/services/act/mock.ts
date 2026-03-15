@@ -12,22 +12,22 @@ export const mockActService: ActPort = {
         const childId2 = `mock-child2-${Date.now()}`;
 
         const patches: PatchOp[] = [
-            // 1. Create a root concept node
-            { type: 'upsert', nodeId: rootId, data: { label: 'Thinking...', type: 'concept' } },
+            // 1. Create a root act node
+            { type: 'upsert', nodeId: rootId, data: { label: 'Thinking...', kind: 'act' } },
 
             // 2. Start streaming markdown to root
             { type: 'append_md', nodeId: rootId, data: { contentMd: '# ' + query + '\n\n' } },
             { type: 'append_md', nodeId: rootId, data: { contentMd: 'Based on your query, we can break this down into key areas.\n' } },
 
             // 3. Update root label
-            { type: 'upsert', nodeId: rootId, data: { label: 'Query Analysis', type: 'concept' } },
+            { type: 'upsert', nodeId: rootId, data: { label: 'Query Analysis', kind: 'act' } },
 
             // 4. Upsert a child node
-            { type: 'upsert', nodeId: childId1, data: { label: 'Sub-topic A', type: 'detail', actions: [{ label: 'Deep Dive A', execute: 'run_act' }] } },
+            { type: 'upsert', nodeId: childId1, data: { label: 'Sub-topic A', kind: 'act', actions: [{ label: 'Deep Dive A', execute: 'run_act' }] } },
             { type: 'append_md', nodeId: childId1, data: { contentMd: 'This is the first detail related to the query.' } },
 
             // 5. Upsert another child node
-            { type: 'upsert', nodeId: childId2, data: { label: 'Sub-topic B', type: 'detail', actions: [{ label: 'Verify Source', execute: 'run_act' }] } },
+            { type: 'upsert', nodeId: childId2, data: { label: 'Sub-topic B', kind: 'act', actions: [{ label: 'Verify Source', execute: 'run_act' }] } },
             { type: 'append_md', nodeId: childId2, data: { contentMd: 'This is the second detail.' } },
         ];
 

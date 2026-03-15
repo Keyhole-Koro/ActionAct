@@ -29,6 +29,14 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const values = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  return values.length > 0 ? values : undefined;
+}
+
 function expiredAt(data: DocumentData): boolean {
   if (data.pinned) {
     return false;
@@ -44,7 +52,8 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
   return {
     id: nodeId,
     title: readString(data.title) ?? nodeId,
-    type: readString(data.kind) ?? "act",
+    kind: readString(data.kind) ?? "act",
+    referencedNodeIds: readStringArray(data.referencedNodeIds),
     contentMd: readString(data.contentMd),
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
@@ -73,7 +82,7 @@ export const actDraftService = {
     workspaceId: string,
     topicId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[] },
   ) {
     await setDoc(
       draftDoc(workspaceId, topicId, nodeId),
@@ -82,6 +91,7 @@ export const actDraftService = {
         title: draft.title ?? nodeId,
         kind: draft.kind ?? "act",
         contentMd: draft.contentMd ?? "",
+        referencedNodeIds: draft.referencedNodeIds ?? [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastTouchedAt: serverTimestamp(),
@@ -96,8 +106,9 @@ export const actDraftService = {
     const payload = {
       nodeId: patch.nodeId,
       title: patch.data?.label ?? queryText,
-      kind: patch.data?.type ?? "act",
-      contentMd: patch.data?.contentMd ?? "",
+      kind: patch.data?.kind ?? "act",
+      referencedNodeIds: patch.data?.referencedNodeIds ?? [],
+      ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),

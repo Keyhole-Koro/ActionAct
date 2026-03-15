@@ -70,6 +70,7 @@ export function GraphCanvas() {
         edges: actEdges,
         setSelectedNodes,
         setActiveNode,
+        toggleExpandedNode,
         addEmptyNode,
         addQueryNode,
         setPersistedGraph,
@@ -132,7 +133,7 @@ export function GraphCanvas() {
                 data: {
                     topicId: n.topicId,
                     label: n.title,
-                    type: n.type,
+                    kind: n.kind,
                     contextSummary: n.contextSummary,
                     detailHtml: n.detailHtml,
                     contentMd: n.contentMd,
@@ -234,21 +235,21 @@ export function GraphCanvas() {
                 id: node.id,
                 source: 'persisted',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
-                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
                 contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
             })),
             ...actNodes.map((node) => ({
                 id: node.id,
                 source: 'act',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
-                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
                 contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
             })),
             ...selectionNodes.map((node) => ({
                 id: node.id,
                 source: 'selection',
                 label: typeof node.data?.label === 'string' ? node.data.label : '',
-                type: typeof node.data?.type === 'string' ? node.data.type : '',
+                kind: typeof node.data?.kind === 'string' ? node.data.kind : '',
                 contentLength: typeof node.data?.contentMd === 'string' ? node.data.contentMd.length : 0,
             })),
         ];
@@ -289,18 +290,22 @@ export function GraphCanvas() {
                 };
 
             if (!manualNodeIds.includes(node.id)) {
-                return mergedNode;
+                return {
+                    ...mergedNode,
+                    selected: selectedNodeIds.includes(node.id),
+                };
             }
 
             return {
                 ...mergedNode,
+                selected: selectedNodeIds.includes(node.id),
                 data: {
                     ...mergedNode.data,
                     isManualPosition: true,
                 },
             };
         });
-    }, [layoutedNodes, manualNodeIds, rawCombinedNodes]);
+    }, [layoutedNodes, manualNodeIds, rawCombinedNodes, selectedNodeIds]);
 
     const displayEdges = useMemo(
         () => (layoutedEdges.length > 0 ? layoutedEdges : rawCombinedEdges),
@@ -365,6 +370,7 @@ export function GraphCanvas() {
 
     // Track last click time for manual double-click detection
     const lastClickTime = useRef<number>(0);
+    const nodeClickTimeoutRef = useRef<number | null>(null);
     const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
         reactFlowOnNodesChange(changes);
 
@@ -390,6 +396,14 @@ export function GraphCanvas() {
         return () => window.removeEventListener('keydown', handleSelectionTyping);
     }, [handleSelectionTyping]);
 
+    useEffect(() => {
+        return () => {
+            if (nodeClickTimeoutRef.current !== null) {
+                window.clearTimeout(nodeClickTimeoutRef.current);
+            }
+        };
+    }, []);
+
     return (
         <div className="w-full h-full pb-20">
             <ReactFlow
@@ -397,13 +411,31 @@ export function GraphCanvas() {
                 edges={displayEdges}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
-                onSelectionChange={({ nodes }: { nodes: Node[] }) => {
-                    setSelectedNodes(nodes.map((n: Node) => n.id));
-                }}
-                onNodeClick={(_event: React.MouseEvent, node: Node) => {
-                    setActiveNode(node.id);
+                onNodeClick={(event: React.MouseEvent, node: Node) => {
+                    if (event.shiftKey) {
+                        setSelectedNodes(
+                            selectedNodeIds.includes(node.id)
+                                ? selectedNodeIds.filter((selectedId) => selectedId !== node.id).sort()
+                                : [...selectedNodeIds, node.id].sort(),
+                        );
+                        setActiveNode(node.id);
+                        return;
+                    }
+                    if (nodeClickTimeoutRef.current !== null) {
+                        window.clearTimeout(nodeClickTimeoutRef.current);
+                    }
+
+                    nodeClickTimeoutRef.current = window.setTimeout(() => {
+                        toggleExpandedNode(node.id);
+                        setActiveNode(node.id);
+                        nodeClickTimeoutRef.current = null;
+                    }, 220);
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
+                    if (nodeClickTimeoutRef.current !== null) {
+                        window.clearTimeout(nodeClickTimeoutRef.current);
+                        nodeClickTimeoutRef.current = null;
+                    }
                     reactFlowInstance.setCenter(
                         node.position.x + 170,
                         node.position.y + 90,
@@ -420,12 +452,13 @@ export function GraphCanvas() {
                         handlePaneDoubleClick(event);
                     } else {
                         // Single click
+                        setSelectedNodes([]);
                         setActiveNode(null);
                     }
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
-                panOnScroll={true}
+                panOnScroll
                 selectionOnDrag={true}
                 panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}

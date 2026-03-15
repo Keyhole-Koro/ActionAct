@@ -43,6 +43,7 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+
 	// Required: file
 	file, header, err := r.FormFile("file")
 	if err != nil {

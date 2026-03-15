@@ -5,10 +5,10 @@ let mockNodes: TopicNode[] = [
     {
         id: 'node-1',
         title: 'Central Theme',
-        type: 'concept',
+        kind: 'theme',
         contextSummary: 'The main central theme of this topic, encompassing fundamental aspects of the research.',
-        detailHtml: '<p>This is the core concept derived from the initial upload. It represents a synthesis of <strong>various key elements</strong> found in the evidence.</p><ul><li>Important point 1</li><li>Important point 2</li></ul>',
-        contentMd: '# Central Theme\nThis concept aims to unify the understanding of the entire workspace.\n\n## Sub-components\nAs we can see below...',
+        detailHtml: '<p>This is the top-level summary derived from the latest evidence set. It highlights the strongest common threads found across the input.</p><ul><li>Important point 1</li><li>Important point 2</li></ul>',
+        contentMd: '# Central Theme\nThis node captures the main theme of the workspace.\n\n## Sub-components\nAs we can see below...',
         evidenceRefs: [
             { id: 'ev-1', title: 'Research Paper A', snippet: 'In the original paper, the central theme was debated heavily.' },
             { id: 'ev-2', title: 'Internal Wiki', url: 'https://wiki.example.com/topic' }
@@ -17,15 +17,15 @@ let mockNodes: TopicNode[] = [
     {
         id: 'node-2',
         title: 'Supporting Evidence',
-        type: 'detail',
+        kind: 'evidence',
         parentId: 'node-1',
         contextSummary: 'Evidence to support the central theme.',
-        contentMd: 'Here is some raw data supporting the root concept.'
+        contentMd: 'Here is some raw data supporting the parent node.'
     },
     {
         id: 'node-3',
         title: 'Counter Argument',
-        type: 'detail',
+        kind: 'counterpoint',
         parentId: 'node-1'
     },
 ];
