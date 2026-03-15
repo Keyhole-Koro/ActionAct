@@ -88,6 +88,12 @@ export const mockOrganizeService: OrganizePort = {
         };
     },
 
+    subscribeNodeEvidence: (_workspaceId, _topicId, nodeId, callback) => {
+        const node = mockNodes.find((candidate) => candidate.id === nodeId);
+        callback(node?.evidenceRefs ?? []);
+        return () => undefined;
+    },
+
     renameNode: async (_workspaceId, _topicId, nodeId, newTitle) => {
         await new Promise(resolve => setTimeout(resolve, 300)); // fake network
         mockNodes = mockNodes.map(n => n.id === nodeId ? { ...n, title: newTitle } : n);

@@ -14,6 +14,7 @@ export type ReferencedNodeView = {
 };
 
 export type BaseNodeData = {
+    nodeSource?: 'persisted' | 'act';
     topicId?: string;
     label: string;
     kind?: string;

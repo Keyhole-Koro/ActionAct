@@ -15,7 +15,7 @@ import {
     useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Trash2 } from 'lucide-react';
+import { PlusSquare, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { organizeService } from '@/services/organize';
@@ -24,6 +24,7 @@ import { useGraphCache } from '@/features/graph/hooks/useGraphCache';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
+import { actDraftService } from '@/services/actDraft/firestore';
 import { GraphNodeCard } from './GraphNodeCard';
 import { SelectionGroupHeader } from './SelectionGroupHeader';
 import { SelectionNodeCard } from './SelectionNodeCard';
@@ -49,7 +50,6 @@ export function GraphCanvas() {
         addEmptyActNode,
         addQueryActNode,
         setPersistedGraph,
-        setDraftGraph,
         setActGraph,
         editingNodeId,
         selectedNodeIds,
@@ -69,7 +69,6 @@ export function GraphCanvas() {
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
     const previousLayoutRef = useRef<Node[]>([]);
     const lastDebugSignature = useRef<string>('');
-    const lastClickTime = useRef<number>(0);
     const nodeClickTimeoutRef = useRef<number | null>(null);
 
     useGraphCache({
@@ -79,14 +78,6 @@ export function GraphCanvas() {
         edges: persistedEdges,
         setGraph: setPersistedGraph,
     });
-    useGraphCache({
-        kind: 'act',
-        workspaceId,
-        nodes: actNodes,
-        edges: actEdges,
-        setGraph: setActGraph,
-        removeWhenEmpty: true,
-    });
 
     useEffect(() => {
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes) => {
@@ -95,6 +86,7 @@ export function GraphCanvas() {
                 type: 'customTask',
                 position: { x: 120, y: index * 180 + 80 },
                 data: {
+                    nodeSource: 'persisted',
                     topicId: node.topicId,
                     label: node.title,
                     kind: node.kind,
@@ -127,8 +119,39 @@ export function GraphCanvas() {
     }, [persistedNodes.length, setPersistedGraph, topicId, workspaceId]);
 
     useEffect(() => {
-        setDraftGraph([], []);
-    }, [setDraftGraph, topicId, workspaceId]);
+        const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (draftNodes) => {
+            const nextActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
+                id: node.id,
+                type: 'customTask',
+                position: { x: 420, y: index * 180 + 120 },
+                data: {
+                    nodeSource: 'act',
+                    topicId: node.topicId ?? topicId,
+                    label: node.title,
+                    kind: 'act',
+                    contentMd: node.contentMd,
+                    contextSummary: node.contextSummary,
+                    detailHtml: node.detailHtml,
+                    referencedNodeIds: node.referencedNodeIds,
+                },
+            }));
+            const nextActEdges: Edge[] = nextActNodes.flatMap((node) => {
+                const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
+                    ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string' && value !== node.id)
+                    : [];
+                return referencedNodeIds.map((sourceId) => ({
+                    id: `edge-ctx-${sourceId}-${node.id}`,
+                    source: sourceId,
+                    target: node.id,
+                    animated: true,
+                    style: { stroke: '#888', strokeDasharray: '5,5' },
+                }));
+            });
+            setActGraph(nextActNodes, nextActEdges);
+        });
+
+        return () => unsubscribe();
+    }, [setActGraph, topicId, workspaceId]);
 
     const persistedTree = useMemo(
         () => buildVisibleTree(persistedNodes as GraphNodeBase[], persistedEdges, expandedBranchNodeIds),
@@ -281,6 +304,18 @@ export function GraphCanvas() {
         addEmptyActNode(position);
     }, [addEmptyActNode, reactFlowInstance]);
 
+    const handleCreateActNode = useCallback(() => {
+        const viewport = reactFlowInstance.getViewport();
+        const position = reactFlowInstance.screenToFlowPosition({
+            x: window.innerWidth * 0.55,
+            y: window.innerHeight * 0.35,
+        });
+        addEmptyActNode({
+            x: position.x - viewport.x,
+            y: position.y - viewport.y,
+        });
+    }, [addEmptyActNode, reactFlowInstance]);
+
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
         if (selectedNodeIds.length === 0 || editingNodeId) {
             return;
@@ -348,8 +383,17 @@ export function GraphCanvas() {
 
     return (
         <div className="relative w-full h-full pb-20">
-            {actNodes.length > 0 && (
-                <div className="absolute right-4 top-4 z-20">
+            <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 rounded-lg bg-background/95 shadow-sm backdrop-blur-sm"
+                    onClick={handleCreateActNode}
+                >
+                    <PlusSquare className="mr-1.5 h-4 w-4" />
+                    New ACT
+                </Button>
+                {actNodes.length > 0 && (
                     <Button
                         variant="outline"
                         size="sm"
@@ -362,8 +406,8 @@ export function GraphCanvas() {
                         <Trash2 className="mr-1.5 h-4 w-4" />
                         Clear ACT
                     </Button>
-                </div>
-            )}
+                )}
+            </div>
             <ReactFlow
                 nodes={displayNodes as GraphNodeRender[]}
                 edges={displayEdges}
@@ -401,16 +445,12 @@ export function GraphCanvas() {
                     );
                 }}
                 onPaneClick={(event) => {
-                    const now = Date.now();
-                    const timeDiff = now - lastClickTime.current;
-                    lastClickTime.current = now;
-
-                    if (timeDiff < 400) {
+                    if (event.detail >= 2) {
                         handlePaneDoubleClick(event);
-                    } else {
-                        setSelectedNodes([]);
-                        setActiveNode(null);
+                        return;
                     }
+                    setSelectedNodes([]);
+                    setActiveNode(null);
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}

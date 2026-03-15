@@ -3,20 +3,17 @@ import { organizeService } from '@/services/organize';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { toast } from 'sonner';
 
-export function useActionOrganize(workspaceId: string, topicId: string) {
+export function useActionOrganize(workspaceId: string, topicId: string, nodeSource: 'persisted' | 'act') {
     const [isRenaming, setIsRenaming] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
     const renameNode = async (nodeId: string, newTitle: string) => {
         setIsRenaming(true);
         try {
-            try {
+            if (nodeSource === 'persisted') {
                 await organizeService.renameNode(workspaceId, topicId, nodeId, newTitle);
-            } catch (error) {
+            } else {
                 await actDraftService.renameDraft(workspaceId, topicId, nodeId, newTitle);
-                if (error) {
-                    console.debug('rename fell back to actDraft', error);
-                }
             }
             toast.success('Node renamed successfully');
         } catch (error) {
@@ -30,13 +27,10 @@ export function useActionOrganize(workspaceId: string, topicId: string) {
     const deleteNode = async (nodeId: string) => {
         setIsDeleting(true);
         try {
-            try {
+            if (nodeSource === 'persisted') {
                 await organizeService.deleteNode(workspaceId, topicId, nodeId);
-            } catch (error) {
+            } else {
                 await actDraftService.deleteDraft(workspaceId, topicId, nodeId);
-                if (error) {
-                    console.debug('delete fell back to actDraft', error);
-                }
             }
             toast.success('Node deleted successfully');
         } catch (error) {

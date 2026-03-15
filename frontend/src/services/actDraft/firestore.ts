@@ -53,6 +53,7 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
     id: nodeId,
     title: readString(data.title) ?? nodeId,
     kind: readString(data.kind) ?? "act",
+    topicId: readString(data.topicId),
     referencedNodeIds: readStringArray(data.referencedNodeIds),
     contentMd: readString(data.contentMd),
     contextSummary: readString(data.contextSummary),
@@ -88,6 +89,7 @@ export const actDraftService = {
       draftDoc(workspaceId, topicId, nodeId),
       {
         nodeId,
+        topicId,
         title: draft.title ?? nodeId,
         kind: draft.kind ?? "act",
         contentMd: draft.contentMd ?? "",
@@ -105,6 +107,7 @@ export const actDraftService = {
   async applyPatch(workspaceId: string, topicId: string, patch: PatchOp, queryText: string) {
     const payload = {
       nodeId: patch.nodeId,
+      topicId,
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],

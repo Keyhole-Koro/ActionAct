@@ -40,6 +40,7 @@ export interface InputProgress {
 
 export interface OrganizePort {
     subscribeTree: (workspaceId: string, topicId: string, callback: (nodes: TopicNode[]) => void) => () => void;
+    subscribeNodeEvidence: (workspaceId: string, topicId: string, nodeId: string, callback: (evidenceRefs: EvidenceRef[]) => void) => () => void;
     subscribeInputProgress: (workspaceId: string, topicId: string, inputId: string, callback: (progress: InputProgress | null) => void) => () => void;
 
     // Mutating actions

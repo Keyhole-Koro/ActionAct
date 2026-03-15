@@ -8,8 +8,6 @@ import { Node, Edge } from '@xyflow/react';
 interface GraphState {
     persistedNodes: Node[];
     persistedEdges: Edge[];
-    draftNodes: Node[];
-    draftEdges: Edge[];
     actNodes: Node[];
     actEdges: Edge[];
     selectedNodeIds: string[];
@@ -22,7 +20,6 @@ interface GraphState {
 
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
-    setDraftGraph: (nodes: Node[], edges: Edge[]) => void;
     setActGraph: (nodes: Node[], edges: Edge[]) => void;
     clearActGraph: () => void;
     clearSelection: () => void;
@@ -68,8 +65,6 @@ let _nodeCounter = 0;
 export const useGraphStore = create<GraphState>((set) => ({
     persistedNodes: [],
     persistedEdges: [],
-    draftNodes: [],
-    draftEdges: [],
     actNodes: [],
     actEdges: [],
     selectedNodeIds: [],
@@ -86,10 +81,6 @@ export const useGraphStore = create<GraphState>((set) => ({
     setPersistedGraph: (nodes, edges) => set((state) => ({
         persistedNodes: preserveNodePositions(state.persistedNodes, nodes),
         persistedEdges: edges,
-    })),
-    setDraftGraph: (nodes, edges) => set((state) => ({
-        draftNodes: preserveNodePositions(state.draftNodes, nodes),
-        draftEdges: edges,
     })),
     setActGraph: (nodes, edges) => set((state) => ({
         actNodes: preserveNodePositions(state.actNodes, nodes),
@@ -169,6 +160,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             position: { x: 200 + (state.actNodes.length * 10), y: 150 + (state.actNodes.length * 100) },
             data: {
                 label: payload.label ?? '',
+                nodeSource: 'act',
                 kind: payload.kind ?? 'act',
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',
@@ -207,7 +199,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: '', kind: 'act', contentMd: '', isManualPosition: true }
+                data: { label: '', nodeSource: 'act', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             editingNodeId: id,
             activeNodeId: id,
@@ -225,7 +217,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: initialLabel, kind: 'act', contentMd: '', isManualPosition: true }
+                data: { label: initialLabel, nodeSource: 'act', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             actEdges: [
                 ...state.actEdges,

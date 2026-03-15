@@ -2,20 +2,14 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
   updateDoc,
-  type Unsubscribe,
 } from "firebase/firestore";
 
 import { firestore } from "@/services/firebase/firestore";
 import type { EvidenceRef, InputProgress, InputProgressStatus, OrganizePort, TopicNode } from "./port";
-
-function topicsCollection(workspaceId: string) {
-  return collection(firestore, `workspaces/${workspaceId}/topics`);
-}
 
 function topicNodesCollection(workspaceId: string, topicId: string) {
   return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/nodes`);
@@ -53,25 +47,12 @@ function mapEvidence(docId: string, data: Record<string, unknown>): EvidenceRef 
   };
 }
 
-async function loadEvidenceRefs(
-  workspaceId: string,
-  topicId: string,
-  nodeId: string,
-): Promise<EvidenceRef[]> {
-  const snapshot = await getDocs(evidenceCollection(workspaceId, topicId, nodeId));
-  return snapshot.docs.map((evidenceDoc) =>
-    mapEvidence(evidenceDoc.id, evidenceDoc.data() as Record<string, unknown>),
-  );
-}
-
-async function mapTopicNode(
-  workspaceId: string,
+function mapTopicNode(
   topicId: string,
   docId: string,
   data: Record<string, unknown>,
-): Promise<TopicNode> {
+): TopicNode {
   const nodeId = readString(data.nodeId) ?? docId;
-  const evidenceRefs = await loadEvidenceRefs(workspaceId, topicId, nodeId);
 
   return {
     id: nodeId,
@@ -82,14 +63,7 @@ async function mapTopicNode(
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
     contentMd: readString(data.contentMd),
-    evidenceRefs,
   };
-}
-
-function flattenTopicNodes(topicNodesByTopic: Map<string, TopicNode[]>): TopicNode[] {
-  return [...topicNodesByTopic.values()]
-    .flat()
-    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function readInputProgress(
@@ -118,62 +92,28 @@ function readInputProgress(
 }
 
 export const firestoreOrganizeService: OrganizePort = {
-  subscribeTree: (workspaceId, _topicId, callback) => {
-    const topicNodesByTopic = new Map<string, TopicNode[]>();
-    const nodeUnsubscribers = new Map<string, Unsubscribe>();
+  subscribeTree: (workspaceId, topicId, callback) => onSnapshot(
+    query(topicNodesCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
+    (nodeSnapshot) => {
+      const topicNodes = nodeSnapshot.docs.map((nodeDoc) =>
+        mapTopicNode(
+          topicId,
+          nodeDoc.id,
+          nodeDoc.data() as Record<string, unknown>,
+        ),
+      );
+      callback(topicNodes);
+    },
+  ),
 
-    const unsubscribeTopics = onSnapshot(
-      query(topicsCollection(workspaceId), orderBy("updatedAt", "desc")),
-      (topicSnapshot) => {
-        const nextTopicIds = new Set(topicSnapshot.docs.map((topicDoc) => topicDoc.id));
-
-        for (const [topicId, unsubscribeNodes] of nodeUnsubscribers.entries()) {
-          if (nextTopicIds.has(topicId)) {
-            continue;
-          }
-          unsubscribeNodes();
-          nodeUnsubscribers.delete(topicId);
-          topicNodesByTopic.delete(topicId);
-        }
-
-        for (const topicDoc of topicSnapshot.docs) {
-          const topicId = topicDoc.id;
-          if (nodeUnsubscribers.has(topicId)) {
-            continue;
-          }
-
-          const unsubscribeNodes = onSnapshot(
-            query(topicNodesCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
-            async (nodeSnapshot) => {
-              const topicNodes = await Promise.all(
-                nodeSnapshot.docs.map((nodeDoc) =>
-                  mapTopicNode(
-                    workspaceId,
-                    topicId,
-                    nodeDoc.id,
-                    nodeDoc.data() as Record<string, unknown>,
-                  ),
-                ),
-              );
-              topicNodesByTopic.set(topicId, topicNodes);
-              callback(flattenTopicNodes(topicNodesByTopic));
-            },
-          );
-
-          nodeUnsubscribers.set(topicId, unsubscribeNodes);
-        }
-
-        callback(flattenTopicNodes(topicNodesByTopic));
-      },
-    );
-
-    return () => {
-      unsubscribeTopics();
-      for (const unsubscribeNodes of nodeUnsubscribers.values()) {
-        unsubscribeNodes();
-      }
-    };
-  },
+  subscribeNodeEvidence: (workspaceId, topicId, nodeId, callback) => onSnapshot(
+    query(evidenceCollection(workspaceId, topicId, nodeId)),
+    (snapshot) => {
+      callback(snapshot.docs.map((evidenceDoc) =>
+        mapEvidence(evidenceDoc.id, evidenceDoc.data() as Record<string, unknown>),
+      ));
+    },
+  ),
 
   subscribeInputProgress: (workspaceId, topicId, inputId, callback) => onSnapshot(
     inputProgressDoc(workspaceId, topicId, inputId),

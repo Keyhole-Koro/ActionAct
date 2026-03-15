@@ -9,13 +9,6 @@ import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
 import type { PatchOp, StreamActOptions } from "@/services/act/port";
 
-function normalizePatchNodeId(nodeId: string, targetNodeId: string | null) {
-  if (nodeId === "root" && targetNodeId) {
-    return targetNodeId;
-  }
-  return nodeId;
-}
-
 export type StartActRunParams = {
   targetNodeId: string | null;
   query: string;
@@ -48,6 +41,12 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
   const runContext = useRunContextStore.getState();
   const preferences = useStreamPreferencesStore.getState();
   const requestId = options?.requestId ?? uuidv4();
+  const isExistingActTarget = targetNodeId ? graphStore.actNodes.some((node) => node.id === targetNodeId) : false;
+  const frontendRootNodeId = isExistingActTarget && targetNodeId ? targetNodeId : `act-${requestId}`;
+  const backendToFrontendNodeIds = new Map<string, string>([["root", frontendRootNodeId]]);
+  if (targetNodeId) {
+    backendToFrontendNodeIds.set(targetNodeId, frontendRootNodeId);
+  }
   const effectiveWorkspaceId = workspaceId ?? runContext.workspaceId;
   const effectiveTopicId = topicId ?? runContext.topicId;
   const selectedNodeIds = graphStore.selectedNodeIds;
@@ -65,9 +64,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
   }
 
   graphStore.setStreamRunning(true);
-  if (targetNodeId) {
-    graphStore.addStreamingNode(targetNodeId);
-  }
+  graphStore.addStreamingNode(frontendRootNodeId);
 
   const touchedNodeIds = new Set<string>();
   const persistTouchedNodes = async () => {
@@ -91,10 +88,21 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
     );
   };
 
+  const resolveFrontendNodeId = (backendNodeId: string) => {
+    const existing = backendToFrontendNodeIds.get(backendNodeId);
+    if (existing) {
+      return existing;
+    }
+
+    const mapped = `act-${requestId}-${backendNodeId}`;
+    backendToFrontendNodeIds.set(backendNodeId, mapped);
+    return mapped;
+  };
+
   const cancel = actService.streamAct(
     query,
     (patch: PatchOp) => {
-      const normalizedNodeId = normalizePatchNodeId(patch.nodeId, targetNodeId);
+      const normalizedNodeId = resolveFrontendNodeId(patch.nodeId);
       touchedNodeIds.add(normalizedNodeId);
       useGraphStore.getState().addStreamingNode(normalizedNodeId);
 
@@ -103,7 +111,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
         useGraphStore.getState().addOrUpdateActNode(normalizedNodeId, {
           label:
             patch.data.label ??
-            (existingNode ? undefined : targetNodeId === null ? query : undefined),
+            (existingNode ? undefined : query),
           kind: patch.data.kind ?? "act",
           referencedNodeIds:
             patch.data.referencedNodeIds ??
