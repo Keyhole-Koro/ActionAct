@@ -14,9 +14,9 @@ from app.domain.language_policy import build_language_instruction
 logger = logging.getLogger(__name__)
 
 _SYSTEM_INSTRUCTION = (
-    "You are an AI research assistant. Analyze the user's question and provide "
-    "structured, insightful answers. Use markdown formatting with headers, lists, "
-    "and emphasis. Prefer the provided topic context over unsupported guesses."
+    "あなたはAIリサーチアシスタントです。ユーザーの質問を分析し、構造化された示唆に富む回答を作成してください。"
+    "見出し・箇条書き・強調を使って、Markdown形式でわかりやすく整理してください。"
+    "根拠のない推測より、提供されたトピック文脈を優先してください。"
 )
 
 _RELATION_PRIORITY = {

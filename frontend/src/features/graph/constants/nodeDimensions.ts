@@ -15,19 +15,19 @@ export const SELECTION_HEADER_HEIGHT = 220;
 export const SELECTION_NODE_WIDTH = 260;
 export const SELECTION_NODE_HEIGHT = 160;
 
-export const ACT_NODE_COMPACT_WIDTH = 172;
+export const ACT_NODE_COMPACT_WIDTH = 148;
 export const ACT_NODE_GROWTH_PER_CHAR = 7;
-export const ACT_NODE_GROWTH_PADDING = 48;
-export const NODE_COLLAPSED_BASE_WIDTH = 136;
-export const NODE_COLLAPSED_GROWTH_PER_CHAR = 7;
-export const NODE_COLLAPSED_PADDING = 44;
+export const ACT_NODE_GROWTH_PADDING = 36;
+export const NODE_COLLAPSED_BASE_WIDTH = 120;
+export const NODE_COLLAPSED_GROWTH_PER_CHAR = 6;
+export const NODE_COLLAPSED_PADDING = 24;
 
 export function getCollapsedNodeWidth(label: string | undefined, nodeKind?: string, hasChildNodes = false) {
     const currentTitle = (label ?? '').trim();
     const minWidth = nodeKind === 'act' ? ACT_NODE_COMPACT_WIDTH : NODE_COLLAPSED_BASE_WIDTH;
     const maxWidth = nodeKind === 'act' ? GRAPH_ACT_NODE_COLLAPSED_WIDTH : GRAPH_NODE_COLLAPSED_WIDTH;
     const padding = hasChildNodes
-        ? (nodeKind === 'act' ? NODE_COLLAPSED_PADDING + 24 : NODE_COLLAPSED_PADDING + 28)
+        ? (nodeKind === 'act' ? NODE_COLLAPSED_PADDING + 18 : NODE_COLLAPSED_PADDING + 20)
         : NODE_COLLAPSED_PADDING;
 
     return Math.min(

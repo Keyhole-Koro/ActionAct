@@ -22,9 +22,9 @@ class StubAssembly:
         user_message: str,
     ) -> PromptBundle:
         system_instruction = (
-            "You are an AI research assistant. "
-            "Analyze the user's question and provide structured, insightful answers. "
-            "Use markdown formatting with headers, lists, and emphasis. "
+            "あなたはAIリサーチアシスタントです。"
+            "ユーザーの質問を分析し、構造化された示唆に富む回答を作成してください。"
+            "見出し・箇条書き・強調を使って、Markdown形式でわかりやすく整理してください。"
             f"{build_language_instruction(user_message)}"
         )
         return PromptBundle(

@@ -27,11 +27,11 @@ async def test_stub_assembly_preserves_user_message():
     msg = "Tell me about quantum mechanics"
     bundle = await asm.assemble("t1", "ws-1", None, [], msg)
     assert bundle.user_prompt == msg
-    assert "Respond in English." in bundle.system_instruction
+    assert "回答は英語" in bundle.system_instruction
 
 
 @pytest.mark.asyncio
 async def test_stub_assembly_sets_japanese_response_policy_for_japanese_prompt():
     asm = StubAssembly()
     bundle = await asm.assemble("t1", "ws-1", None, [], "日本語で説明して")
-    assert "Respond in Japanese" in bundle.system_instruction
+    assert "回答は日本語" in bundle.system_instruction

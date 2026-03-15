@@ -131,8 +131,8 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                 <div
                     className={`relative ${
                         isActNode
-                            ? (hasChildNodes ? 'p-3 pb-0 pr-12' : 'p-3 pb-0 pr-3')
-                            : (hasChildNodes ? 'p-4 pb-0 pr-14' : 'p-4 pb-0 pr-4')
+                            ? (hasChildNodes ? 'p-3 pb-0 pr-11' : 'px-3 pt-3 pb-0')
+                            : (hasChildNodes ? 'p-3.5 pb-0 pr-12' : 'px-3.5 pt-3.5 pb-0')
                     }`}
                 >
                     <div className="flex-1 min-w-0 pt-0.5">
@@ -178,7 +178,7 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                             />
                         ) : (
                             <h3
-                                className={`${isActNode ? 'text-[15px]' : 'text-base'} font-semibold leading-snug text-foreground line-clamp-2 mt-0.5`}
+                                className={`${isActNode ? 'text-[15px]' : 'text-base'} font-semibold leading-snug text-foreground ${isExpanded ? 'line-clamp-2' : 'truncate whitespace-nowrap'} mt-0.5`}
                             >
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>

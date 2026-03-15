@@ -21,7 +21,6 @@ def build_language_instruction(user_message: str) -> str:
     language = detect_response_language(user_message)
     if language == "ja":
         return (
-            "Respond in Japanese. Keep technical terms in English only when that is the standard term, "
-            "but explain the answer itself in Japanese."
+            "回答は日本語で行ってください。業界標準として英語表記が一般的な技術用語のみ、必要に応じて英語を併記してください。"
         )
-    return "Respond in English."
+    return "回答は英語で行ってください。"
