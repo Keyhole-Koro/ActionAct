@@ -235,6 +235,7 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * Ask bar の Web Grounding は常設トグルにしない
 * grounding 利用は query 内容と act type に応じて runtime が自動判定してよい
 * tool / agent / explicit request がある場合のみ grounding 設定を明示 override してよい
+* Ask bar は clarification が必要な場合、小さな clarification card を bar 直上に出し、`Continue without context` と `Use selected node and retry` を提供してよい
 
 4. Node detail
 * node detail は常設の独立 pane としては表示しない

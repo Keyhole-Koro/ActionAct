@@ -2,9 +2,11 @@
 
 import { useCallback } from 'react';
 
-import { usePanelStore } from '@/features/layout/store/panel-store';
 import { useGraphStore } from '@/features/graph/store';
 import { startActRun } from '@/features/agentTools/runtime/act-runner';
+import { prepareAnchoredActRun } from '@/features/agentTools/runtime/frontend-tool-orchestrator';
+import { frontendToolServer } from '@/features/agentTools/runtime/frontend-tool-registry';
+import { useActClarificationStore } from '@/features/agentTools/store/act-clarification-store';
 import { clearAllActNodes, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
 
 type Params = {
@@ -13,28 +15,51 @@ type Params = {
 };
 
 export function useGraphCommands({ workspaceId, topicId }: Params) {
-    const { openPanel } = usePanelStore();
     const {
         actNodes,
         setActiveNode,
         setSelectedNodes,
         toggleExpandedBranchNode,
         updateActNodeLabel,
+        expandNode,
     } = useGraphStore();
+    const setPendingClarification = useActClarificationStore((state) => state.setPendingClarification);
+
+    const frontendToolClient = {
+        available: () => true,
+        listTools: () => frontendToolServer.listTools(),
+        invokeTool: (name: string, input: unknown) => frontendToolServer.invokeTool(name, input),
+    };
 
     const openDetails = useCallback((nodeId: string) => {
         setActiveNode(nodeId);
-        openPanel('node-detail', nodeId);
-    }, [openPanel, setActiveNode]);
+        expandNode(nodeId);
+    }, [expandNode, setActiveNode]);
 
     const openReferencedNode = useCallback((nodeId: string) => {
         openDetails(nodeId);
     }, [openDetails]);
 
-    const runActFromNode = useCallback((nodeId: string, query: string) => {
+    const runActFromNode = useCallback(async (nodeId: string, query: string) => {
         setSelectedNodes([nodeId]);
-        startActRun({ targetNodeId: nodeId, query, options: { clear: false } });
-    }, [setSelectedNodes]);
+        const prepared = await prepareAnchoredActRun(frontendToolClient, {
+            anchorNodeId: nodeId,
+            userMessage: query,
+            explicitContextNodeIds: [nodeId],
+        });
+        if (prepared.status !== 'ready') {
+            setPendingClarification({
+                clarification: prepared.clarification,
+                pendingRun: {
+                    targetNodeId: nodeId,
+                    query,
+                    options: { clear: false },
+                },
+            });
+            return;
+        }
+        startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
+    }, [setPendingClarification, setSelectedNodes]);
 
     const commitActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
         const trimmed = rawLabel.trim();
@@ -49,9 +74,29 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         updateActNodeLabel(nodeId, trimmed);
         if (!previousLabel) {
             setSelectedNodes([nodeId]);
-            startActRun({ targetNodeId: nodeId, query: trimmed, options: { clear: false } });
+            const prepared = await prepareAnchoredActRun(frontendToolClient, {
+                anchorNodeId: nodeId,
+                userMessage: trimmed,
+                explicitContextNodeIds: [nodeId],
+            });
+            if (prepared.status !== 'ready') {
+                setPendingClarification({
+                    clarification: prepared.clarification,
+                    pendingRun: {
+                        targetNodeId: nodeId,
+                        query: trimmed,
+                        options: { clear: false },
+                    },
+                });
+                return;
+            }
+            startActRun({
+                targetNodeId: nodeId,
+                query: trimmed,
+                options: { clear: false, contextNodeIds: prepared.contextNodeIds },
+            });
         }
-    }, [actNodes, setSelectedNodes, topicId, updateActNodeLabel, workspaceId]);
+    }, [actNodes, setPendingClarification, setSelectedNodes, topicId, updateActNodeLabel, workspaceId]);
 
     const clearAct = useCallback(async () => {
         await clearAllActNodes(workspaceId, topicId);
