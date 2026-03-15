@@ -4,11 +4,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { workspaceService, type WorkspaceData } from '@/features/workspace/services/workspace-service';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
-import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
 import { FolderKanban, Sparkles } from 'lucide-react';
 import { config } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export function FloatingHeader() {
@@ -111,7 +109,6 @@ export function FloatingHeader() {
                     <div className="h-5 w-px bg-border/60 mx-1" />
 
                     {!isMock && <CreateWorkspaceControl />}
-                    <UploadButton compact />
                 </div>
             </div>
 

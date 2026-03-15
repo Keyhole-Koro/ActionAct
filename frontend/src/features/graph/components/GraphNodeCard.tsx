@@ -142,20 +142,20 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                             {createdBy && (
                                 <span
                                     className={[
-                                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
                                         createdBy === 'agent'
                                             ? 'border-blue-200 bg-blue-50 text-blue-700'
                                             : 'border-emerald-200 bg-emerald-50 text-emerald-700',
                                     ].join(' ')}
                                 >
                                     {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
-                                    {createdBy}
+                                    {createdBy === 'agent' ? 'AI' : 'You'}
                                 </span>
                             )}
                             {nodeKind && nodeKind !== 'act' && (
                                 <Badge
                                     variant="outline"
-                                    className={`text-[10px] px-2 py-0 border-primary/20 bg-primary/5 uppercase tracking-widest font-bold ${cfg.accent}`}
+                                    className={`text-[11px] px-2 py-0 border-primary/20 bg-primary/5 font-medium ${cfg.accent}`}
                                 >
                                     {kindLabel}
                                 </Badge>
@@ -176,19 +176,19 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                                 onBlur={commitEdit}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ask a question..."
-                                className="w-full text-base font-bold bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 mt-1 font-heading"
+                                className="w-full text-base font-semibold bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 mt-1"
                             />
                         ) : (
                             <h3
-                                className="text-base font-bold leading-snug text-foreground line-clamp-2 mt-0.5 font-heading"
+                                className="text-base font-semibold leading-snug text-foreground line-clamp-2 mt-0.5"
                             >
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
                         )}
                         {referencedNodes.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                                    Referenced From
+                                <span className="text-[11px] font-medium text-muted-foreground/70">
+                                    Referenced from
                                 </span>
                                 {referencedNodes.slice(0, 3).map((node) => (
                                     <button

@@ -22,10 +22,10 @@ export function AskForm() {
     };
 
     return (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-10">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-10 pointer-events-none">
             <form
                 onSubmit={onSubmit}
-                className="bg-background/95 border shadow-lg rounded-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-shadow backdrop-blur-sm"
+                className="pointer-events-auto bg-background/95 border shadow-lg rounded-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 transition-shadow backdrop-blur-sm"
             >
                 <UploadButton compact className="shrink-0" />
                 <button
@@ -50,8 +50,7 @@ export function AskForm() {
                     >
                         {useWebGrounding ? <Sparkles className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
                     </span>
-                    <span className="hidden sm:inline">{useWebGrounding ? 'Web On' : 'Web Off'}</span>
-                    <span className="sm:hidden">Web</span>
+                    <span>Web</span>
                 </button>
                 <input
                     type="text"

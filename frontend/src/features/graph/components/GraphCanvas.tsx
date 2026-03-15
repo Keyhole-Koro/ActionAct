@@ -490,7 +490,7 @@ export function GraphCanvas() {
     }, []);
 
     return (
-        <div className="relative w-full h-full pb-20">
+        <div className="relative w-full h-full">
             <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                     variant="outline"
