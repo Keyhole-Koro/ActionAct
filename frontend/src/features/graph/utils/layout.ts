@@ -22,7 +22,7 @@ function getNodeDimensions(node: Node) {
         return { width: measuredWidth, height: measuredHeight };
     }
 
-    const layoutDimensions = getLayoutDimensionsForNodeType(node.type);
+    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, node.data?.isExpanded === true);
     return {
         width: layoutDimensions.width ?? GRAPH_NODE_COLLAPSED_WIDTH,
         height: layoutDimensions.height ?? GRAPH_NODE_LAYOUT_HEIGHT,

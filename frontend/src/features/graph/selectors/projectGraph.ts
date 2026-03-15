@@ -1,6 +1,7 @@
 import type { Node } from '@xyflow/react';
 
 import type { GraphNodeBase, GraphNodeRender, GraphNodeRenderData, ReferencedNodeView } from '@/features/graph/types';
+import { getLayoutDimensionsForNodeType } from '@/features/graph/constants/nodeDimensions';
 
 type PersistedTreeProjection = {
     childrenByParent: Map<string, string[]>;
@@ -80,9 +81,17 @@ export function mergeTreeWithActNodes(
 export function buildLayoutInput(
     mergedTreeNodes: GraphNodeBase[],
     visibleEdges: { id: string; source: string; target: string; animated?: boolean }[],
+    expandedNodeIds: string[],
 ) {
+    const expandedNodeIdSet = new Set(expandedNodeIds);
     return {
-        layoutInputNodes: [...mergedTreeNodes],
+        layoutInputNodes: mergedTreeNodes.map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                isExpanded: expandedNodeIdSet.has(node.id),
+            },
+        })),
         layoutInputEdges: [...visibleEdges],
     };
 }
@@ -152,15 +161,28 @@ export function buildDisplayNodes({
     const selectedNodeIdSet = new Set(selectedNodeIds);
     const expandedBranchSet = new Set(expandedBranchNodeIds);
 
-    const actLaneNodes = standaloneActNodes.map((node, index) => {
+    const sortedActNodes = [...standaloneActNodes].sort((left, right) => left.position.y - right.position.y);
+    let actLaneY = 100;
+    const actLaneNodes = sortedActNodes.map((node) => {
         const layoutedNode = layoutById.get(node.id);
         const sourceNode = layoutedNode ?? node;
-        return {
+        const sourceNodeData = (sourceNode.data ?? {}) as Record<string, unknown>;
+        const isExpanded = sourceNodeData.isExpanded === true || isNodeExpanded(node.id);
+        const dimensions = getLayoutDimensionsForNodeType(sourceNode.type, isExpanded);
+        const positionedNode = {
             ...sourceNode,
+            data: {
+                ...sourceNodeData,
+                isExpanded,
+            },
             position: {
                 x: maxTreeX + 420,
-                y: sourceNode.position.y + (index * 220),
+                y: actLaneY,
             },
+        };
+        actLaneY += dimensions.height + 40;
+        return {
+            ...positionedNode,
         };
     });
 
@@ -181,8 +203,9 @@ export function buildDisplayNodes({
 
         const hasChildNodes = childrenByParent.has(node.id);
         const hiddenChildCount = (childrenByParent.get(node.id) ?? []).filter((childId) => !visiblePersistedNodeIds.has(childId)).length;
-        const referencedNodeIds = Array.isArray(mergedNode.data?.referencedNodeIds)
-            ? mergedNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+        const mergedNodeData = (mergedNode.data ?? {}) as Record<string, unknown>;
+        const referencedNodeIds = Array.isArray(mergedNodeData.referencedNodeIds)
+            ? mergedNodeData.referencedNodeIds.filter((value): value is string => typeof value === 'string')
             : [];
 
         const renderData: GraphNodeRenderData = {

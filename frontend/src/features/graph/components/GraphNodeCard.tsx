@@ -72,8 +72,13 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             commitEdit();
+        } else if (e.key === 'Escape') {
+            // Restore original or clear if it's a new empty node
+            const defaultVal = data.label || '';
+            setEditValue(defaultVal);
+            data.onCommitLabel?.(defaultVal);
         }
-    }, [commitEdit]);
+    }, [commitEdit, data]);
 
     return (
         <div className="relative group">

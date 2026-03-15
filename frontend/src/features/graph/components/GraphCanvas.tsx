@@ -99,7 +99,7 @@ export function GraphCanvas() {
         actEdges,
         setSelectedNodes,
         setActiveNode,
-        focusExpandedNode,
+        toggleExpandedNode,
         addEmptyActNode,
         addQueryActNode,
         setPersistedGraph,
@@ -241,8 +241,8 @@ export function GraphCanvas() {
     );
 
     const { layoutInputNodes, layoutInputEdges } = useMemo(
-        () => buildLayoutInput(mergedTreeNodes, persistedTree.visibleEdges),
-        [mergedTreeNodes, persistedTree.visibleEdges],
+        () => buildLayoutInput(mergedTreeNodes, persistedTree.visibleEdges, expandedNodeIds),
+        [expandedNodeIds, mergedTreeNodes, persistedTree.visibleEdges],
     );
 
     const topologySignature = useMemo(
@@ -410,7 +410,13 @@ export function GraphCanvas() {
             x: event.clientX,
             y: event.clientY,
         });
-        addEmptyActNode(position);
+
+        // Offset by half the default node dimensions to center it on the cursor
+        // Width: 340 -> 170, Height: ~100 -> 50
+        addEmptyActNode({
+            x: position.x - 170,
+            y: position.y - 50,
+        });
     }, [addEmptyActNode, reactFlowInstance]);
 
     const handleCreateActNode = useCallback(() => {
@@ -490,8 +496,15 @@ export function GraphCanvas() {
         }
     }, []);
 
+    const handleWrapperDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement;
+        if (target.classList.contains('react-flow__pane')) {
+            handlePaneDoubleClick(event);
+        }
+    }, [handlePaneDoubleClick]);
+
     return (
-        <div className="relative w-full h-full">
+        <div className="relative w-full h-full" onDoubleClick={handleWrapperDoubleClick}>
             <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                     variant="outline"
@@ -542,7 +555,7 @@ export function GraphCanvas() {
 
                     nodeClickTimeoutRef.current = window.setTimeout(() => {
                         setActiveNode(node.id);
-                        focusExpandedNode(node.id);
+                        toggleExpandedNode(node.id);
                         const nextZoom = reactFlowInstance.getZoom() > 1.1
                             ? 0.92
                             : reactFlowInstance.getZoom();
@@ -565,11 +578,13 @@ export function GraphCanvas() {
                         { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
                     );
                 }}
-                onPaneDoubleClick={handlePaneDoubleClick}
                 onPaneClick={(event) => {
+                    if (event.detail >= 2) {
+                        handlePaneDoubleClick(event);
+                        return;
+                    }
                     setSelectedNodes([]);
                     setActiveNode(null);
-                    focusExpandedNode(null);
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
