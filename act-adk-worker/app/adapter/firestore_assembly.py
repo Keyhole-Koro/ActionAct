@@ -9,15 +9,9 @@ from datetime import datetime
 from typing import Any
 
 from app.domain.models import PromptBundle
-from app.domain.language_policy import build_language_instruction
+from app.domain.act_prompt_policy import build_act_system_instruction
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_INSTRUCTION = (
-    "あなたはAIリサーチアシスタントです。ユーザーの質問を分析し、構造化された示唆に富む回答を作成してください。"
-    "見出し・箇条書き・強調を使って、Markdown形式でわかりやすく整理してください。"
-    "根拠のない推測より、提供されたトピック文脈を優先してください。"
-)
 
 _RELATION_PRIORITY = {
     "contradicts": 4,
@@ -108,14 +102,14 @@ class FirestoreAssembly:
         )
 
         return PromptBundle(
-            system_instruction=f"{_SYSTEM_INSTRUCTION} {build_language_instruction(user_message)}",
+            system_instruction=build_act_system_instruction(user_message),
             user_prompt=user_message,
             context_blocks=context_blocks,
         )
 
     def _minimal_bundle(self, user_message: str) -> PromptBundle:
         return PromptBundle(
-            system_instruction=f"{_SYSTEM_INSTRUCTION} {build_language_instruction(user_message)}",
+            system_instruction=build_act_system_instruction(user_message),
             user_prompt=user_message,
             context_blocks=[],
         )

@@ -6,13 +6,10 @@ import { workspaceService, type WorkspaceData } from '@/features/workspace/servi
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
 import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
 import { FolderKanban } from 'lucide-react';
-import { config } from '@/lib/config';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { UserAvatar } from './UserAvatar';
 
 export function FloatingHeader() {
-    const isMock = config.useMocks;
     const { workspaceId } = useRunContextStore();
     const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -108,18 +105,10 @@ export function FloatingHeader() {
 
                     <div className="h-5 w-px bg-border/60 mx-1" />
 
-                    {!isMock && <CreateWorkspaceControl />}
-                    {!isMock && <AddMemberControl workspaceId={workspaceId} />}
+                    <CreateWorkspaceControl />
+                    <AddMemberControl workspaceId={workspaceId} />
                 </div>
             </div>
-
-            {isMock && (
-                <div className="ml-12">
-                    <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-100 border-0 font-semibold tracking-wide shadow-sm">
-                        Mock Mode
-                    </Badge>
-                </div>
-            )}
         </div>
     );
 }

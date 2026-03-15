@@ -1,8 +1,6 @@
 import React from 'react';
-import { Badge } from '@/components/ui/badge';
 import { useAuthState } from '@/features/auth/hooks/useAuthState';
 import { signOutCurrentUser } from '@/services/firebase/auth';
-import { config } from '@/lib/config';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
 import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
@@ -20,7 +18,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export function AppHeader() {
-    const isMock = config.useMocks;
     const { workspaceId } = useRunContextStore();
     const { user } = useAuthState();
     const userInitial = user?.displayName?.trim().charAt(0) || user?.email?.trim().charAt(0) || 'U';
@@ -54,15 +51,9 @@ export function AppHeader() {
 
                 {/* Status & User */}
                 <div className="flex items-center gap-4">
-                    {!isMock ? <CreateWorkspaceControl /> : null}
-                    {!isMock ? <AddMemberControl workspaceId={workspaceId} /> : null}
+                    <CreateWorkspaceControl />
+                    <AddMemberControl workspaceId={workspaceId} />
                     <UploadButton />
-
-                    {isMock && (
-                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-100 border-0 font-semibold tracking-wide">
-                            Mock Mode
-                        </Badge>
-                    )}
 
                     <div className="flex items-center gap-3">
                         {user ? (

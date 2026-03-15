@@ -2,10 +2,16 @@
 
 import pytest
 
-from app.adapter.mock_llm import MockLLM
 from app.adapter.stub_assembly import StubAssembly
-from app.domain.models import RunActInput
+from app.domain.models import LLMChunk, RunActInput
 from app.usecase.run_act import RunActUsecase
+
+
+class FakeLLM:
+    async def generate(self, _bundle, _config):
+        yield LLMChunk(text="hello ")
+        yield LLMChunk(text="world")
+        yield LLMChunk(is_done=True)
 
 
 def _input(**overrides) -> RunActInput:
@@ -23,7 +29,7 @@ def _input(**overrides) -> RunActInput:
 
 @pytest.mark.asyncio
 async def test_usecase_happy_path():
-    uc = RunActUsecase(assembly=StubAssembly(), llm=MockLLM())
+    uc = RunActUsecase(assembly=StubAssembly(), llm=FakeLLM())
 
     events = []
     async for event in uc.execute(_input()):
@@ -51,7 +57,7 @@ async def test_usecase_happy_path():
 
 @pytest.mark.asyncio
 async def test_usecase_uses_anchor_node_id():
-    uc = RunActUsecase(assembly=StubAssembly(), llm=MockLLM())
+    uc = RunActUsecase(assembly=StubAssembly(), llm=FakeLLM())
 
     events = []
     async for event in uc.execute(_input(anchor_node_id="my-node")):
@@ -63,7 +69,7 @@ async def test_usecase_uses_anchor_node_id():
 
 @pytest.mark.asyncio
 async def test_usecase_generates_node_id_when_no_anchor():
-    uc = RunActUsecase(assembly=StubAssembly(), llm=MockLLM())
+    uc = RunActUsecase(assembly=StubAssembly(), llm=FakeLLM())
 
     events = []
     async for event in uc.execute(_input()):
@@ -76,7 +82,7 @@ async def test_usecase_generates_node_id_when_no_anchor():
 @pytest.mark.asyncio
 async def test_usecase_event_ordering():
     """Verify: upsert comes before any append_md (contract rule)."""
-    uc = RunActUsecase(assembly=StubAssembly(), llm=MockLLM())
+    uc = RunActUsecase(assembly=StubAssembly(), llm=FakeLLM())
 
     events = []
     async for event in uc.execute(_input()):

@@ -518,18 +518,25 @@ export function GraphCanvas() {
     return (
         <div className="relative w-full h-full" onDoubleClick={handlePaneDoubleClick}>
             {visibleRecentClickedNodes.length > 0 && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(76vw,920px)] overflow-x-auto rounded-xl border border-border/50 bg-background/95 px-3 py-2 shadow-sm backdrop-blur-sm">
-                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Recent</span>
-                    {visibleRecentClickedNodes.map((item) => (
-                        <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => focusNode(item.id)}
-                            className="max-w-52 shrink-0 truncate rounded-md border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                            title={item.title}
-                        >
-                            {item.title}
-                        </button>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(80vw,980px)] overflow-x-auto px-1 py-1">
+                    <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground whitespace-nowrap uppercase">Recent</span>
+                    {visibleRecentClickedNodes.map((item, index) => (
+                        <React.Fragment key={item.id}>
+                            {index > 0 && (
+                                <span className="shrink-0 text-xs font-black tracking-tight text-primary/55 select-none" aria-hidden>
+                                    &lt;&lt;
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => focusNode(item.id)}
+                                className="group relative grid h-8 w-8 shrink-0 place-items-center rounded-full border border-primary/35 bg-gradient-to-b from-background to-muted/35 text-[11px] font-bold uppercase text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:shadow-md"
+                                title={item.title}
+                                aria-label={`Focus ${item.title}`}
+                            >
+                                {item.title.trim().slice(0, 1) || "?"}
+                            </button>
+                        </React.Fragment>
                     ))}
                 </div>
             )}

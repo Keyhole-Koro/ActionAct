@@ -1,5 +1,4 @@
 {
-  "useMocks": false,
   "rpcBaseUrl": "",
   "actApiBaseUrl": "",
   "firebaseApiKey": "replace-me",

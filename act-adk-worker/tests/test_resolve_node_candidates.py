@@ -1,12 +1,17 @@
 import asyncio
 
-from app.domain.models import CandidateGraphNode, CandidateResolutionInput
+from app.domain.models import CandidateGraphNode, CandidateResolutionInput, LLMChunk
 from app.usecase.resolve_node_candidates import ResolveNodeCandidatesUsecase
-from app.adapter.mock_llm import MockLLM
+
+
+class FakeLLM:
+    async def generate(self, _bundle, _config):
+        yield LLMChunk(text='{"candidates":[{"node_id":"node-1","label":"AWS","reason":"best match"},{"node_id":"node-2","label":"Windows","reason":"second best"}]}')
+        yield LLMChunk(is_done=True)
 
 
 async def _run_usecase():
-    uc = ResolveNodeCandidatesUsecase(llm=MockLLM())
+    uc = ResolveNodeCandidatesUsecase(llm=FakeLLM())
     return await uc.execute(
         CandidateResolutionInput(
             trace_id="t1",

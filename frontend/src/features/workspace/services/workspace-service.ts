@@ -1,8 +1,6 @@
 import {
     doc,
     onSnapshot,
-    updateDoc,
-    serverTimestamp,
     type DocumentData,
 } from "firebase/firestore";
 
@@ -60,36 +58,27 @@ export const workspaceService = {
             throw new Error("workspace name is required");
         }
 
-        if (!config.useMocks) {
-            const idToken = await getFirebaseIdToken();
-            if (!idToken) {
-                throw new Error("authentication required");
-            }
-
-            const response = await fetch(`${config.actApiBaseUrl}/api/workspace/rename`, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${idToken}`,
-                    "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                    workspace_id: workspaceId,
-                    name: trimmedName,
-                }),
-            });
-
-            if (!response.ok) {
-                const message = await response.text();
-                throw new Error(message || "failed to rename workspace");
-            }
-            return;
+        const idToken = await getFirebaseIdToken();
+        if (!idToken) {
+            throw new Error("authentication required");
         }
 
-        const ref = workspaceDoc(workspaceId);
-        await updateDoc(ref, {
-            name: trimmedName,
-            updatedAt: serverTimestamp(),
+        const response = await fetch(`${config.actApiBaseUrl}/api/workspace/rename`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${idToken}`,
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                workspace_id: workspaceId,
+                name: trimmedName,
+            }),
         });
+
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || "failed to rename workspace");
+        }
     },
 };

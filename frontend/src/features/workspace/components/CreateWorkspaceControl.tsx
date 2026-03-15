@@ -1,29 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { emitAuthContext } from "@/features/auth/session";
 import { useAuthState } from "@/features/auth/hooks/useAuthState";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
 
 export function CreateWorkspaceControl() {
   const { user } = useAuthState();
-  const [open, setOpen] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState("");
-  const [topicName, setTopicName] = useState("topic-1");
   const [submitting, setSubmitting] = useState(false);
 
-  const reset = () => {
-    setWorkspaceName("");
-    setTopicName("topic-1");
-    setOpen(false);
-  };
-
   const handleSubmit = async () => {
+    if (submitting) {
+      return;
+    }
     if (!user) {
       toast.error("Sign in first");
       return;
@@ -34,8 +27,6 @@ export function CreateWorkspaceControl() {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName,
-        workspaceName,
-        topicName,
       });
 
       emitAuthContext({ workspaceId, topicId });
@@ -44,7 +35,6 @@ export function CreateWorkspaceControl() {
         window.localStorage.setItem("run_context.topicId", topicId);
       }
       toast.success("Workspace created");
-      reset();
     } catch (error) {
       console.error("Failed to create workspace", error);
       toast.error("Failed to create workspace");
@@ -53,37 +43,10 @@ export function CreateWorkspaceControl() {
     }
   };
 
-  if (!open) {
-    return (
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Plus className="w-3.5 h-3.5" />
-        New Workspace
-      </Button>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/95 px-2 py-2 shadow-lg">
-      <Input
-        value={workspaceName}
-        onChange={(event) => setWorkspaceName(event.target.value)}
-        placeholder="workspace name"
-        className="w-40"
-        disabled={submitting}
-      />
-      <Input
-        value={topicName}
-        onChange={(event) => setTopicName(event.target.value)}
-        placeholder="initial topic"
-        className="w-32"
-        disabled={submitting}
-      />
-      <Button size="sm" onClick={handleSubmit} disabled={submitting}>
-        Create
-      </Button>
-      <Button variant="ghost" size="icon-sm" onClick={reset} disabled={submitting}>
-        <X className="w-3.5 h-3.5" />
-      </Button>
-    </div>
+    <Button variant="outline" size="sm" onClick={handleSubmit} disabled={submitting}>
+      {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+      New Workspace
+    </Button>
   );
 }

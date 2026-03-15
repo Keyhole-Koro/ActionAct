@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 
 from app.config import Config
 from app.adapter.firestore_assembly import FirestoreAssembly
-from app.adapter.mock_llm import MockLLM
 from app.adapter.gemini_llm import GeminiLLM
 from app.usecase.run_act import RunActUsecase
 from app.usecase.resolve_node_candidates import ResolveNodeCandidatesUsecase
@@ -30,7 +29,7 @@ config = Config()
 # Assembly adapter (read-only Firestore retrieval with graceful degrade)
 assembly = FirestoreAssembly(project=config.google_cloud_project)
 
-# LLM adapter (mock, Gemini Developer API, or Vertex AI Gemini)
+# LLM adapter (Gemini Developer API or Vertex AI Gemini)
 if config.google_api_key:
     logger.info("Using REAL Gemini Developer API")
     llm = GeminiLLM(project=config.google_cloud_project, api_key=config.google_api_key)
@@ -38,8 +37,7 @@ elif config.vertex_use_real_api:
     logger.info("Using REAL Vertex AI Gemini")
     llm = GeminiLLM(project=config.google_cloud_project)
 else:
-    logger.info("Using MOCK LLM (set GOOGLE_API_KEY or VERTEX_USE_REAL_API=true for real API)")
-    llm = MockLLM()
+    raise RuntimeError("GOOGLE_API_KEY or VERTEX_USE_REAL_API=true is required")
 
 # Usecase
 usecase = RunActUsecase(assembly=assembly, llm=llm)

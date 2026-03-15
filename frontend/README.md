@@ -41,6 +41,6 @@ npm run dev
 
 ## Notes
 
-* `useMocks=false` の場合は Firebase Auth と `POST /auth/session/bootstrap` が前提です
+* Firebase Auth と `POST /auth/session/bootstrap` が前提です
 * `AuthGate` が Google sign-in 後に session bootstrap を行い、`sid` / `csrf_token` cookie を揃えます
 * `services/firebase/token.ts` が `Authorization` を付与し、`services/firebase/csrf.ts` が `X-CSRF-Token` を付与します

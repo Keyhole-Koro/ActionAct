@@ -2,7 +2,6 @@ import localConfig from "@/config/local.json";
 import prodConfig from "@/config/prod.json";
 
 export type FrontendConfig = {
-  useMocks: boolean;
   rpcBaseUrl: string;
   actApiBaseUrl: string;
   firebaseApiKey: string;
@@ -23,7 +22,6 @@ function readRequiredString(value: unknown, fieldName: keyof FrontendConfig): st
 }
 
 export const config: FrontendConfig = {
-  useMocks: staticConfig.useMocks,
   rpcBaseUrl: readRequiredString(staticConfig.rpcBaseUrl, "rpcBaseUrl"),
   actApiBaseUrl: readRequiredString(staticConfig.actApiBaseUrl, "actApiBaseUrl"),
   firebaseApiKey: readRequiredString(staticConfig.firebaseApiKey, "firebaseApiKey"),

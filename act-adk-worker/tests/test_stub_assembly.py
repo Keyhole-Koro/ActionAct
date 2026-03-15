@@ -19,6 +19,7 @@ async def test_stub_assembly_returns_bundle():
     assert bundle.user_prompt == "hello world"
     assert bundle.system_instruction != ""
     assert bundle.context_blocks == []
+    assert "既定の応答は短く" in bundle.system_instruction
 
 
 @pytest.mark.asyncio
@@ -28,6 +29,7 @@ async def test_stub_assembly_preserves_user_message():
     bundle = await asm.assemble("t1", "ws-1", None, [], msg)
     assert bundle.user_prompt == msg
     assert "回答は英語" in bundle.system_instruction
+    assert "儀礼的前置きは不要" in bundle.system_instruction
 
 
 @pytest.mark.asyncio

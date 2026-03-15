@@ -18,7 +18,7 @@ Firestore 取得に失敗した場合は、仕様どおり minimal bundle に de
 
 * `GOOGLE_API_KEY` を設定すると Gemini Developer API を使います
 * `GOOGLE_API_KEY` が無く `VERTEX_USE_REAL_API=true` のときは Vertex AI Gemini を使います
-* どちらも無い場合は mock LLM を使います
+* どちらも無い場合は起動時エラーになります
 
 ## Docker Compose
 

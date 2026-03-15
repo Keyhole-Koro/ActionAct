@@ -1,6 +1,5 @@
 "use client";
 
-import { config } from "@/lib/config";
 import { useAuthState } from "@/features/auth/hooks/useAuthState";
 
 export function useRequireAuth() {
@@ -8,7 +7,6 @@ export function useRequireAuth() {
 
   return {
     ...authState,
-    isAuthenticated: config.useMocks || authState.user !== null,
+    isAuthenticated: authState.user !== null,
   };
 }
-

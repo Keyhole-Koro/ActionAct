@@ -151,6 +151,7 @@ async def test_firestore_assembly_degrades_when_topic_is_missing():
     assert bundle.user_prompt == "Hello"
     assert bundle.context_blocks == []
     assert "回答は英語" in bundle.system_instruction
+    assert "既定の応答は短く" in bundle.system_instruction
 
 
 @pytest.mark.asyncio
@@ -173,3 +174,4 @@ async def test_firestore_assembly_sets_japanese_response_policy():
     )
 
     assert "回答は日本語" in bundle.system_instruction
+    assert "topic context は参照資料" in bundle.system_instruction

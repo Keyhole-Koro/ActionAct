@@ -2,13 +2,16 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import { doc, getDoc } from "firebase/firestore";
+
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
 import { emitAuthContext } from "@/features/auth/session";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
-import { config } from "@/lib/config";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
+import { config } from "@/lib/config";
+import { firestore } from "@/services/firebase/firestore";
 
 type AuthGateProps = {
   children: ReactNode;
@@ -21,43 +24,10 @@ export function AuthGate({ children }: AuthGateProps) {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (config.useMocks || !user) {
+    if (!user) {
       setBootstrapping(false);
       setBootstrapError(null);
       return;
-    }
-
-    // New user: no workspace yet → auto-create one
-    if (!workspaceId) {
-      let cancelled = false;
-      setBootstrapping(true);
-      setBootstrapError(null);
-
-      void (async () => {
-        try {
-          const result = await createWorkspace({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-          });
-          if (cancelled) return;
-          emitAuthContext({ workspaceId: result.workspaceId, topicId: result.topicId });
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("run_context.workspaceId", result.workspaceId);
-            window.localStorage.setItem("run_context.topicId", result.topicId);
-          }
-          // bootstrapping stays true; re-render with new workspaceId will complete bootstrap
-        } catch (nextError) {
-          if (!cancelled) {
-            setBootstrapError(nextError instanceof Error ? nextError.message : String(nextError));
-            setBootstrapping(false);
-          }
-        }
-      })();
-
-      return () => {
-        cancelled = true;
-      };
     }
 
     let cancelled = false;
@@ -66,7 +36,38 @@ export function AuthGate({ children }: AuthGateProps) {
 
     void (async () => {
       try {
-        await ensureLocalWorkspaceAccess(user, workspaceId, topicId);
+        // Verify the persisted workspaceId actually belongs to this user.
+        // Handles: first-time users, browsers with stale 'workspace-1' in localStorage,
+        // and users logging in with a different account on the same browser.
+        let resolvedWorkspaceId = workspaceId;
+        let resolvedTopicId = topicId;
+
+        const isMember =
+          resolvedWorkspaceId.length > 0 &&
+          (await getDoc(
+            doc(firestore, `workspaces/${resolvedWorkspaceId}/members/${user.uid}`),
+          ).then((s) => s.exists()).catch(() => false));
+
+        if (!isMember) {
+          // No valid workspace → create one for this user
+          const result = await createWorkspace({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+          });
+          if (cancelled) return;
+          resolvedWorkspaceId = result.workspaceId;
+          resolvedTopicId = result.topicId;
+          emitAuthContext({ workspaceId: resolvedWorkspaceId, topicId: resolvedTopicId });
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("run_context.workspaceId", resolvedWorkspaceId);
+            window.localStorage.setItem("run_context.topicId", resolvedTopicId);
+          }
+        }
+
+        if (cancelled) return;
+
+        await ensureLocalWorkspaceAccess(user, resolvedWorkspaceId, resolvedTopicId);
 
         const idToken = await user.getIdToken();
         if (!idToken) {
@@ -100,10 +101,6 @@ export function AuthGate({ children }: AuthGateProps) {
       cancelled = true;
     };
   }, [topicId, user, workspaceId]);
-
-  if (config.useMocks) {
-    return <>{children}</>;
-  }
 
   if (loading) {
     return <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">Loading auth...</div>;

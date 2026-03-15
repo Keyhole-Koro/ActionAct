@@ -1,5 +1,4 @@
 {
-  "useMocks": false,
   "rpcBaseUrl": "http://localhost:8080",
   "actApiBaseUrl": "http://localhost:8080",
   "firebaseApiKey": "local-dev-api-key",
