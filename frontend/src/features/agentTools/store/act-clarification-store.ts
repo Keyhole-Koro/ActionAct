@@ -18,6 +18,7 @@ type PendingActRun = {
   query: string;
   options?: StreamActOptions & { clear?: boolean };
   selectionGroupId?: string | null;
+  selectionOptions?: ActRunClarification["candidate_options"];
 };
 
 type ActClarificationState = {
@@ -43,6 +44,10 @@ function uniqueNodeIds(nodeIds: string[]) {
     ordered.push(normalized);
   });
   return ordered;
+}
+
+function isLikelyJapanese(text: string) {
+  return /[\u3040-\u30ff\u4e00-\u9fff]/u.test(text);
 }
 
 export const useActClarificationStore = create<ActClarificationState>((set, get) => ({
@@ -72,6 +77,7 @@ export const useActClarificationStore = create<ActClarificationState>((set, get)
       pendingRun: {
         ...pendingRun,
         selectionGroupId,
+        selectionOptions: clarification.candidate_options,
       },
     });
   },
@@ -114,9 +120,46 @@ export const useActClarificationStore = create<ActClarificationState>((set, get)
         const selectedOptionIds = Array.isArray(output.selected_option_ids)
           ? output.selected_option_ids.filter((value): value is string => typeof value === "string")
           : [];
-        selectedNodeIds = uniqueNodeIds(selectedOptionIds);
-        if (selectedNodeIds.length > 0) {
-          useGraphStore.getState().setSelectedNodes(selectedNodeIds);
+        const selectedOption = pendingRun.selectionOptions?.find((option) => selectedOptionIds.includes(option.option_id));
+        if (selectedOption?.kind === "node") {
+          selectedNodeIds = uniqueNodeIds([selectedOption.node_id ?? selectedOption.option_id]);
+          if (selectedNodeIds.length > 0) {
+            useGraphStore.getState().setSelectedNodes(selectedNodeIds);
+          }
+        } else if (selectedOption?.kind === "intent") {
+          const nextQuery = selectedOption.query_hint
+            ? `${pendingRun.query}\n\n${isLikelyJapanese(pendingRun.query) ? "知りたいこと" : "What to focus on"}: ${selectedOption.query_hint}`
+            : pendingRun.query;
+          const explicitContextNodeIds = uniqueNodeIds(selectedOption.context_node_ids ?? []);
+          const prepared = pendingRun.targetNodeId
+            ? await prepareAnchoredActRun(frontendToolClient, {
+                anchorNodeId: pendingRun.targetNodeId,
+                userMessage: nextQuery,
+                explicitContextNodeIds,
+              })
+            : await prepareSubmitAskRun(frontendToolClient, {
+                userMessage: nextQuery,
+                explicitContextNodeIds,
+              });
+
+          if (prepared.status !== "ready") {
+            set({ clarification: prepared.clarification });
+            return;
+          }
+
+          if (pendingRun.selectionGroupId) {
+            useAgentInteractionStore.getState().cancelGroup(pendingRun.selectionGroupId);
+          }
+          set({ clarification: null, pendingRun: null });
+          startActRun({
+            targetNodeId: pendingRun.targetNodeId,
+            query: nextQuery,
+            options: {
+              ...pendingRun.options,
+              contextNodeIds: prepared.contextNodeIds,
+            },
+          });
+          return;
         }
       }
     }

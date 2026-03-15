@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback } from 'react';
+import { toast } from 'sonner';
 
+import { useUploadStore } from '@/features/action/actionOrganize/store/useUploadStore';
 import { useGraphStore } from '@/features/graph/store';
 import { startActRun } from '@/features/agentTools/runtime/act-runner';
 import { createDirectFrontendToolClient } from '@/features/agentTools/runtime/frontend-tool-client';
 import { prepareAnchoredActRun } from '@/features/agentTools/runtime/frontend-tool-orchestrator';
 import { useActClarificationStore } from '@/features/agentTools/store/act-clarification-store';
 import { clearAllActNodes, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
+import { organizeService } from '@/services/organize';
 
 type Params = {
     workspaceId: string;
@@ -98,12 +101,19 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         await clearAllActNodes(workspaceId, topicId);
     }, [topicId, workspaceId]);
 
+    const addMediaContext = useCallback(async (_nodeId: string, file: File) => {
+        const result = await organizeService.uploadInput(workspaceId, file);
+        useUploadStore.getState().addUpload(workspaceId, result.topicId, result.inputId, file.name);
+        toast.success('Media added to workspace context');
+    }, [workspaceId]);
+
     return {
         openDetails,
         openReferencedNode,
         toggleBranch: toggleExpandedBranchNode,
         runActFromNode,
         commitActNodeLabel,
+        addMediaContext,
         clearAct,
     };
 }

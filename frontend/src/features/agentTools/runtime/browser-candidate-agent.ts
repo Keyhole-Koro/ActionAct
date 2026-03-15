@@ -21,7 +21,7 @@ type CreateSelectionGroupParams = {
 };
 
 type DirectCandidate = {
-  node_id: string;
+  option_id: string;
   label: string;
   reason?: string | null;
 };
@@ -310,7 +310,7 @@ export async function createClarificationSelectionGroupFromCandidates(
     query: params.query,
     activeNodeId: params.activeNodeId ?? null,
     candidates: params.candidates.map((candidate) => ({
-      option_id: candidate.node_id,
+      option_id: candidate.option_id,
       label: candidate.label,
       reason: candidate.reason ?? null,
     })),

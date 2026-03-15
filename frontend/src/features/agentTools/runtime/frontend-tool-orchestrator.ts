@@ -22,9 +22,13 @@ type VisibleDecisionNode = {
 };
 
 type ClarificationCandidateOption = {
-  node_id: string;
+  option_id: string;
   label: string;
   reason?: string | null;
+  kind: "node" | "intent";
+  node_id?: string;
+  query_hint?: string | null;
+  context_node_ids?: string[];
 };
 
 type ParsedVisibleDecisionNode = {
@@ -36,9 +40,13 @@ type ParsedVisibleDecisionNode = {
 };
 
 type ParsedClarificationCandidateOption = {
-  node_id: string;
+  option_id: string;
   label: string;
   reason: string | null;
+  kind: "node" | "intent";
+  node_id?: string;
+  query_hint?: string | null;
+  context_node_ids?: string[];
 };
 
 export type ActRunClarificationCode =
@@ -76,6 +84,8 @@ export type PrepareAnchoredActParams = {
 
 const UI_CONTEXT_HINT_PATTERN =
   /\b(this|that|these|those|selected|selection|current|active|above|below|here|continue|following)\b|この|その|これ|それ|選択|今の|現在の|上の|下の|ここ|続き/u;
+const GENERIC_INTENT_PATTERN =
+  /^(これ|このノード|この内容|これについて|この件|これを|詳しく|教えて|知りたい|まとめて|要するに|about this|this node|this one|tell me more|tell me about this|explain this)$/iu;
 
 function normalizeNodeIds(nodeIds: string[]): string[] {
   const seen = new Set<string>();
@@ -93,6 +103,11 @@ function normalizeNodeIds(nodeIds: string[]): string[] {
 
 function queryNeedsUiContext(userMessage: string) {
   return UI_CONTEXT_HINT_PATTERN.test(userMessage);
+}
+
+function queryNeedsIntentSelection(userMessage: string) {
+  const normalized = userMessage.trim();
+  return normalized.length > 0 && GENERIC_INTENT_PATTERN.test(normalized);
 }
 
 function clarification(
@@ -170,14 +185,51 @@ function parseClarificationCandidateOption(candidate: unknown): ParsedClarificat
     return null;
   }
   const value = candidate as Record<string, unknown>;
-  if (typeof value.node_id !== "string" || typeof value.label !== "string") {
+  const optionId = typeof value.option_id === "string"
+    ? value.option_id
+    : typeof value.node_id === "string"
+      ? value.node_id
+      : null;
+  if (!optionId || typeof value.label !== "string") {
     return null;
   }
   return {
-    node_id: value.node_id,
+    option_id: optionId,
     label: value.label,
     reason: typeof value.reason === "string" ? value.reason : null,
+    kind: value.kind === "intent" ? "intent" : "node",
+    node_id: typeof value.node_id === "string" ? value.node_id : undefined,
+    query_hint: typeof value.query_hint === "string" ? value.query_hint : null,
+    context_node_ids: Array.isArray(value.context_node_ids)
+      ? value.context_node_ids.filter((entry): entry is string => typeof entry === "string")
+      : undefined,
   };
+}
+
+function buildIntentSelectionOptions(userMessage: string, contextNodeIds: string[]): ClarificationCandidateOption[] {
+  const isJapanese = /[\u3040-\u30ff\u4e00-\u9fff]/u.test(userMessage);
+  const options = isJapanese
+    ? [
+        ["overview", "概要を知りたい", "まず全体像を整理します。", "概要"],
+        ["key_points", "重要ポイントを知りたい", "要点だけ短く絞ります。", "重要ポイント"],
+        ["examples", "具体例を知りたい", "実例やケースで説明します。", "具体例"],
+        ["compare", "他と比較したい", "比較の観点で整理します。", "比較"],
+      ]
+    : [
+        ["overview", "Get an overview", "Start with the big picture.", "overview"],
+        ["key_points", "See key points", "Focus on the main takeaways.", "key points"],
+        ["examples", "See examples", "Explain it with concrete examples.", "examples"],
+        ["compare", "Compare it", "Frame it as a comparison.", "comparison"],
+      ];
+
+  return options.map(([optionId, label, reason, queryHint]) => ({
+    option_id: optionId,
+    label,
+    reason,
+    kind: "intent" as const,
+    query_hint: queryHint,
+    context_node_ids: contextNodeIds,
+  }));
 }
 
 async function safeVisibleGraph(client: FrontendToolClient): Promise<{
@@ -282,6 +334,12 @@ async function resolveContextNodeIds(
           ? decision.candidates
               .map(parseClarificationCandidateOption)
               .filter((candidate): candidate is ParsedClarificationCandidateOption => candidate !== null)
+              .map((candidate) => ({
+                ...candidate,
+                kind: "node" as const,
+                node_id: candidate.node_id ?? candidate.option_id,
+                option_id: candidate.option_id,
+              }))
           : [];
 
         return clarification(
@@ -311,6 +369,14 @@ async function resolveContextNodeIds(
   if (hasSelectedNodesTool) {
     const selectedNodeIds = await safeSelectedNodeIds(client);
     if (selectedNodeIds && selectedNodeIds.length > 0) {
+      if (queryNeedsIntentSelection(userMessage)) {
+        return clarification(
+          "MISSING_UI_CONTEXT",
+          "何を知りたいですか？近いものを選んでください。",
+          "select_node",
+          buildIntentSelectionOptions(userMessage, selectedNodeIds),
+        );
+      }
       return { status: "ready", contextNodeIds: selectedNodeIds };
     }
   }
@@ -318,6 +384,14 @@ async function resolveContextNodeIds(
   if (needsUiContext && hasActiveNodeTool) {
     const activeNodeId = await safeActiveNodeId(client);
     if (activeNodeId) {
+      if (queryNeedsIntentSelection(userMessage)) {
+        return clarification(
+          "MISSING_UI_CONTEXT",
+          "何を知りたいですか？近いものを選んでください。",
+          "select_node",
+          buildIntentSelectionOptions(userMessage, [activeNodeId]),
+        );
+      }
       return { status: "ready", contextNodeIds: [activeNodeId] };
     }
   }

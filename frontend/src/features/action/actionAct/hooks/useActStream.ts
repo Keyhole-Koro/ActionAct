@@ -57,7 +57,7 @@ export function useActStream() {
         isStreaming,
         startStream,
         clarification,
-        hasSelectedNodes: selectedNodeIds.length > 0,
+        hasSelectedNodes: selectedNodeIds.length > 0 || Boolean(clarification?.candidate_options?.length),
         clearClarification,
         continueWithoutContext,
         retryWithSelection,

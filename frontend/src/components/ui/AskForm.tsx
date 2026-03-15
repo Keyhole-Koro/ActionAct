@@ -56,7 +56,7 @@ export function AskForm() {
                                 onClick={() => void retryWithSelection()}
                                 disabled={!hasSelectedNodes || isStreaming}
                             >
-                                Use selected node and retry
+                                Use selection and retry
                             </Button>
                             <Button
                                 type="button"

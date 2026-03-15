@@ -131,6 +131,7 @@ type BuildDisplayNodesParams = {
     onOpenReferencedNode: (nodeId: string) => void;
     onCommitLabel: (nodeId: string, label: string) => void;
     onRunAction: (nodeId: string, label: string) => void;
+    onAddMedia: (nodeId: string, file: File) => Promise<void> | void;
 };
 
 export function buildDisplayNodes({
@@ -151,6 +152,7 @@ export function buildDisplayNodes({
     onOpenReferencedNode,
     onCommitLabel,
     onRunAction,
+    onAddMedia,
 }: BuildDisplayNodesParams): GraphNodeRender[] {
     const layoutById = new Map(layoutedNodes.map((node) => [node.id, node]));
     const maxTreeX = layoutedNodes.reduce((max, node) => Math.max(max, node.position.x), 0);
@@ -248,6 +250,7 @@ export function buildDisplayNodes({
             onOpenReferencedNode: (referencedNodeId: string) => onOpenReferencedNode(referencedNodeId),
             onCommitLabel: (label: string) => onCommitLabel(node.id, label),
             onRunAction: (label: string) => onRunAction(node.id, label),
+            onAddMedia: (file: File) => onAddMedia(node.id, file),
         };
 
         return {
