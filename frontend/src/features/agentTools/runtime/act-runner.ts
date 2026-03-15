@@ -161,7 +161,9 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       requestId,
       anchorNodeId: targetNodeId ?? options?.anchorNodeId,
       contextNodeIds: options?.contextNodeIds ?? selectedNodeIds,
-      enableGrounding: options?.enableGrounding ?? shouldAutoEnableGrounding(query, options?.actType),
+      enableGrounding: options?.enableGrounding
+        ?? preferences.useWebGroundingOverride
+        ?? shouldAutoEnableGrounding(query, options?.actType),
       includeThoughts: options?.includeThoughts ?? preferences.includeThoughts,
       modelProfile: options?.modelProfile ?? preferences.modelProfile,
     },

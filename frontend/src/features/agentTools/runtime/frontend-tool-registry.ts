@@ -7,7 +7,6 @@ import { useAgentInteractionStore } from "@/features/agentInteraction/store/inte
 import { toSelectionFlow } from "@/features/graph/selectors/toSelectionFlow";
 import { mergeTreeWithActNodes, projectPersistedTree } from "@/features/graph/selectors/projectGraph";
 import { useGraphStore } from "@/features/graph/store";
-import { usePanelStore } from "@/features/layout/store/panel-store";
 import { startActRun } from "@/features/agentTools/runtime/act-runner";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
 import type { GraphNodeBase } from "@/features/graph/types";
@@ -301,7 +300,7 @@ const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "get_active_node_detail",
-    description: "右ペインで注目中のノード詳細を取得する。active node が未設定なら null を返す",
+    description: "現在 active なノードの detail surface 情報を取得する。active node が未設定なら null を返す",
     input_schema: {
       type: "object",
       properties: {},
@@ -313,9 +312,10 @@ const toolDefinitions: ToolDefinition[] = [
         active_node_id: { type: ["string", "null"] },
         title: { type: ["string", "null"] },
         content_md: { type: ["string", "null"] },
+        referenced_nodes: { type: "array" },
         actions: { type: "array" },
       },
-      required: ["active_node_id", "title", "content_md", "actions"],
+      required: ["active_node_id", "title", "content_md", "referenced_nodes", "actions"],
       additionalProperties: false,
     },
     invoke(input) {
@@ -387,7 +387,7 @@ const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "open_node_detail",
-    description: "指定ノードを active node に設定し、右ペイン詳細表示を開く",
+    description: "指定ノードを active node に設定し、node card の detail surface を開く",
     input_schema: {
       type: "object",
       properties: {
@@ -410,8 +410,9 @@ const toolDefinitions: ToolDefinition[] = [
       rejectUnknownKeys(parsed, ["node_id"]);
       const nodeId = requiredString(parsed, "node_id");
       ensureNodesExist([nodeId]);
-      useGraphStore.getState().setActiveNode(nodeId);
-      usePanelStore.getState().openPanel("node-detail", nodeId);
+      const graphStore = useGraphStore.getState();
+      graphStore.setActiveNode(nodeId);
+      graphStore.expandNode(nodeId);
       return { active_node_id: nodeId, opened: true };
     },
   },
@@ -629,13 +630,13 @@ const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "set_stream_preferences",
-    description: "thought 表示や grounding 利用など、stream 表示と送信の既定設定を更新する",
+    description: "thought 表示や、auto grounding を上書きする明示設定など、stream 表示と送信の既定設定を更新する",
     input_schema: {
       type: "object",
       properties: {
         show_thoughts: { type: "boolean" },
         include_thoughts: { type: "boolean" },
-        use_web_grounding: { type: "boolean" },
+        use_web_grounding: { type: ["boolean", "null"] },
         model_profile: { type: "string", enum: ["flash", "deep_research"] },
       },
       additionalProperties: false,
@@ -645,7 +646,7 @@ const toolDefinitions: ToolDefinition[] = [
       properties: {
         show_thoughts: { type: "boolean" },
         include_thoughts: { type: "boolean" },
-        use_web_grounding: { type: "boolean" },
+        use_web_grounding: { type: ["boolean", "null"] },
         model_profile: { type: "string" },
       },
       required: ["show_thoughts", "include_thoughts", "use_web_grounding", "model_profile"],
@@ -654,17 +655,21 @@ const toolDefinitions: ToolDefinition[] = [
     invoke(input) {
       const parsed = requireObject(input);
       rejectUnknownKeys(parsed, ["show_thoughts", "include_thoughts", "use_web_grounding", "model_profile"]);
+      const useWebGrounding = parsed.use_web_grounding;
+      if (useWebGrounding !== undefined && useWebGrounding !== null && typeof useWebGrounding !== "boolean") {
+        throw toolError("INVALID_INPUT", "use_web_grounding must be boolean or null");
+      }
       useStreamPreferencesStore.getState().setPreferences({
         showThoughts: optionalBoolean(parsed, "show_thoughts"),
         includeThoughts: optionalBoolean(parsed, "include_thoughts"),
-        useWebGrounding: optionalBoolean(parsed, "use_web_grounding"),
+        useWebGroundingOverride: useWebGrounding === undefined ? undefined : (useWebGrounding as boolean | null),
         modelProfile: optionalString(parsed, "model_profile") as "flash" | "deep_research" | undefined,
       });
       const next = useStreamPreferencesStore.getState();
       return {
         show_thoughts: next.showThoughts,
         include_thoughts: next.includeThoughts,
-        use_web_grounding: next.useWebGrounding,
+        use_web_grounding: next.useWebGroundingOverride,
         model_profile: next.modelProfile,
       };
     },

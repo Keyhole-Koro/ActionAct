@@ -15,9 +15,6 @@ import {
     useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { PlusSquare, Trash2 } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
 import { organizeService } from '@/services/organize';
 import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
 import { useGraphCache } from '@/features/graph/hooks/useGraphCache';
@@ -107,7 +104,6 @@ export function GraphCanvas() {
         setSelectedNodes,
         setActiveNode,
         toggleExpandedNode,
-        addEmptyActNode,
         addQueryActNode,
         setPersistedGraph,
         setActGraph,
@@ -116,7 +112,6 @@ export function GraphCanvas() {
         expandedNodeIds,
         expandedBranchNodeIds,
         streamingNodeIds,
-        isStreaming,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const { groups } = useAgentInteractionStore();
@@ -441,18 +436,6 @@ export function GraphCanvas() {
         };
     }, [normalizedDisplayNodes.length, positionSignature, reactFlowInstance]);
 
-    const handleCreateActNode = useCallback(() => {
-        const viewport = reactFlowInstance.getViewport();
-        const position = reactFlowInstance.screenToFlowPosition({
-            x: window.innerWidth * 0.55,
-            y: window.innerHeight * 0.35,
-        });
-        addEmptyActNode({
-            x: position.x - viewport.x,
-            y: position.y - viewport.y,
-        });
-    }, [addEmptyActNode, reactFlowInstance]);
-
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
         if (selectedNodeIds.length === 0 || editingNodeId) {
             return;
@@ -530,31 +513,6 @@ export function GraphCanvas() {
                     ))}
                 </div>
             )}
-            <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-lg bg-background/95 shadow-sm backdrop-blur-sm"
-                    onClick={handleCreateActNode}
-                >
-                    <PlusSquare className="mr-1.5 h-4 w-4" />
-                    New ACT
-                </Button>
-                {actNodes.length > 0 && (
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 rounded-lg bg-background/95 shadow-sm backdrop-blur-sm"
-                        onClick={() => {
-                            void commands.clearAct();
-                        }}
-                        disabled={isStreaming}
-                    >
-                        <Trash2 className="mr-1.5 h-4 w-4" />
-                        Clear ACT
-                    </Button>
-                )}
-            </div>
             <ReactFlow
                 nodes={normalizedDisplayNodes as GraphNodeRender[]}
                 edges={displayEdges}

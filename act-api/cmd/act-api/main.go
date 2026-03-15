@@ -98,11 +98,13 @@ func main() {
 		os.Exit(1)
 	}
 	inputRecorder := adapter.NewFirestoreInputRecorder(fsClient)
+	workspaceRenamer := adapter.NewFirestoreWorkspaceRenamer(fsClient)
 	defer inputRecorder.Close()
 
 	// ── Usecase layer ──
 	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 	uploadUC := usecase.NewUploadUsecase(authVerifier, gcsStorage, inputRecorder, pubsubPublisher)
+	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
 
 	// ── Handler layer ──
 	h := handler.NewRunActHandler(uc)
@@ -113,12 +115,14 @@ func main() {
 		cfg.CSRFTTLSeconds,
 	)
 	uploadHandler := handler.NewUploadHandler(uploadUC)
+	workspaceRenameHandler := handler.NewWorkspaceRenameHandler(renameWorkspaceUC)
 
 	mux := http.NewServeMux()
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
 	mux.Handle(path, connectHandler)
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
 	mux.Handle("/api/upload", uploadHandler)
+	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

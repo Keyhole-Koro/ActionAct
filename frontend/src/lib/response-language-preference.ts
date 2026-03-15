@@ -51,11 +51,11 @@ export function subscribeResponseLanguagePreference(
 
   const handler = (event: Event) => {
     const customEvent = event as CustomEvent<{ language?: string }>;
-    const language = customEvent.detail?.language;
-    if (!isResponseLanguage(language ?? null)) {
+    const nextLanguage = customEvent.detail?.language ?? null;
+    if (!isResponseLanguage(nextLanguage)) {
       return;
     }
-    listener(language);
+    listener(nextLanguage);
   };
 
   window.addEventListener(CHANGE_EVENT, handler);
