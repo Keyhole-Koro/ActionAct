@@ -79,6 +79,11 @@ export function GraphCanvas() {
         setGraph: setPersistedGraph,
     });
 
+    // Stable refs so subscription doesn't depend on store identity
+    const setPersistedGraphRef = useRef(setPersistedGraph);
+    setPersistedGraphRef.current = setPersistedGraph;
+    const persistedNodeCountRef = useRef(0);
+
     useEffect(() => {
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes) => {
             const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
@@ -108,19 +113,21 @@ export function GraphCanvas() {
                     animated: true,
                 }));
 
-            if (nextPersistedNodes.length === 0 && persistedNodes.length > 0) {
+            // Guard: don't clear existing graph on transient empty snapshots
+            if (nextPersistedNodes.length === 0 && persistedNodeCountRef.current > 0) {
                 return;
             }
+            persistedNodeCountRef.current = nextPersistedNodes.length;
 
-            setPersistedGraph(nextPersistedNodes, nextPersistedEdges);
+            setPersistedGraphRef.current(nextPersistedNodes, nextPersistedEdges);
         });
 
         return () => unsubscribe();
-    }, [persistedNodes.length, setPersistedGraph, topicId, workspaceId]);
+    }, [topicId, workspaceId]);
 
     useEffect(() => {
         const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (draftNodes) => {
-            const nextActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
+            const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
                 position: { x: 420, y: index * 180 + 120 },
@@ -135,6 +142,15 @@ export function GraphCanvas() {
                     referencedNodeIds: node.referencedNodeIds,
                 },
             }));
+            const graphState = useGraphStore.getState();
+            const draftNodeIds = new Set(draftActNodes.map((node) => node.id));
+            const preservedLiveNodes = graphState.actNodes.filter((node) => {
+                if (draftNodeIds.has(node.id)) {
+                    return false;
+                }
+                return graphState.streamingNodeIds.includes(node.id) || graphState.editingNodeId === node.id;
+            });
+            const nextActNodes = [...draftActNodes, ...preservedLiveNodes];
             const nextActEdges: Edge[] = nextActNodes.flatMap((node) => {
                 const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
                     ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string' && value !== node.id)
@@ -187,6 +203,22 @@ export function GraphCanvas() {
         }),
         [actEdges, layoutInputEdges, layoutInputNodes, standaloneActNodes],
     );
+
+    // === DEBUG: trace display pipeline ===
+    useEffect(() => {
+        console.info('[GraphCanvas DEBUG] pipeline trace', {
+            persistedNodes: persistedNodes.length,
+            persistedEdges: persistedEdges.length,
+            actNodes: actNodes.length,
+            'persistedTree.visibleNodes': persistedTree.visibleNodes.length,
+            mergedTreeNodes: mergedTreeNodes.length,
+            standaloneActNodes: standaloneActNodes.length,
+            layoutInputNodes: layoutInputNodes.length,
+            layoutedNodes: layoutedNodes.length,
+            expandedBranchNodeIds,
+        });
+    }, [actNodes.length, expandedBranchNodeIds, layoutInputNodes.length, layoutedNodes.length, mergedTreeNodes.length, persistedEdges.length, persistedNodes.length, persistedTree.visibleNodes.length, standaloneActNodes.length]);
+    // === END DEBUG ===
 
     useEffect(() => {
         const debugNodes = [
@@ -295,6 +327,52 @@ export function GraphCanvas() {
         () => buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges),
         [actEdges, layoutInputEdges, layoutedEdges, selectionOverlayEdges],
     );
+
+    // === DEBUG: final display stage ===
+    useEffect(() => {
+        console.info('[GraphCanvas DEBUG] display stage', {
+            regularDisplayNodes: regularDisplayNodes.length,
+            selectionOverlayNodes: selectionOverlayNodes.length,
+            displayNodes: displayNodes.length,
+            displayEdges: displayEdges.length,
+            first3: displayNodes.slice(0, 3).map(n => ({
+                id: n.id,
+                type: n.type,
+                pos: n.position,
+                hasData: !!n.data,
+                label: typeof n.data?.label === 'string' ? n.data.label.slice(0, 30) : '?',
+            })),
+        });
+    }, [displayEdges.length, displayNodes, regularDisplayNodes.length, selectionOverlayNodes.length]);
+    // === END DEBUG ===
+
+    // fitView when node count changes (add/remove), but not on content-only updates
+    const previousNodeCountRef = useRef(0);
+    useEffect(() => {
+        if (displayNodes.length === 0) {
+            previousNodeCountRef.current = 0;
+            return;
+        }
+
+        // Only fit when node count actually changes (new nodes added or removed)
+        if (displayNodes.length === previousNodeCountRef.current) {
+            return;
+        }
+        previousNodeCountRef.current = displayNodes.length;
+
+        const frame = window.requestAnimationFrame(() => {
+            reactFlowInstance.fitView({
+                duration: 250,
+                padding: 0.18,
+                minZoom: 0.2,
+                maxZoom: 1.2,
+            });
+        });
+
+        return () => {
+            window.cancelAnimationFrame(frame);
+        };
+    }, [displayNodes, reactFlowInstance]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
         const position = reactFlowInstance.screenToFlowPosition({

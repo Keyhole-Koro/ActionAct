@@ -12,6 +12,7 @@ import { organizeService } from '@/services/organize';
 import type { EvidenceRef } from '@/services/organize/port';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useGraphStore } from '@/features/graph/store';
+import { safeString, safeOptionalString } from '@/features/graph/utils/safeData';
 
 export function NodeDetailPanel() {
     const { activeNodeId, persistedNodes, actNodes, setActiveNode } = useGraphStore();
@@ -26,26 +27,27 @@ export function NodeDetailPanel() {
         [actNodes, activeNodeId, persistedNodes],
     );
 
-    const data = activeNode?.data ?? {};
-    const nodeTopicId = (data.topicId as string) || topicId;
-    const title = (data.label as string) || 'Untitled';
-    const kindLabel = typeof data.kind === 'string' ? data.kind : undefined;
-    const contentMd = (data.contentMd as string) || '';
-    const contextSummary = data.contextSummary as string | undefined;
-    const detailHtml = data.detailHtml as string | undefined;
-    const nodeSource = (data.nodeSource as 'persisted' | 'act' | undefined) ?? 'persisted';
+    const data = (activeNode?.data ?? {}) as Record<string, unknown>;
+    const nodeTopicId = safeString(data, 'topicId', topicId);
+    const title = safeString(data, 'label', 'Untitled');
+    const kindLabel = safeOptionalString(data, 'kind');
+    const contentMd = safeString(data, 'contentMd');
+    const contextSummary = safeOptionalString(data, 'contextSummary');
+    const detailHtml = safeOptionalString(data, 'detailHtml');
+    const nodeSource = (safeOptionalString(data, 'nodeSource') as 'persisted' | 'act' | undefined) ?? 'persisted';
 
+    // Evidence subscription — deps are primitives only (no object ref) to avoid flickering
     useEffect(() => {
-        if (!activeNodeId || !activeNode || nodeSource !== 'persisted') {
+        if (!activeNodeId || nodeSource !== 'persisted') {
             return;
         }
 
-        return organizeService.subscribeNodeEvidence(workspaceId, nodeTopicId, activeNode.id, (nextEvidenceRefs) => {
-            setEvidenceState({ nodeId: activeNode.id, refs: nextEvidenceRefs });
+        return organizeService.subscribeNodeEvidence(workspaceId, nodeTopicId, activeNodeId, (nextEvidenceRefs) => {
+            setEvidenceState({ nodeId: activeNodeId, refs: nextEvidenceRefs });
         });
-    }, [activeNode, activeNodeId, nodeSource, nodeTopicId, workspaceId]);
+    }, [activeNodeId, nodeSource, nodeTopicId, workspaceId]);
 
-    const evidenceRefs = nodeSource === 'persisted' && evidenceState.nodeId === activeNode?.id
+    const evidenceRefs = nodeSource === 'persisted' && evidenceState.nodeId === activeNodeId
         ? evidenceState.refs
         : undefined;
 

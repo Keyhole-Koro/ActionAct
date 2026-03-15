@@ -22,17 +22,23 @@ export function buildVisibleTree(
     });
 
     const allPersistedIds = new Set(persistedNodes.map((node) => node.id));
-    const childIds = new Set(persistedEdges.map((edge) => edge.target));
+    const expandedSet = new Set(expandedBranchNodeIds);
+
+    // Root detection: use parentId from node data, not edge inference.
+    // A node is root if it has no parentId, or its parentId doesn't exist in the node set.
     const rootIds = persistedNodes
-        .map((node) => node.id)
-        .filter((nodeId) => !childIds.has(nodeId));
+        .filter((node) => {
+            const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
+            return !parentId || !allPersistedIds.has(parentId);
+        })
+        .map((node) => node.id);
 
     const visibleNodeIds = new Set(rootIds);
     const queue = [...rootIds];
 
     while (queue.length > 0) {
         const currentId = queue.shift()!;
-        if (!expandedBranchNodeIds.includes(currentId)) {
+        if (!expandedSet.has(currentId)) {
             continue;
         }
 
@@ -71,17 +77,21 @@ export function mergeTreeWithActNodes(
         if (!draftNode) {
             return node;
         }
+        // Merge act data but preserve persisted kind to prevent
+        // act draft's "act" kind from overwriting persisted "claim"/"cluster" etc.
+        const { kind: _actKind, ...draftDataWithoutKind } = draftNode.data ?? {};
         return {
             ...node,
             position: draftNode.position ?? node.position,
             data: {
                 ...node.data,
-                ...draftNode.data,
+                ...draftDataWithoutKind,
             },
         };
     });
 
-    const standaloneActNodes = actNodes.filter((actNode) => !persistedNodes.some((node) => node.id === actNode.id));
+    const persistedIdSet = new Set(persistedNodes.map((node) => node.id));
+    const standaloneActNodes = actNodes.filter((actNode) => !persistedIdSet.has(actNode.id));
     return { mergedTreeNodes, standaloneActNodes };
 }
 
@@ -154,6 +164,12 @@ export function buildDisplayNodes({
     const layoutById = new Map(layoutedNodes.map((node) => [node.id, node]));
     const maxTreeX = layoutedNodes.reduce((max, node) => Math.max(max, node.position.x), 0);
     const standaloneActNodesById = new Map(standaloneActNodes.map((node) => [node.id, node]));
+
+    // Convert arrays to Sets for O(1) lookup
+    const manualNodeIdSet = new Set(manualNodeIds);
+    const selectedNodeIdSet = new Set(selectedNodeIds);
+    const expandedBranchSet = new Set(expandedBranchNodeIds);
+
     const actLaneNodes = standaloneActNodes.map((node, index) => {
         const layoutedNode = layoutById.get(node.id);
         const sourceNode = layoutedNode ?? node;
@@ -189,10 +205,10 @@ export function buildDisplayNodes({
 
         const renderData: GraphNodeRenderData = {
             ...(mergedNode.data as GraphNodeRenderData),
-            ...(manualNodeIds.includes(node.id) ? { isManualPosition: true } : {}),
+            ...(manualNodeIdSet.has(node.id) ? { isManualPosition: true } : {}),
             referencedNodes: resolveReferencedNodes(referencedNodeIds, allReferenceableNodes),
             hasChildNodes,
-            branchExpanded: expandedBranchNodeIds.includes(node.id),
+            branchExpanded: expandedBranchSet.has(node.id),
             hiddenChildCount,
             isExpanded: isNodeExpanded(node.id),
             isEditing: isNodeEditing(node.id),
@@ -206,7 +222,7 @@ export function buildDisplayNodes({
 
         return {
             ...mergedNode,
-            selected: selectedNodeIds.includes(node.id),
+            selected: selectedNodeIdSet.has(node.id),
             data: renderData,
         };
     });
