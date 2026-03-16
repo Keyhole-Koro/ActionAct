@@ -1,4 +1,5 @@
 import type { Node } from '@xyflow/react';
+import dagre from '@/vendor/dagre/dagre.js';
 
 import type { GraphNodeBase, GraphNodeRender, GraphNodeRenderData, ReferencedNodeView } from '@/features/graph/types';
 import {
@@ -95,6 +96,89 @@ function getNodeRight(node: Node, isExpandedOverride?: boolean) {
 function getNodeCenterY(node: Node, isExpandedOverride?: boolean) {
     const dimensions = getNodeDimensions(node, isExpandedOverride);
     return node.position.y + dimensions.height / 2;
+}
+
+type ActClusterNode = {
+    node: GraphNodeBase;
+    sourceNode: Node;
+    isExpanded: boolean;
+    width: number;
+    height: number;
+};
+
+type ActCluster = {
+    key: string;
+    nodes: ActClusterNode[];
+    preferredX: number;
+    preferredTop: number;
+    width: number;
+    height: number;
+    hasAnchors: boolean;
+};
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+    return !(endA <= startB || endB <= startA);
+}
+
+function layoutActClusterDagreStyle(cluster: ActCluster) {
+    const graph = new (dagre as any).graphlib.Graph();
+    graph.setGraph({
+        rankdir: 'TB',
+        nodesep: 24,
+        ranksep: 28,
+        marginx: 0,
+        marginy: 0,
+    });
+    graph.setDefaultEdgeLabel(() => ({}));
+
+    cluster.nodes.forEach((entry) => {
+        graph.setNode(entry.node.id, {
+            width: entry.width,
+            height: entry.height,
+        });
+    });
+
+    cluster.nodes.forEach((entry, index) => {
+        if (index === 0) {
+            return;
+        }
+        graph.setEdge(cluster.nodes[index - 1].node.id, entry.node.id, {
+            weight: 2,
+            minlen: 1,
+        });
+    });
+
+    (dagre as any).layout(graph);
+
+    const positionedNodes = cluster.nodes.map((entry) => {
+        const dagreNode = graph.node(entry.node.id);
+        const x = typeof dagreNode?.x === 'number' ? dagreNode.x - entry.width / 2 : 0;
+        const y = typeof dagreNode?.y === 'number' ? dagreNode.y - entry.height / 2 : 0;
+        return {
+            ...entry.sourceNode,
+            data: {
+                ...(entry.sourceNode.data ?? {}),
+                isExpanded: entry.isExpanded,
+            },
+            position: {
+                x: cluster.preferredX + Math.round(x),
+                y: cluster.preferredTop + Math.round(y),
+            },
+        };
+    });
+
+    const graphLabel = graph.graph();
+    const clusterWidth = typeof graphLabel?.width === 'number'
+        ? graphLabel.width
+        : Math.max(...cluster.nodes.map((entry) => entry.width));
+
+    return {
+        nodes: positionedNodes,
+        width: clusterWidth,
+        height: typeof graphLabel?.height === 'number'
+            ? graphLabel.height
+            : Math.max(0, positionedNodes.reduce((max, node) => Math.max(max, node.position.y + getNodeDimensions(node).height), cluster.preferredTop) - cluster.preferredTop),
+    };
 }
 
 export function mergeTreeWithActNodes(
@@ -206,10 +290,8 @@ export function buildDisplayNodes({
 
     const fallbackLaneX = maxTreeRight + 280;
     const fallbackLaneYStart = 100;
-    const fallbackLaneGap = 32;
-    const clusterGap = 28;
-    const anchorClusterState = new Map<string, number>();
-    let fallbackLaneY = fallbackLaneYStart;
+    const clusterLaneGapX = 56;
+    const clusterGapY = 28;
     const sortedLaneNodes = [...laneActNodes].sort((left, right) => {
         const leftRefs = Array.isArray(left.data?.referencedNodeIds) ? left.data.referencedNodeIds.length : 0;
         const rightRefs = Array.isArray(right.data?.referencedNodeIds) ? right.data.referencedNodeIds.length : 0;
@@ -221,7 +303,8 @@ export function buildDisplayNodes({
         }
         return left.id.localeCompare(right.id);
     });
-    const positionedLaneNodes = sortedLaneNodes.map((node) => {
+    const actClustersByKey = new Map<string, ActCluster>();
+    sortedLaneNodes.forEach((node) => {
         const layoutedNode = layoutById.get(node.id);
         const sourceNode = layoutedNode ?? node;
         const sourceNodeData = (sourceNode.data ?? {}) as Record<string, unknown>;
@@ -241,30 +324,94 @@ export function buildDisplayNodes({
             : fallbackLaneX;
         const preferredCenterY = anchorNodes.length > 0
             ? anchorNodes.reduce((sum, anchorNode) => sum + getNodeCenterY(anchorNode), 0) / anchorNodes.length
-            : fallbackLaneY + dimensions.height / 2;
+            : fallbackLaneYStart + dimensions.height / 2;
         const preferredTop = Math.max(40, Math.round(preferredCenterY - dimensions.height / 2));
-        const nextTopForCluster = anchorClusterState.get(anchorKey);
-        const nextY = nextTopForCluster === undefined
-            ? preferredTop
-            : Math.max(preferredTop, nextTopForCluster + clusterGap);
-        anchorClusterState.set(anchorKey, nextY + dimensions.height);
-        if (anchorNodes.length === 0) {
-            fallbackLaneY = nextY + dimensions.height + fallbackLaneGap;
+        const existingCluster = actClustersByKey.get(anchorKey);
+        const entry: ActClusterNode = {
+            node,
+            sourceNode,
+            isExpanded,
+            width: dimensions.width,
+            height: dimensions.height,
+        };
+
+        if (!existingCluster) {
+            actClustersByKey.set(anchorKey, {
+                key: anchorKey,
+                nodes: [entry],
+                preferredX,
+                preferredTop,
+                width: dimensions.width,
+                height: dimensions.height,
+                hasAnchors: anchorNodes.length > 0,
+            });
+            return;
         }
-        const positionedNode = {
-            ...sourceNode,
-            data: {
-                ...sourceNodeData,
-                isExpanded,
-            },
-            position: {
-                x: preferredX,
-                y: nextY,
-            },
-        };
-        return {
+
+        existingCluster.nodes.push(entry);
+        existingCluster.preferredX = Math.max(existingCluster.preferredX, preferredX);
+        existingCluster.preferredTop = Math.min(existingCluster.preferredTop, preferredTop);
+        existingCluster.width = Math.max(existingCluster.width, dimensions.width);
+        existingCluster.height += dimensions.height + clusterGapY;
+    });
+
+    const sortedClusters = [...actClustersByKey.values()].sort((left, right) => {
+        if (left.hasAnchors !== right.hasAnchors) {
+            return left.hasAnchors ? -1 : 1;
+        }
+        if (left.preferredX !== right.preferredX) {
+            return left.preferredX - right.preferredX;
+        }
+        return left.preferredTop - right.preferredTop;
+    });
+
+    const placedClusterBounds: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+    let fallbackClusterY = fallbackLaneYStart;
+    const positionedLaneNodes = sortedClusters.flatMap((cluster) => {
+        const baseTop = cluster.hasAnchors ? cluster.preferredTop : fallbackClusterY;
+        const laidOutCluster = layoutActClusterDagreStyle({
+            ...cluster,
+            preferredTop: baseTop,
+        });
+        const clusterLeft = cluster.preferredX;
+        const clusterRight = cluster.preferredX + laidOutCluster.width;
+        let clusterTop = baseTop;
+        let moved = true;
+
+        while (moved) {
+            moved = false;
+            for (const bounds of placedClusterBounds) {
+                if (
+                    rangesOverlap(clusterLeft - clusterLaneGapX, clusterRight + clusterLaneGapX, bounds.left, bounds.right)
+                    && rangesOverlap(clusterTop, clusterTop + laidOutCluster.height, bounds.top, bounds.bottom)
+                ) {
+                    clusterTop = bounds.bottom + clusterGapY;
+                    moved = true;
+                }
+            }
+        }
+
+        const yOffset = clusterTop - baseTop;
+        const positionedNodes = laidOutCluster.nodes.map((positionedNode) => ({
             ...positionedNode,
-        };
+            position: {
+                x: positionedNode.position.x,
+                y: positionedNode.position.y + yOffset,
+            },
+        }));
+
+        placedClusterBounds.push({
+            left: clusterLeft,
+            right: clusterRight,
+            top: clusterTop,
+            bottom: clusterTop + laidOutCluster.height,
+        });
+
+        if (!cluster.hasAnchors) {
+            fallbackClusterY = clusterTop + laidOutCluster.height + clusterGapY;
+        }
+
+        return positionedNodes;
     });
 
     const positionedManualNodes = manualActNodes.map((node) => {

@@ -227,6 +227,7 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * persisted tree の親子関係の間に `act-draft-node` / `selection-node` を割り込ませない
 * `act-draft-node` は auxiliary lane に置く
 * 自動配置の `act-draft-node` は、可能なら `anchor_node_id` / `context_node_ids` / `referencedNodeIds` に対応する参照元ノードの右側 sidecar に寄せ、参照元がない場合のみ general lane に置く
+* 同じ参照元クラスタに属する複数の `act-draft-node` は cluster 内で Dagre などの layered layout で整列してよい
 * `act-draft-node` は `created_by` または同等の frontend metadata を持ってよく、node card 上で `user` / `agent` の作成主体アイコンを表示してよい
 * `act-draft-node` は current MVP で `Draft` / `Thinking` / `Ready` の簡潔な状態ラベルを持ってよい
 * 状態ラベルの意味は以下とする

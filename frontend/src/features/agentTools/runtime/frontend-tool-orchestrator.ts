@@ -296,6 +296,7 @@ async function resolveContextNodeIds(
   const toolNames = new Set((tools ?? []).map((tool) => tool.name));
   const hasSelectedNodesTool = toolNames.has("get_selected_nodes");
   const hasActiveNodeTool = toolNames.has("get_active_node_detail");
+  const needsIntentSelection = queryNeedsIntentSelection(userMessage);
 
   if (!hasSelectedNodesTool && !hasActiveNodeTool) {
     if (needsUiContext) {
@@ -306,6 +307,23 @@ async function resolveContextNodeIds(
       );
     }
     return { status: "ready", contextNodeIds: [] };
+  }
+
+  // Deterministic fast path: if the user has already selected concrete nodes,
+  // trust that explicit UI context instead of asking the decision model again.
+  if (hasSelectedNodesTool) {
+    const selectedNodeIds = await safeSelectedNodeIds(client);
+    if (selectedNodeIds && selectedNodeIds.length > 0) {
+      if (needsIntentSelection) {
+        return clarification(
+          "MISSING_UI_CONTEXT",
+          "何を知りたいですか？近いものを選んでください。",
+          "select_node",
+          buildIntentSelectionOptions(userMessage, selectedNodeIds),
+        );
+      }
+      return { status: "ready", contextNodeIds: selectedNodeIds };
+    }
   }
 
   const visibleGraph = await safeVisibleGraph(client);
@@ -366,25 +384,10 @@ async function resolveContextNodeIds(
     }
   }
 
-  if (hasSelectedNodesTool) {
-    const selectedNodeIds = await safeSelectedNodeIds(client);
-    if (selectedNodeIds && selectedNodeIds.length > 0) {
-      if (queryNeedsIntentSelection(userMessage)) {
-        return clarification(
-          "MISSING_UI_CONTEXT",
-          "何を知りたいですか？近いものを選んでください。",
-          "select_node",
-          buildIntentSelectionOptions(userMessage, selectedNodeIds),
-        );
-      }
-      return { status: "ready", contextNodeIds: selectedNodeIds };
-    }
-  }
-
   if (needsUiContext && hasActiveNodeTool) {
     const activeNodeId = await safeActiveNodeId(client);
     if (activeNodeId) {
-      if (queryNeedsIntentSelection(userMessage)) {
+      if (needsIntentSelection) {
         return clarification(
           "MISSING_UI_CONTEXT",
           "何を知りたいですか？近いものを選んでください。",

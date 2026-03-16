@@ -198,7 +198,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             }
         }
 
-        return { actNodes: [...state.actNodes, newNode], actEdges: newEdges, selectedNodeIds: [] };
+        return { actNodes: [...state.actNodes, newNode], actEdges: newEdges };
     }),
 
     addEmptyActNode: (position) => {
@@ -226,7 +226,14 @@ export const useGraphStore = create<GraphState>((set) => ({
                 id,
                 type: 'customTask',
                 position,
-                data: { label: initialLabel, nodeSource: 'act', createdBy: 'user', kind: 'act', contentMd: '', isManualPosition: true }
+                data: {
+                    label: initialLabel,
+                    nodeSource: 'act',
+                    createdBy: 'user',
+                    kind: 'act',
+                    contentMd: '',
+                    referencedNodeIds: [...state.selectedNodeIds],
+                }
             }],
             actEdges: [
                 ...state.actEdges,
@@ -243,7 +250,6 @@ export const useGraphStore = create<GraphState>((set) => ({
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],
-            selectedNodeIds: [],
         }));
         return id;
     },

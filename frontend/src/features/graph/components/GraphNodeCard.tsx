@@ -149,7 +149,7 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
                         ? 'rounded-[20px] border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.28)] hover:shadow-[0_14px_30px_-18px_rgba(37,99,235,0.2)]'
                         : 'rounded-[22px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] backdrop-blur-md shadow-[0_14px_34px_-22px_rgba(15,23,42,0.42)] hover:shadow-[0_18px_40px_-22px_rgba(37,99,235,0.32)]')
                     : 'border-border/40 bg-background shadow-md hover:shadow-xl'}
-                ${selected || isExpanded
+                ${selected
                     ? (isActNode
                         ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-[0_18px_42px_-20px_rgba(37,99,235,0.34)]'
                         : 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 scale-[1.02] shadow-xl')
