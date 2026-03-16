@@ -20,8 +20,10 @@ import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
 
 import { GraphNodeCard } from './GraphNodeCard';
-import { buildDisplayEdges, buildDisplayNodes, buildVisibleTree } from '../selectors/projectGraph';
+import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
+import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
+import { createPersistedGraphMock } from '../mocks/persistedGraphMock';
 
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
@@ -105,12 +107,25 @@ export function GraphCanvas() {
     const setPersistedGraphRef = useRef(setPersistedGraph);
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
+    const usePersistedGraphMock = useMemo(() => {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+        return new URLSearchParams(window.location.search).get('graphMock') === '1';
+    }, []);
 
     useEffect(() => {
         setPersistedGraphRef.current = setPersistedGraph;
     }, [setPersistedGraph]);
 
     useEffect(() => {
+        if (usePersistedGraphMock) {
+            const mock = createPersistedGraphMock(topicId);
+            persistedNodeCountRef.current = mock.nodes.length;
+            setPersistedGraphRef.current(mock.nodes, mock.edges);
+            return;
+        }
+
         const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes) => {
             const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
                 id: node.id,
@@ -148,7 +163,7 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [topicId, workspaceId]);
+    }, [topicId, usePersistedGraphMock, workspaceId]);
 
     useEffect(() => {
         const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (draftNodes) => {
@@ -209,19 +224,24 @@ export function GraphCanvas() {
             .map((node) => node.id);
     }, [expandedBranchNodeIds, persistedNodes]);
 
-    const persistedTree = useMemo(
-        () => buildVisibleTree(persistedNodes as GraphNodeBase[], persistedEdges, effectiveExpandedBranchNodeIds),
-        [effectiveExpandedBranchNodeIds, persistedEdges, persistedNodes],
+    const persistedGraph = useMemo(
+        () => projectPersistedGraph(
+            persistedNodes as GraphNodeBase[],
+            persistedEdges,
+            effectiveExpandedBranchNodeIds,
+            expandedNodeIds,
+        ),
+        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
     );
 
     const graphNodes = useMemo(
-        () => [...persistedTree.visibleNodes, ...(actNodes as GraphNodeBase[])],
-        [actNodes, persistedTree.visibleNodes],
+        () => [...persistedGraph.positionedNodes, ...(actNodes as GraphNodeBase[])],
+        [actNodes, persistedGraph.positionedNodes],
     );
 
     const allReferenceableNodes = useMemo(
-        () => [...persistedTree.visibleNodes, ...actNodes],
-        [actNodes, persistedTree.visibleNodes],
+        () => [...persistedGraph.positionedNodes, ...actNodes],
+        [actNodes, persistedGraph.positionedNodes],
     );
 
     const displayNodes = useMemo(
@@ -229,8 +249,8 @@ export function GraphCanvas() {
             nodes: graphNodes,
             selectedNodeIds,
             expandedBranchNodeIds,
-            visiblePersistedNodeIds: persistedTree.visibleNodeIds,
-            childrenByParent: persistedTree.childrenByParent,
+            visiblePersistedNodeIds: persistedGraph.visibleNodeIds,
+            childrenByParent: persistedGraph.childrenByParent,
             allReferenceableNodes,
             isNodeExpanded: (nodeId) => expandedNodeIds.includes(nodeId),
             isNodeEditing: (nodeId) => editingNodeId === nodeId,
@@ -251,8 +271,8 @@ export function GraphCanvas() {
             expandedBranchNodeIds,
             expandedNodeIds,
             graphNodes,
-            persistedTree.childrenByParent,
-            persistedTree.visibleNodeIds,
+            persistedGraph.childrenByParent,
+            persistedGraph.visibleNodeIds,
             selectedNodeIds,
             streamingNodeIds,
         ],
@@ -297,7 +317,10 @@ export function GraphCanvas() {
     }, [displayNodes]);
 
     const displayEdges = useMemo(
-        () => buildDisplayEdges(persistedTree.visibleEdges, actEdges).map((edge) => ({
+        () => buildDisplayEdges(
+            [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
+            actEdges,
+        ).map((edge) => ({
             ...edge,
             zIndex: (edge as Edge).zIndex ?? 60,
             style: {
@@ -307,7 +330,7 @@ export function GraphCanvas() {
                 ...((edge as Edge).style ?? {}),
             },
         })),
-        [actEdges, persistedTree.visibleEdges],
+        [actEdges, persistedGraph.hierarchyEdges, persistedGraph.relationEdges],
     );
 
     const focusNode = useCallback((nodeId: string) => {
