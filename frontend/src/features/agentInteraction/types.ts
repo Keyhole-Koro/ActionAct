@@ -20,9 +20,12 @@ export interface SelectionNodeData extends Record<string, unknown> {
     groupId: string;
     optionId: string;
     label: string;
+    reason?: string | null;
+    contentMd?: string | null;
     mode: SelectionMode;
     status: SelectionStatus;
     isSelected: boolean;
+    isInteractive: boolean;
     onSelect: () => void;
 }
 
@@ -34,8 +37,16 @@ export interface SelectionHeaderData extends Record<string, unknown> {
     selection_mode: SelectionMode;
     status: SelectionStatus;
     options: SelectionOption[];
+    selectedCount: number;
+    optionCount: number;
+    canConfirm: boolean;
+    canClear: boolean;
+    canCancel: boolean;
     expiresInMs?: number | null;
     expiresAtTimestamp?: number | null;
+    onConfirm: () => void;
+    onClear: () => void;
+    onCancel: () => void;
 }
 
 export interface SelectionGroup {

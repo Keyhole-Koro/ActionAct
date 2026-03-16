@@ -18,11 +18,14 @@ import '@xyflow/react/dist/style.css';
 import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
+import { projectSelectionGroups } from '@/features/agentInteraction/selectors/projectSelectionGroups';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
 
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
+import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import {
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
@@ -86,6 +89,8 @@ function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeC
 
 const nodeTypes = {
     customTask: GraphNodeCardWithBoundary,
+    selectionHeader: SelectionHeaderNodeCard,
+    selectionNode: SelectionOptionNodeCard,
 };
 
 function isRenderableCoordinate(value: number | undefined) {
@@ -150,6 +155,11 @@ export function GraphCanvas() {
         streamingNodeIds,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
+    const selectionGroups = useAgentInteractionStore((state) => state.groups);
+    const toggleSelectionOption = useAgentInteractionStore((state) => state.toggleOptionSelection);
+    const confirmSelection = useAgentInteractionStore((state) => state.confirmSelection);
+    const clearSelectionGroup = useAgentInteractionStore((state) => state.clearSelection);
+    const cancelSelectionGroup = useAgentInteractionStore((state) => state.cancelGroup);
     const commands = useGraphCommands({ workspaceId, topicId });
     const reactFlowInstance = useReactFlow();
 
@@ -305,9 +315,24 @@ export function GraphCanvas() {
         [actNodes, expandedNodeIds, persistedGraph.positionedNodes],
     );
 
-    const graphNodes = useMemo(
+    const regularGraphNodes = useMemo(
         () => [...persistedGraph.positionedNodes, ...positionedActNodes],
         [persistedGraph.positionedNodes, positionedActNodes],
+    );
+
+    const selectionProjection = useMemo(
+        () => projectSelectionGroups({
+            groups: Object.values(selectionGroups),
+            baseNodes: regularGraphNodes,
+            expandedNodeIds,
+            actions: {
+                toggleOptionSelection: toggleSelectionOption,
+                confirmSelection,
+                clearSelection: clearSelectionGroup,
+                cancelGroup: cancelSelectionGroup,
+            },
+        }),
+        [cancelSelectionGroup, clearSelectionGroup, confirmSelection, expandedNodeIds, regularGraphNodes, selectionGroups, toggleSelectionOption],
     );
 
     const allReferenceableNodes = useMemo(
@@ -317,7 +342,7 @@ export function GraphCanvas() {
 
     const displayNodes = useMemo(
         () => buildDisplayNodes({
-            nodes: graphNodes,
+            nodes: regularGraphNodes,
             selectedNodeIds,
             expandedBranchNodeIds,
             visiblePersistedNodeIds: persistedGraph.visibleNodeIds,
@@ -341,16 +366,21 @@ export function GraphCanvas() {
             editingNodeId,
             expandedBranchNodeIds,
             expandedNodeIds,
-            graphNodes,
             persistedGraph.childrenByParent,
             persistedGraph.visibleNodeIds,
+            regularGraphNodes,
             selectedNodeIds,
             streamingNodeIds,
         ],
     );
 
+    const canvasNodes = useMemo(
+        () => [...displayNodes, ...selectionProjection.nodes],
+        [displayNodes, selectionProjection.nodes],
+    );
+
     const layoutAwareDisplayNodes = useMemo(
-        () => displayNodes.map((node) => {
+        () => canvasNodes.map((node) => {
             const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
                 ? 'radial'
                 : 'force';
@@ -364,7 +394,7 @@ export function GraphCanvas() {
                 },
             };
         }),
-        [displayNodes, isRadialLayout, persistedGraph.depthById],
+        [canvasNodes, isRadialLayout, persistedGraph.depthById],
     );
 
     const radialOverviewNodes = useMemo(
@@ -458,6 +488,9 @@ export function GraphCanvas() {
         }
 
         return normalizedDisplayNodes.map((node) => {
+            if (node.type !== 'customTask') {
+                return node;
+            }
             const isExpanded = node.data?.isExpanded === true;
             const isSelected = selectedNodeIds.includes(node.id);
             const overlapsExpanded = !isExpanded && expandedNodes.some((expandedNode) => (
@@ -521,7 +554,7 @@ export function GraphCanvas() {
 
             return buildDisplayEdges(
                 [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
-                actEdges,
+                [...actEdges, ...selectionProjection.edges],
             ).map((edge) => {
             const isActContext = edge.id.startsWith('edge-ctx-');
             const isRelation = 'relationType' in edge && edge.relationType === 'related';
@@ -596,6 +629,7 @@ export function GraphCanvas() {
             persistedGraph.rootIds,
             persistedRootIdByNode,
             selectedNodeIds,
+            selectionProjection.edges,
         ],
     );
 
@@ -862,6 +896,9 @@ export function GraphCanvas() {
                 defaultViewport={{ x: 0, y: 0, zoom: 0.9 }}
                 proOptions={{ hideAttribution: true }}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
+                    if (node.type === 'selectionHeader' || node.type === 'selectionNode') {
+                        return;
+                    }
                     const target = event.target;
                     if (
                         target instanceof HTMLElement

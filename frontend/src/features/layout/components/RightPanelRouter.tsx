@@ -5,6 +5,8 @@ import { usePanelStore } from '../store/panel-store';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NodeDetailPanel } from '@/features/nodeDetail/components/NodeDetailPanel';
+import { TopicActivityPanel } from '@/features/topicActivity/components/TopicActivityPanel';
+import { ReviewInboxPanel } from '@/features/reviewInbox/components/ReviewInboxPanel';
 
 export function RightPanelRouter() {
     const { isOpen, mode: panelMode, closePanel } = usePanelStore();
@@ -26,16 +28,8 @@ export function RightPanelRouter() {
             {/* Content routing based on mode */}
             <div className="flex-1 overflow-hidden">
                 {panelMode === 'node-detail' && <NodeDetailPanel />}
-                {panelMode === 'topic-activity' && (
-                    <div className="p-4 flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                        Activity panel is under construction.
-                    </div>
-                )}
-                {panelMode === 'review-inbox' && (
-                    <div className="p-4 flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                        Review Inbox is under construction.
-                    </div>
-                )}
+                {panelMode === 'topic-activity' && <TopicActivityPanel />}
+                {panelMode === 'review-inbox' && <ReviewInboxPanel />}
             </div>
         </div>
     );

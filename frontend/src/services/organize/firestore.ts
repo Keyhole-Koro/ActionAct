@@ -9,7 +9,7 @@ import {
 } from "firebase/firestore";
 
 import { firestore } from "@/services/firebase/firestore";
-import type { EvidenceRef, InputProgress, InputProgressStatus, OrganizePort, TopicNode } from "./port";
+import type { EvidenceRef, InputProgress, InputProgressStatus, OrganizePort, ReviewOpItem, ReviewOpState, TopicActivityItem, TopicNode } from "./port";
 
 function topicNodesCollection(workspaceId: string, topicId: string) {
   return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/nodes`);
@@ -23,6 +23,14 @@ function inputProgressDoc(workspaceId: string, topicId: string, inputId: string)
   return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/inputProgress/${inputId}`);
 }
 
+function inputProgressCollection(workspaceId: string, topicId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/inputProgress`);
+}
+
+function organizeOpsCollection(workspaceId: string, topicId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/organizeOps`);
+}
+
 function evidenceCollection(workspaceId: string, topicId: string, nodeId: string) {
   return collection(
     firestore,
@@ -32,6 +40,27 @@ function evidenceCollection(workspaceId: string, topicId: string, nodeId: string
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function readTimestampMillis(value: unknown): number | null {
+  if (typeof value === "object" && value !== null && "toMillis" in value && typeof (value as { toMillis: () => number }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return null;
 }
 
 function mapEvidence(docId: string, data: Record<string, unknown>): EvidenceRef {
@@ -88,8 +117,77 @@ function readInputProgress(
     status,
     currentPhase: readString(data.currentPhase),
     lastEventType: readString(data.lastEventType),
+    traceId: readString(data.traceId),
     resolutionMode: readString(data.resolutionMode),
     resolvedTopicId: readString(data.resolvedTopicId),
+    errorCode: readString(data.errorCode),
+    errorMessage: readString(data.errorMessage),
+    createdAt: readTimestampMillis(data.createdAt),
+    updatedAt: readTimestampMillis(data.updatedAt),
+    completedAt: readTimestampMillis(data.completedAt),
+  };
+}
+
+function readTopicActivity(
+  workspaceId: string,
+  topicId: string,
+  inputId: string,
+  data: Record<string, unknown>,
+): TopicActivityItem | null {
+  const base = readInputProgress(workspaceId, topicId, inputId, data);
+  if (!base) {
+    return null;
+  }
+
+  return {
+    ...base,
+    draftVersion: readNumber(data.draftVersion),
+    draftSummary: readString(data.draftSummary),
+    bundleId: readString(data.bundleId),
+    bundleSummary: readString(data.bundleSummary) ?? readString(data.bundleDescription),
+    hasSchemaChange: readBoolean(data.hasSchemaChange) ?? readBoolean(data.schemaChange),
+    outlineVersion: readNumber(data.outlineVersion),
+    outlineSummary: readString(data.outlineSummary),
+    changedNodeCount: readNumber(data.changedNodeCount),
+  };
+}
+
+function normalizeReviewState(value: string | undefined): ReviewOpState {
+  switch (value) {
+    case "approved":
+    case "applied":
+    case "dismissed":
+      return value;
+    case "planned":
+    case "proposed":
+    default:
+      return "planned";
+  }
+}
+
+function readReviewOp(
+  workspaceId: string,
+  topicId: string,
+  opId: string,
+  data: Record<string, unknown>,
+): ReviewOpItem {
+  const opType = readString(data.opType) ?? "unknown";
+  return {
+    opId,
+    topicId: readString(data.topicId) ?? topicId,
+    workspaceId: readString(data.workspaceId) ?? workspaceId,
+    title: readString(data.title) ?? `${opType} proposal`,
+    opType,
+    state: normalizeReviewState(readString(data.status) ?? readString(data.state)),
+    reason: readString(data.reason),
+    traceId: readString(data.traceId),
+    sourceEventType: readString(data.sourceEventType),
+    nodeIds: readStringArray(data.nodeIds),
+    generation: readNumber(data.generation),
+    requiresHumanReview: readBoolean(data.requiresHumanReview),
+    initiator: readString(data.initiator),
+    createdAt: readTimestampMillis(data.createdAt),
+    updatedAt: readTimestampMillis(data.updatedAt),
   };
 }
 
@@ -126,6 +224,32 @@ export const firestoreOrganizeService: OrganizePort = {
         inputId,
         snapshot.exists() ? snapshot.data() as Record<string, unknown> : undefined,
       ));
+    },
+  ),
+
+  subscribeTopicActivity: (workspaceId, topicId, callback) => onSnapshot(
+    query(inputProgressCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
+    (snapshot) => {
+      callback(snapshot.docs
+        .map((progressDoc) => readTopicActivity(
+          workspaceId,
+          topicId,
+          progressDoc.id,
+          progressDoc.data() as Record<string, unknown>,
+        ))
+        .filter((item): item is TopicActivityItem => item !== null));
+    },
+  ),
+
+  subscribeOrganizeOps: (workspaceId, topicId, callback) => onSnapshot(
+    query(organizeOpsCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
+    (snapshot) => {
+      callback(snapshot.docs.map((opDoc) => readReviewOp(
+        workspaceId,
+        topicId,
+        opDoc.id,
+        opDoc.data() as Record<string, unknown>,
+      )));
     },
   ),
 

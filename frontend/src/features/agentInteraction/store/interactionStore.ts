@@ -65,7 +65,9 @@ export const useAgentInteractionStore = create<AgentInteractionState>((set) => (
         const group = state.groups[groupId];
         if (!group || group.status !== 'pending') return state;
 
-        // Single selection mode auto-confirms, but if multiple, must have at least 1 selected ideally
+        const hasSelection = group.options.some((option) => option.selected);
+        if (!hasSelection) return state;
+
         return {
             groups: {
                 ...state.groups,
