@@ -43,6 +43,33 @@ interface GraphState {
     removeActNode: (nodeId: string) => void;
 }
 
+const SELECTED_NODE_IDS_STORAGE_KEY = 'action.graph.selectedNodeIds';
+
+function readStoredSelectedNodeIds(): string[] {
+    if (typeof window === 'undefined') {
+        return [];
+    }
+    const raw = window.localStorage.getItem(SELECTED_NODE_IDS_STORAGE_KEY);
+    if (!raw) {
+        return [];
+    }
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed)
+            ? parsed.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeStoredSelectedNodeIds(ids: string[]) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+    window.localStorage.setItem(SELECTED_NODE_IDS_STORAGE_KEY, JSON.stringify(uniqueIds(ids).sort()));
+}
+
 function sameIds(left: string[], right: string[]) {
     if (left.length !== right.length) return false;
     const leftSorted = [...left].sort();
@@ -95,7 +122,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     persistedEdges: [],
     actNodes: [],
     actEdges: [],
-    selectedNodeIds: [],
+    selectedNodeIds: readStoredSelectedNodeIds(),
     expandedNodeIds: [],
     expandedBranchNodeIds: [],
     activeNodeId: null,
@@ -103,9 +130,14 @@ export const useGraphStore = create<GraphState>((set) => ({
     isStreaming: false,
     streamingNodeIds: [],
 
-    setSelectedNodes: (ids) => set((state) => (
-        sameIds(state.selectedNodeIds, ids) ? state : { selectedNodeIds: ids }
-    )),
+    setSelectedNodes: (ids) => set((state) => {
+        const nextIds = uniqueIds(ids).sort();
+        if (sameIds(state.selectedNodeIds, nextIds)) {
+            return state;
+        }
+        writeStoredSelectedNodeIds(nextIds);
+        return { selectedNodeIds: nextIds };
+    }),
     setPersistedGraph: (nodes, edges) => set((state) => ({
         persistedNodes: preserveNodePositions(state.persistedNodes, nodes),
         persistedEdges: edges,
@@ -122,18 +154,28 @@ export const useGraphStore = create<GraphState>((set) => ({
         const editingNodeId = state.editingNodeId && actNodeIds.has(state.editingNodeId)
             ? null
             : state.editingNodeId;
+        const nextSelectedNodeIds = state.selectedNodeIds.filter((id) => !actNodeIds.has(id));
+        if (!sameIds(state.selectedNodeIds, nextSelectedNodeIds)) {
+            writeStoredSelectedNodeIds(nextSelectedNodeIds);
+        }
 
         return {
             actNodes: [],
             actEdges: [],
-            selectedNodeIds: state.selectedNodeIds.filter((id) => !actNodeIds.has(id)),
+            selectedNodeIds: nextSelectedNodeIds,
             expandedNodeIds: state.expandedNodeIds.filter((id) => !actNodeIds.has(id)),
             activeNodeId,
             editingNodeId,
             streamingNodeIds: state.streamingNodeIds.filter((id) => !actNodeIds.has(id)),
         };
     }),
-    clearSelection: () => set({ selectedNodeIds: [] }),
+    clearSelection: () => set((state) => {
+        if (state.selectedNodeIds.length === 0) {
+            return state;
+        }
+        writeStoredSelectedNodeIds([]);
+        return { selectedNodeIds: [] };
+    }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
     toggleExpandedNode: (id: string) => set((state) => ({
         expandedNodeIds: state.expandedNodeIds.includes(id)
@@ -328,13 +370,19 @@ export const useGraphStore = create<GraphState>((set) => ({
         )
     })),
 
-    removeActNode: (nodeId) => set((state) => ({
-        actNodes: state.actNodes.filter(n => n.id !== nodeId),
-        actEdges: state.actEdges.filter(e => e.source !== nodeId && e.target !== nodeId),
-        expandedNodeIds: state.expandedNodeIds.filter((id) => id !== nodeId),
-        selectedNodeIds: state.selectedNodeIds.filter((id) => id !== nodeId),
-        streamingNodeIds: state.streamingNodeIds.filter((id) => id !== nodeId),
-        activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
-        editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
-    })),
+    removeActNode: (nodeId) => set((state) => {
+        const nextSelectedNodeIds = state.selectedNodeIds.filter((id) => id !== nodeId);
+        if (!sameIds(state.selectedNodeIds, nextSelectedNodeIds)) {
+            writeStoredSelectedNodeIds(nextSelectedNodeIds);
+        }
+        return {
+            actNodes: state.actNodes.filter(n => n.id !== nodeId),
+            actEdges: state.actEdges.filter(e => e.source !== nodeId && e.target !== nodeId),
+            expandedNodeIds: state.expandedNodeIds.filter((id) => id !== nodeId),
+            selectedNodeIds: nextSelectedNodeIds,
+            streamingNodeIds: state.streamingNodeIds.filter((id) => id !== nodeId),
+            activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
+            editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
+        };
+    }),
 }));

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
     Background,
@@ -26,6 +26,7 @@ import { organizeService } from '@/services/organize';
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
+import { SelectedNodePanel } from './SelectedNodePanel';
 import {
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
@@ -132,6 +133,24 @@ function overlapsWithMargin(left: GraphNodeRender, right: GraphNodeRender, margi
     );
 }
 
+function readClientPoint(event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent): { x: number; y: number } | null {
+    const nativeEvent = 'nativeEvent' in event ? event.nativeEvent : event;
+
+    if ('touches' in nativeEvent) {
+        const touch = nativeEvent.touches[0] ?? nativeEvent.changedTouches[0];
+        if (!touch) {
+            return null;
+        }
+        return { x: touch.clientX, y: touch.clientY };
+    }
+
+    if ('clientX' in nativeEvent && 'clientY' in nativeEvent) {
+        return { x: nativeEvent.clientX, y: nativeEvent.clientY };
+    }
+
+    return null;
+}
+
 export function GraphCanvas() {
     const router = useRouter();
     const pathname = usePathname();
@@ -167,6 +186,12 @@ export function GraphCanvas() {
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
     const pendingRadialFocusNodeIdRef = useRef<string | null>(null);
+    const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
+    const isShiftMarqueeSelectionRef = useRef(false);
+    const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+    useLayoutEffect(() => {
+        selectedNodeIdsRef.current = selectedNodeIds;
+    });
     const usePersistedGraphMock = useMemo(() => {
         return searchParams.get('graphMock') === '1';
     }, [searchParams]);
@@ -715,6 +740,25 @@ export function GraphCanvas() {
         focusNode(pendingNodeId);
     }, [emphasizedDisplayNodes, focusNode]);
 
+    const handleSelectionChange = useCallback(({ nodes: changedNodes }: { nodes: Node[] }) => {
+        if (isShiftMarqueeSelectionRef.current) {
+            return;
+        }
+        const ids = changedNodes
+            .filter((n) => n.type === 'customTask' || n.type == null)
+            .map((n) => n.id)
+            .sort();
+        if (ids.length === 0) {
+            return;
+        }
+        const current = [...selectedNodeIdsRef.current].sort();
+        const nextIds = [...new Set([...current, ...ids])].sort();
+        if (nextIds.length === current.length && nextIds.every((id, i) => id === current[i])) {
+            return;
+        }
+        setSelectedNodes(nextIds);
+    }, [setSelectedNodes]);
+
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
         if (selectedNodeIds.length === 0 || editingNodeId) {
             return;
@@ -767,7 +811,7 @@ export function GraphCanvas() {
     }, [handleSelectionTyping]);
 
     const activateRadialNode = useCallback((nodeId: string) => {
-        setSelectedNodes([nodeId]);
+        setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);
         commands.openDetails(nodeId);
 
         const radialNode = radialOverviewNodeById.get(nodeId);
@@ -859,6 +903,7 @@ export function GraphCanvas() {
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             {layoutToggle}
+            <SelectedNodePanel />
             <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
                 <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">
                     <div>
@@ -908,12 +953,16 @@ export function GraphCanvas() {
                     }
 
                     if (event.shiftKey) {
-                        setSelectedNodes(
-                            selectedNodeIds.includes(node.id)
-                                ? selectedNodeIds.filter((selectedId) => selectedId !== node.id).sort()
-                                : [...selectedNodeIds, node.id].sort(),
-                        );
-                        setActiveNode(node.id);
+                        const currentIds = selectedNodeIdsRef.current;
+                        const alreadySelected = currentIds.includes(node.id);
+                        if (alreadySelected) {
+                            const nextIds = currentIds.filter((selectedId) => selectedId !== node.id);
+                            setSelectedNodes(nextIds);
+                            setActiveNode(null);
+                        } else {
+                            setSelectedNodes([...currentIds, node.id]);
+                            setActiveNode(node.id);
+                        }
                         return;
                     }
 
@@ -927,8 +976,54 @@ export function GraphCanvas() {
                         { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
                     );
                 }}
+                onSelectionChange={handleSelectionChange}
+                onSelectionStart={(event: React.MouseEvent | React.TouchEvent) => {
+                    const point = readClientPoint(event);
+                    shiftMarqueeStartRef.current = point
+                        ? reactFlowInstance.screenToFlowPosition({ x: point.x, y: point.y })
+                        : null;
+                    isShiftMarqueeSelectionRef.current = Boolean('shiftKey' in event && event.shiftKey);
+                }}
+                onSelectionEnd={(event: React.MouseEvent | React.TouchEvent) => {
+                    if (isShiftMarqueeSelectionRef.current) {
+                        const start = shiftMarqueeStartRef.current;
+                        const endPoint = readClientPoint(event);
+                        const end = endPoint
+                            ? reactFlowInstance.screenToFlowPosition({ x: endPoint.x, y: endPoint.y })
+                            : null;
+
+                        if (start && end) {
+                            const minX = Math.min(start.x, end.x);
+                            const maxX = Math.max(start.x, end.x);
+                            const minY = Math.min(start.y, end.y);
+                            const maxY = Math.max(start.y, end.y);
+
+                            const idsToRemove = emphasizedDisplayNodes
+                                .filter((node) => node.type === 'customTask')
+                                .filter((node) => {
+                                    const { width, height } = getDisplayNodeDimensions(node as GraphNodeRender);
+                                    const nodeMinX = node.position.x;
+                                    const nodeMaxX = node.position.x + width;
+                                    const nodeMinY = node.position.y;
+                                    const nodeMaxY = node.position.y + height;
+                                    return !(nodeMaxX < minX || nodeMinX > maxX || nodeMaxY < minY || nodeMinY > maxY);
+                                })
+                                .map((node) => node.id);
+
+                            if (idsToRemove.length > 0) {
+                                const current = selectedNodeIdsRef.current;
+                                const nextIds = current.filter((id) => !idsToRemove.includes(id));
+                                if (nextIds.length !== current.length) {
+                                    setSelectedNodes(nextIds);
+                                }
+                            }
+                        }
+                    }
+
+                    shiftMarqueeStartRef.current = null;
+                    isShiftMarqueeSelectionRef.current = false;
+                }}
                 onPaneClick={() => {
-                    setSelectedNodes([]);
                     setActiveNode(null);
                 }}
                 zoomOnDoubleClick={false}
@@ -938,7 +1033,7 @@ export function GraphCanvas() {
                 selectionOnDrag
                 panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}
-                multiSelectionKeyCode="Shift"
+                multiSelectionKeyCode="Meta"
                 fitView
             >
                 <Background color="var(--border)" gap={24} size={1} />
