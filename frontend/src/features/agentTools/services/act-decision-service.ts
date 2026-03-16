@@ -23,6 +23,11 @@ export type ActDecision = {
   suggested_action?: "select_node" | "retry_without_context" | "none" | null;
   context_node_ids?: string[];
   candidates?: ActDecisionCandidate[];
+  debug_prompt?: {
+    system_instruction?: string | null;
+    user_prompt?: string | null;
+    context_blocks?: string[] | null;
+  };
 };
 
 async function getAuthHeader(): Promise<string> {
@@ -66,5 +71,13 @@ export async function decideActAction(params: {
     throw new Error(message || "failed to decide act action");
   }
 
-  return await response.json() as ActDecision;
+  const payload = await response.json() as ActDecision;
+  if (payload.debug_prompt) {
+    console.info("[ACT decision prompt]", {
+      system_instruction: payload.debug_prompt.system_instruction ?? "",
+      user_prompt: payload.debug_prompt.user_prompt ?? "",
+      context_blocks: Array.isArray(payload.debug_prompt.context_blocks) ? payload.debug_prompt.context_blocks : [],
+    });
+  }
+  return payload;
 }

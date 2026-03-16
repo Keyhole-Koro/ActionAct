@@ -73,6 +73,12 @@ class PromptBundle(BaseModel):
     context_blocks: list[str] = Field(default_factory=list)
 
 
+class PromptDebugInfo(BaseModel):
+    system_instruction: str = ""
+    user_prompt: str = ""
+    context_blocks: list[str] = Field(default_factory=list)
+
+
 class LLMChunk(BaseModel):
     """A single chunk yielded by the LLM during streaming."""
 
@@ -121,6 +127,7 @@ class ActDecisionOutput(BaseModel):
     suggested_action: Optional[str] = None
     context_node_ids: list[str] = Field(default_factory=list)
     candidates: list[ActDecisionCandidate] = Field(default_factory=list)
+    debug_prompt: Optional[PromptDebugInfo] = None
 
 
 class RunActEvent(BaseModel):

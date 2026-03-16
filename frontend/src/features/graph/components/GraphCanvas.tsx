@@ -27,7 +27,7 @@ import { SelectionGroupHeader } from './SelectionGroupHeader';
 import { SelectionNodeCard } from './SelectionNodeCard';
 import { toSelectionFlow } from '../selectors/toSelectionFlow';
 import { buildDisplayEdges, buildDisplayNodes, buildLayoutInput, buildVisibleTree, mergeTreeWithActNodes } from '../selectors/projectGraph';
-import { getLayoutedElements } from '../utils/layout';
+import { orchestrateGraphLayout } from '../layout/orchestrate-layout';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 
 type RecentClickedNode = {
@@ -35,7 +35,129 @@ type RecentClickedNode = {
     title: string;
 };
 
+type LayoutSandboxGraph = {
+    treeNodes: GraphNodeBase[];
+    treeEdges: Edge[];
+    actNodes: GraphNodeBase[];
+    actEdges: Edge[];
+    expandedBranchNodeIds: string[];
+    expandedNodeIds: string[];
+};
+
 const MAX_RECENT_CLICKED_NODES = 8;
+
+function buildLayoutSandboxGraph(): LayoutSandboxGraph {
+    const treeNodes: GraphNodeBase[] = [
+        {
+            id: 'sandbox-root',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Layout Sandbox', kind: 'topic' },
+        },
+        {
+            id: 'sandbox-group-finance',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Finance Group', kind: 'cluster', parentId: 'sandbox-root' },
+        },
+        {
+            id: 'sandbox-group-product',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Product Group', kind: 'subcluster', parentId: 'sandbox-root' },
+        },
+        {
+            id: 'sandbox-microsoft',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Microsoft', kind: 'claim', parentId: 'sandbox-group-finance' },
+        },
+        {
+            id: 'sandbox-amazon',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Amazon', kind: 'claim', parentId: 'sandbox-group-finance' },
+        },
+        {
+            id: 'sandbox-windows',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Windows', kind: 'claim', parentId: 'sandbox-group-product' },
+        },
+        {
+            id: 'sandbox-azure',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: { nodeSource: 'persisted', label: 'Azure', kind: 'claim', parentId: 'sandbox-group-product' },
+        },
+    ];
+
+    const treeEdges: Edge[] = [
+        { id: 'sandbox-edge-root-finance', source: 'sandbox-root', target: 'sandbox-group-finance', animated: true },
+        { id: 'sandbox-edge-root-product', source: 'sandbox-root', target: 'sandbox-group-product', animated: true },
+        { id: 'sandbox-edge-finance-microsoft', source: 'sandbox-group-finance', target: 'sandbox-microsoft', animated: true },
+        { id: 'sandbox-edge-finance-amazon', source: 'sandbox-group-finance', target: 'sandbox-amazon', animated: true },
+        { id: 'sandbox-edge-product-windows', source: 'sandbox-group-product', target: 'sandbox-windows', animated: true },
+        { id: 'sandbox-edge-product-azure', source: 'sandbox-group-product', target: 'sandbox-azure', animated: true },
+    ];
+
+    const actNodes: GraphNodeBase[] = [
+        {
+            id: 'sandbox-act-compare',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: {
+                nodeSource: 'act',
+                createdBy: 'user',
+                label: 'Compare earnings',
+                kind: 'act',
+                contentMd: '',
+                referencedNodeIds: ['sandbox-microsoft', 'sandbox-amazon'],
+            },
+        },
+        {
+            id: 'sandbox-act-drilldown',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: {
+                nodeSource: 'act',
+                createdBy: 'agent',
+                label: 'Windows revenue angle',
+                kind: 'act',
+                contentMd: 'Short answer ready.',
+                referencedNodeIds: ['sandbox-windows'],
+            },
+        },
+        {
+            id: 'sandbox-act-freeform',
+            type: 'customTask',
+            position: { x: 0, y: 0 },
+            data: {
+                nodeSource: 'act',
+                createdBy: 'user',
+                label: 'Open question',
+                kind: 'act',
+                contentMd: '',
+                referencedNodeIds: [],
+            },
+        },
+    ];
+
+    const actEdges: Edge[] = [
+        { id: 'sandbox-edge-ctx-microsoft-compare', source: 'sandbox-microsoft', target: 'sandbox-act-compare', animated: true, style: { stroke: '#888', strokeDasharray: '5,5' } },
+        { id: 'sandbox-edge-ctx-amazon-compare', source: 'sandbox-amazon', target: 'sandbox-act-compare', animated: true, style: { stroke: '#888', strokeDasharray: '5,5' } },
+        { id: 'sandbox-edge-ctx-windows-drilldown', source: 'sandbox-windows', target: 'sandbox-act-drilldown', animated: true, style: { stroke: '#888', strokeDasharray: '5,5' } },
+    ];
+
+    return {
+        treeNodes,
+        treeEdges,
+        actNodes,
+        actEdges,
+        expandedBranchNodeIds: ['sandbox-root', 'sandbox-group-finance', 'sandbox-group-product'],
+        expandedNodeIds: ['sandbox-act-drilldown'],
+    };
+}
 
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
@@ -101,7 +223,9 @@ export function GraphCanvas() {
         persistedEdges,
         actNodes,
         actEdges,
+        layoutMode,
         setSelectedNodes,
+        setLayoutMode,
         setActiveNode,
         toggleExpandedNode,
         addQueryActNode,
@@ -122,9 +246,13 @@ export function GraphCanvas() {
     const reactFlowInstance = useReactFlow();
     const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
     const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
+    const [sandboxLayoutedNodes, setSandboxLayoutedNodes] = useState<Node[]>([]);
+    const [sandboxLayoutedEdges, setSandboxLayoutedEdges] = useState<Edge[]>([]);
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
     const [recentClickedNodes, setRecentClickedNodes] = useState<RecentClickedNode[]>([]);
+    const [showLayoutSandbox, setShowLayoutSandbox] = useState(false);
     const previousLayoutRef = useRef<Node[]>([]);
+    const previousSandboxLayoutRef = useRef<Node[]>([]);
 
     const getNodeDisplayTitle = useCallback((node: Node) => {
         const label = typeof node.data?.label === 'string' ? node.data.label.trim() : '';
@@ -133,6 +261,8 @@ export function GraphCanvas() {
         }
         return node.id;
     }, []);
+
+    const sandboxGraph = useMemo(() => buildLayoutSandboxGraph(), []);
 
     useGraphCache({
         kind: 'persisted',
@@ -274,7 +404,14 @@ export function GraphCanvas() {
 
     useEffect(() => {
         let mounted = true;
-        getLayoutedElements(layoutInputNodes, layoutInputEdges, 'LR', { nodes: previousLayoutRef.current }).then((result) => {
+        void orchestrateGraphLayout(layoutMode, {
+            layoutInputNodes: layoutInputNodes as Node[],
+            standaloneActNodes: standaloneActNodes as Node[],
+            layoutInputEdges: layoutInputEdges as Edge[],
+            actEdges,
+            previousNodes: previousLayoutRef.current,
+            hoveredNodeId: null,
+        }).then((result) => {
             if (!mounted) {
                 return;
             }
@@ -285,7 +422,76 @@ export function GraphCanvas() {
         return () => {
             mounted = false;
         };
-    }, [layoutInputEdges, layoutInputNodes, topologySignature]);
+    }, [actEdges, layoutInputEdges, layoutInputNodes, layoutMode, standaloneActNodes, topologySignature]);
+
+    const sandboxPersistedTree = useMemo(
+        () => buildVisibleTree(sandboxGraph.treeNodes, sandboxGraph.treeEdges, sandboxGraph.expandedBranchNodeIds),
+        [sandboxGraph],
+    );
+
+    const { mergedTreeNodes: sandboxMergedTreeNodes, standaloneActNodes: sandboxStandaloneActNodes } = useMemo(
+        () => mergeTreeWithActNodes(
+            sandboxPersistedTree.visibleNodes,
+            sandboxGraph.treeNodes,
+            sandboxGraph.actNodes,
+        ),
+        [sandboxGraph.actNodes, sandboxGraph.treeNodes, sandboxPersistedTree.visibleNodes],
+    );
+
+    const { layoutInputNodes: sandboxLayoutInputNodes, layoutInputEdges: sandboxLayoutInputEdges } = useMemo(
+        () => buildLayoutInput(
+            sandboxMergedTreeNodes,
+            sandboxPersistedTree.visibleEdges,
+            sandboxGraph.expandedNodeIds,
+        ),
+        [sandboxGraph.expandedNodeIds, sandboxMergedTreeNodes, sandboxPersistedTree.visibleEdges],
+    );
+
+    const sandboxTopologySignature = useMemo(
+        () => JSON.stringify({
+            nodes: [...sandboxLayoutInputNodes, ...sandboxStandaloneActNodes].map((node) => node.id),
+            edges: [...sandboxLayoutInputEdges, ...sandboxGraph.actEdges].map((edge) => edge.id),
+        }),
+        [sandboxGraph.actEdges, sandboxLayoutInputEdges, sandboxLayoutInputNodes, sandboxStandaloneActNodes],
+    );
+
+    useEffect(() => {
+        if (!showLayoutSandbox) {
+            setSandboxLayoutedNodes([]);
+            setSandboxLayoutedEdges([]);
+            previousSandboxLayoutRef.current = [];
+            return;
+        }
+
+        let mounted = true;
+        void orchestrateGraphLayout(layoutMode, {
+            layoutInputNodes: sandboxLayoutInputNodes as Node[],
+            standaloneActNodes: sandboxStandaloneActNodes as Node[],
+            layoutInputEdges: sandboxLayoutInputEdges as Edge[],
+            actEdges: sandboxGraph.actEdges,
+            previousNodes: previousSandboxLayoutRef.current,
+            hoveredNodeId: null,
+        }).then((result) => {
+            if (!mounted) {
+                return;
+            }
+            setSandboxLayoutedNodes(result.nodes);
+            setSandboxLayoutedEdges(result.edges);
+            previousSandboxLayoutRef.current = result.nodes;
+        });
+
+        return () => {
+            mounted = false;
+        };
+    }, [
+        layoutMode,
+        sandboxGraph.actEdges,
+        sandboxLayoutInputEdges,
+        sandboxLayoutInputNodes,
+        sandboxStandaloneActNodes,
+        sandboxTopologySignature,
+        showLayoutSandbox,
+    ]);
 
     const allReferenceableNodes = useMemo(
         () => [...persistedTree.visibleNodes, ...actNodes],
@@ -337,6 +543,59 @@ export function GraphCanvas() {
         [groups, regularDisplayNodes],
     );
 
+    const sandboxRegularDisplayNodes = useMemo(
+        () => {
+            if (!showLayoutSandbox) {
+                return [];
+            }
+            return buildDisplayNodes({
+                layoutInputNodes: sandboxLayoutInputNodes as GraphNodeBase[],
+                standaloneActNodes: sandboxStandaloneActNodes as GraphNodeBase[],
+                layoutedNodes: sandboxLayoutedNodes,
+                manualNodeIds: [],
+                selectedNodeIds: [],
+                expandedBranchNodeIds: sandboxGraph.expandedBranchNodeIds,
+                visiblePersistedNodeIds: sandboxPersistedTree.visibleNodeIds,
+                childrenByParent: sandboxPersistedTree.childrenByParent,
+                allReferenceableNodes: [...sandboxPersistedTree.visibleNodes, ...sandboxGraph.actNodes],
+                isNodeExpanded: (nodeId) => sandboxGraph.expandedNodeIds.includes(nodeId),
+                isNodeEditing: () => false,
+                isNodeStreaming: () => false,
+                onToggleBranch: () => {},
+                onOpenDetails: () => {},
+                onOpenReferencedNode: () => {},
+                onCommitLabel: () => {},
+                onRunAction: () => {},
+                onAddMedia: async () => {},
+            });
+        },
+        [
+            sandboxGraph,
+            sandboxLayoutInputNodes,
+            sandboxLayoutedNodes,
+            sandboxPersistedTree.childrenByParent,
+            sandboxPersistedTree.visibleNodeIds,
+            sandboxPersistedTree.visibleNodes,
+            sandboxStandaloneActNodes,
+            showLayoutSandbox,
+        ],
+    );
+
+    const sandboxDisplayEdges = useMemo(
+        () => {
+            if (!showLayoutSandbox) {
+                return [];
+            }
+            return buildDisplayEdges(
+                sandboxLayoutedEdges,
+                sandboxLayoutInputEdges,
+                sandboxGraph.actEdges,
+                [],
+            );
+        },
+        [sandboxGraph.actEdges, sandboxLayoutInputEdges, sandboxLayoutedEdges, showLayoutSandbox],
+    );
+
     const displayNodes = useMemo(
         () => [...regularDisplayNodes, ...selectionOverlayNodes],
         [regularDisplayNodes, selectionOverlayNodes],
@@ -380,10 +639,77 @@ export function GraphCanvas() {
             },
         }));
     }, [safeDisplayNodes]);
+    const sandboxOffsetDisplayNodes = useMemo(() => {
+        if (!showLayoutSandbox || sandboxRegularDisplayNodes.length === 0) {
+            return [];
+        }
+
+        const currentMaxX = normalizedDisplayNodes.reduce((max, node) => Math.max(max, node.position.x), 120);
+        const currentMinY = normalizedDisplayNodes.reduce((min, node) => Math.min(min, node.position.y), 100);
+        const sandboxMinX = sandboxRegularDisplayNodes.reduce((min, node) => Math.min(min, node.position.x), 0);
+        const sandboxMinY = sandboxRegularDisplayNodes.reduce((min, node) => Math.min(min, node.position.y), 0);
+        const offsetX = currentMaxX + 720 - sandboxMinX;
+        const offsetY = currentMinY + 60 - sandboxMinY;
+
+        return sandboxRegularDisplayNodes.map((node) => ({
+            ...node,
+            id: `sandbox-view-${node.id}`,
+            position: {
+                x: node.position.x + offsetX,
+                y: node.position.y + offsetY,
+            },
+            data: {
+                ...node.data,
+                label: `${node.data.label}${node.data.nodeSource === 'persisted' && node.id === 'sandbox-root' ? ` (${layoutMode})` : ''}`,
+            },
+            selectable: false,
+            draggable: false,
+        }));
+    }, [layoutMode, normalizedDisplayNodes, sandboxRegularDisplayNodes, showLayoutSandbox]);
     const displayEdges = useMemo(
-        () => buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges),
-        [actEdges, layoutInputEdges, layoutedEdges, selectionOverlayEdges],
+        () => {
+            const baseEdges = buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges);
+            if (!showLayoutSandbox || sandboxOffsetDisplayNodes.length === 0 || sandboxDisplayEdges.length === 0) {
+                return baseEdges;
+            }
+
+            const sandboxViewNodeIdBySourceId = new Map(
+                sandboxOffsetDisplayNodes.map((node) => [node.id.replace(/^sandbox-view-/, ''), node.id]),
+            );
+
+            return [
+                ...baseEdges,
+                ...sandboxDisplayEdges.map((edge) => ({
+                    ...edge,
+                    id: `sandbox-view-${edge.id}`,
+                    source: sandboxViewNodeIdBySourceId.get(edge.source) ?? edge.source,
+                    target: sandboxViewNodeIdBySourceId.get(edge.target) ?? edge.target,
+                    animated: edge.animated ?? false,
+                    style: ('style' in edge && edge.style) ? edge.style : { stroke: 'hsl(var(--primary) / 0.5)', strokeWidth: 1.5 },
+                })),
+            ];
+        },
+        [
+            actEdges,
+            layoutInputEdges,
+            layoutedEdges,
+            sandboxDisplayEdges,
+            sandboxOffsetDisplayNodes,
+            selectionOverlayEdges,
+            showLayoutSandbox,
+        ],
     );
+    useEffect(() => {
+        if (!showLayoutSandbox) {
+            return;
+        }
+        console.info('[GraphCanvas sandbox]', {
+            nodeIds: sandboxOffsetDisplayNodes.map((node) => node.id),
+            edgeIds: displayEdges
+                .filter((edge) => edge.id.startsWith('sandbox-view-'))
+                .map((edge) => ({ id: edge.id, source: edge.source, target: edge.target })),
+        });
+    }, [displayEdges, sandboxOffsetDisplayNodes, showLayoutSandbox]);
     const visibleRecentClickedNodes = useMemo(() => {
         const existingNodeIds = new Set(normalizedDisplayNodes.map((node) => node.id));
         return recentClickedNodes.filter((item) => existingNodeIds.has(item.id));
@@ -425,28 +751,31 @@ export function GraphCanvas() {
         addEmptyActNode(flowPosition);
     }, [addEmptyActNode, reactFlowInstance]);
 
-    // fitView when node positions or counts change, but not on content/selection updates
-    const positionSignature = useMemo(
-        () => JSON.stringify(normalizedDisplayNodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y)])),
-        [normalizedDisplayNodes]
+    const fitViewSignature = useMemo(
+        () => JSON.stringify({
+            layoutMode,
+            topologySignature,
+            sandbox: showLayoutSandbox ? sandboxTopologySignature : 'off',
+        }),
+        [layoutMode, sandboxTopologySignature, showLayoutSandbox, topologySignature],
     );
-    const previousPositionSignatureRef = useRef<string | null>(null);
+    const previousFitViewSignatureRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (normalizedDisplayNodes.length === 0) {
-            previousPositionSignatureRef.current = null;
+            previousFitViewSignatureRef.current = null;
             return;
         }
 
-        if (positionSignature === previousPositionSignatureRef.current) {
+        if (fitViewSignature === previousFitViewSignatureRef.current) {
             return;
         }
-        previousPositionSignatureRef.current = positionSignature;
+        previousFitViewSignatureRef.current = fitViewSignature;
 
         const timeoutId = window.setTimeout(() => {
             reactFlowInstance.fitView({
-                duration: 250,
-                padding: 0.18,
+                duration: 180,
+                padding: 0.14,
                 minZoom: 0.2,
                 maxZoom: 1.2,
             });
@@ -455,7 +784,7 @@ export function GraphCanvas() {
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [normalizedDisplayNodes.length, positionSignature, reactFlowInstance]);
+    }, [fitViewSignature, normalizedDisplayNodes.length, reactFlowInstance]);
 
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
         if (selectedNodeIds.length === 0 || editingNodeId) {
@@ -530,6 +859,48 @@ export function GraphCanvas() {
 
     return (
         <div className="relative w-full h-full" onDoubleClick={handlePaneDoubleClick}>
+            <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-xl border border-border/60 bg-background/95 p-1 shadow-sm backdrop-blur-sm">
+                {([
+                    { value: 'tree-act-cluster', label: 'Tree' },
+                    { value: 'radial', label: 'Radial' },
+                ] as const).map((option) => {
+                    const active = layoutMode === option.value;
+                    return (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setLayoutMode(option.value);
+                            }}
+                            className={[
+                                'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                                active
+                                    ? 'bg-foreground text-background shadow-sm'
+                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                            ].join(' ')}
+                        >
+                            {option.label}
+                        </button>
+                    );
+                })}
+                <div className="mx-1 h-5 w-px bg-border/70" />
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setShowLayoutSandbox((current) => !current);
+                    }}
+                    className={[
+                        'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                        showLayoutSandbox
+                            ? 'bg-primary/12 text-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    ].join(' ')}
+                >
+                    Demo
+                </button>
+            </div>
             {visibleRecentClickedNodes.length > 0 && (
                 <div className="pointer-events-none absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(62vw,760px)] overflow-x-auto px-1 py-1">
                     <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground whitespace-nowrap uppercase">Recent</span>
@@ -554,7 +925,7 @@ export function GraphCanvas() {
                 </div>
             )}
             <ReactFlow
-                nodes={normalizedDisplayNodes as GraphNodeRender[]}
+                nodes={[...normalizedDisplayNodes, ...sandboxOffsetDisplayNodes] as GraphNodeRender[]}
                 edges={displayEdges}
                 onlyRenderVisibleElements={false}
                 defaultViewport={{ x: 0, y: 0, zoom: 0.9 }}

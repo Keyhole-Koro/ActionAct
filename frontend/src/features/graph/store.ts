@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
+import type { GraphLayoutMode } from './layout/types';
 
 /**
  * Graph store — manages act-generated nodes, user-created nodes, edges, and selection.
@@ -10,6 +11,7 @@ interface GraphState {
     persistedEdges: Edge[];
     actNodes: Node[];
     actEdges: Edge[];
+    layoutMode: GraphLayoutMode;
     selectedNodeIds: string[];
     expandedNodeIds: string[];
     expandedBranchNodeIds: string[];
@@ -23,6 +25,7 @@ interface GraphState {
     setActGraph: (nodes: Node[], edges: Edge[]) => void;
     clearActGraph: () => void;
     clearSelection: () => void;
+    setLayoutMode: (mode: GraphLayoutMode) => void;
     setActiveNode: (id: string | null) => void;
     toggleExpandedNode: (id: string) => void;
     expandNode: (id: string) => void;
@@ -62,6 +65,30 @@ function preserveNodePositions(previousNodes: Node[], nextNodes: Node[]) {
     });
 }
 
+function uniqueIds(ids: string[]) {
+    return [...new Set(ids.filter((id) => typeof id === 'string' && id.trim().length > 0))];
+}
+
+function buildReferenceEdges(targetNodeId: string, referencedNodeIds: string[]): Edge[] {
+    return uniqueIds(referencedNodeIds)
+        .filter((sourceId) => sourceId !== targetNodeId)
+        .map((sourceId) => ({
+            id: `edge-ctx-${sourceId}-${targetNodeId}`,
+            source: sourceId,
+            target: targetNodeId,
+            animated: true,
+            style: { stroke: '#888', strokeDasharray: '5,5' },
+        }));
+}
+
+function syncActReferenceEdges(actEdges: Edge[], targetNodeId: string, referencedNodeIds: string[]) {
+    const preservedEdges = actEdges.filter((edge) => !(edge.target === targetNodeId && edge.id.startsWith('edge-ctx-')));
+    return [
+        ...preservedEdges,
+        ...buildReferenceEdges(targetNodeId, referencedNodeIds),
+    ];
+}
+
 let _nodeCounter = 0;
 
 export const useGraphStore = create<GraphState>((set) => ({
@@ -69,6 +96,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     persistedEdges: [],
     actNodes: [],
     actEdges: [],
+    layoutMode: 'tree-act-cluster',
     selectedNodeIds: [],
     expandedNodeIds: [],
     expandedBranchNodeIds: [],
@@ -108,6 +136,9 @@ export const useGraphStore = create<GraphState>((set) => ({
         };
     }),
     clearSelection: () => set({ selectedNodeIds: [] }),
+    setLayoutMode: (mode) => set((state) => (
+        state.layoutMode === mode ? state : { layoutMode: mode }
+    )),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
     toggleExpandedNode: (id: string) => set((state) => ({
         expandedNodeIds: state.expandedNodeIds.includes(id)
@@ -144,6 +175,11 @@ export const useGraphStore = create<GraphState>((set) => ({
     addOrUpdateActNode: (nodeId, payload) => set((state) => {
         const exists = state.actNodes.find(n => n.id === nodeId);
         if (exists) {
+            const nextReferencedNodeIds = payload.referencedNodeIds !== undefined
+                ? payload.referencedNodeIds
+                : (Array.isArray(exists.data?.referencedNodeIds)
+                    ? exists.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+                    : []);
             return {
                 actNodes: state.actNodes.map(n =>
                     n.id === nodeId
@@ -158,7 +194,8 @@ export const useGraphStore = create<GraphState>((set) => ({
                             },
                         }
                         : n
-                )
+                ),
+                actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
             };
         }
 
@@ -176,19 +213,9 @@ export const useGraphStore = create<GraphState>((set) => ({
             }
         };
 
-        const newEdges = [...state.actEdges];
-        if (state.actNodes.length > 0) {
-            if (state.selectedNodeIds.length > 0) {
-                state.selectedNodeIds.forEach(targetId => {
-                    newEdges.push({
-                        id: `edge-ctx-${targetId}-${nodeId}`,
-                        source: targetId,
-                        target: nodeId,
-                        animated: true,
-                        style: { stroke: '#888', strokeDasharray: '5,5' }
-                    });
-                });
-            } else {
+        let newEdges = syncActReferenceEdges(state.actEdges, nodeId, payload.referencedNodeIds ?? []);
+        if (state.actNodes.length > 0 && (payload.referencedNodeIds?.length ?? 0) === 0) {
+            if (state.selectedNodeIds.length === 0) {
                 newEdges.push({
                     id: `e-${state.actNodes[0].id}-${nodeId}`,
                     source: state.actNodes[0].id,
@@ -235,16 +262,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                     referencedNodeIds: [...state.selectedNodeIds],
                 }
             }],
-            actEdges: [
-                ...state.actEdges,
-                ...state.selectedNodeIds.map((targetId) => ({
-                    id: `edge-ctx-${targetId}-${id}`,
-                    source: targetId,
-                    target: id,
-                    animated: true,
-                    style: { stroke: '#888', strokeDasharray: '5,5' }
-                })),
-            ],
+            actEdges: syncActReferenceEdges(state.actEdges, id, state.selectedNodeIds),
             editingNodeId: id,
             activeNodeId: id,
             expandedNodeIds: state.expandedNodeIds.includes(id)
@@ -254,23 +272,32 @@ export const useGraphStore = create<GraphState>((set) => ({
         return id;
     },
 
-    resetActNode: (nodeId, payload) => set((state) => ({
-        actNodes: state.actNodes.map((node) =>
-            node.id === nodeId
-                ? {
-                    ...node,
-                    data: {
-                        ...node.data,
-                        ...(payload?.label !== undefined ? { label: payload.label } : {}),
-                        ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
-                        contentMd: '',
-                        contextSummary: '',
-                        detailHtml: '',
-                    },
-                }
-                : node,
-        ),
-    })),
+    resetActNode: (nodeId, payload) => set((state) => {
+        const existingNode = state.actNodes.find((node) => node.id === nodeId);
+        const nextReferencedNodeIds = payload?.referencedNodeIds !== undefined
+            ? payload.referencedNodeIds
+            : (Array.isArray(existingNode?.data?.referencedNodeIds)
+                ? existingNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+                : []);
+        return {
+            actNodes: state.actNodes.map((node) =>
+                node.id === nodeId
+                    ? {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            ...(payload?.label !== undefined ? { label: payload.label } : {}),
+                            ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
+                            contentMd: '',
+                            contextSummary: '',
+                            detailHtml: '',
+                        },
+                    }
+                    : node,
+            ),
+            actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
+        };
+    }),
 
     updateActNodeLabel: (nodeId, label) => set((state) => ({
         actNodes: state.actNodes.map(n =>

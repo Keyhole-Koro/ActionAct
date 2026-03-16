@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position, NodeProps, useUpdateNodeInternals } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,7 +38,8 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     default: { gradient: 'from-slate-500/10 via-slate-400/5 to-transparent', accent: 'text-slate-500', glow: 'shadow-slate-500/20' },
 };
 
-export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<GraphNodeRender>) {
+export function GraphNodeCard({ id, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
+    const updateNodeInternals = useUpdateNodeInternals();
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
@@ -75,6 +76,17 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
             : actStage === 'draft'
                 ? 'Draft'
                 : undefined;
+    const internalsSignature = JSON.stringify({
+        label: data.label,
+        expanded: data.isExpanded === true,
+        editing: data.isEditing === true,
+        streaming: data.isStreaming === true,
+        actStage: data.isExpanded === true || data.isStreaming === true ? data.actStage : undefined,
+        bodyLength: data.isExpanded === true
+            ? (data.contentMd?.length ?? 0) + (data.contextSummary?.length ?? 0) + (data.detailHtml?.length ?? 0)
+            : 0,
+        referenceCount: data.isExpanded === true ? (data.referencedNodes?.length ?? 0) : 0,
+    });
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -91,6 +103,12 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     useEffect(() => {
         setEditValue(data.label);
     }, [data.label]);
+
+    useEffect(() => {
+        window.requestAnimationFrame(() => {
+            updateNodeInternals(id);
+        });
+    }, [id, internalsSignature, updateNodeInternals]);
 
     const commitEdit = useCallback(() => {
         data.onCommitLabel?.(editValue);
@@ -411,13 +429,13 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
             {/* Custom Handles */}
             <Handle
                 type="target"
-                position={Position.Top}
+                position={targetPosition ?? Position.Left}
                 isConnectable={isConnectable}
                 className="!opacity-0 !pointer-events-none"
             />
             <Handle
                 type="source"
-                position={Position.Bottom}
+                position={sourcePosition ?? Position.Right}
                 isConnectable={isConnectable}
                 className="!opacity-0 !pointer-events-none"
             />

@@ -236,6 +236,7 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
   * `Ready`: 最初の応答が返り、内容を読める状態
 * expanded した `act-draft-node` は `Draft` 状態のときに限り `Add Media` control を持ってよく、ここから upload した media は current workspace/topic context へ投入してよい
 * `selection-node` は overlay layer とし、tree layout 入力には含めない
+* canvas は display-only の layout mode toggle を持ってよく、`Tree` と `Radial` を切り替えても Firestore 正本や graph data 自体は変更しない
 * `New ACT` は新規 `act-draft-node` を作る主経路とする
 * double click は補助操作であり、node 作成の主経路にしない
 * canvas は ACT draft nodes を一括で除去する `Clear ACT` control を持つ

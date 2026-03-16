@@ -13,6 +13,7 @@ from app.domain.models import (
     ActDecisionOutput,
     LLMConfig,
     PromptBundle,
+    PromptDebugInfo,
 )
 from app.domain.ports import LLMPort
 
@@ -145,6 +146,11 @@ class DecideActActionUsecase:
 
     async def execute(self, input: ActDecisionInput) -> ActDecisionOutput:
         bundle = _build_prompt(input)
+        debug_prompt = PromptDebugInfo(
+            system_instruction=bundle.system_instruction,
+            user_prompt=bundle.user_prompt,
+            context_blocks=bundle.context_blocks,
+        )
         llm_config = LLMConfig(enable_grounding=False, enable_thinking=False)
         accumulated = ""
 
@@ -157,20 +163,20 @@ class DecideActActionUsecase:
         json_text = _extract_json_object(accumulated)
         if not json_text:
             logger.warning("act decision returned no JSON", extra={"trace_id": input.trace_id})
-            return ActDecisionOutput(action="run", context_node_ids=[])
+            return ActDecisionOutput(action="run", context_node_ids=[], debug_prompt=debug_prompt)
 
         try:
             parsed = json.loads(json_text)
             output = ActDecisionOutput(**parsed)
         except (json.JSONDecodeError, ValidationError):
             logger.exception("act decision returned invalid JSON", extra={"trace_id": input.trace_id})
-            return ActDecisionOutput(action="run", context_node_ids=[])
+            return ActDecisionOutput(action="run", context_node_ids=[], debug_prompt=debug_prompt)
 
         context_node_ids = _validate_context_node_ids(input, output.context_node_ids)
         candidates = _validate_candidates(input, output.candidates)
 
         if output.action == "run":
-            return ActDecisionOutput(action="run", context_node_ids=context_node_ids)
+            return ActDecisionOutput(action="run", context_node_ids=context_node_ids, debug_prompt=debug_prompt)
 
         if output.action == "choose_candidate":
             if not candidates:
@@ -179,6 +185,7 @@ class DecideActActionUsecase:
                     message=_default_message("clarify", input.user_message),
                     suggested_action="select_node",
                     context_node_ids=[],
+                    debug_prompt=debug_prompt,
                 )
             return ActDecisionOutput(
                 action="choose_candidate",
@@ -186,6 +193,7 @@ class DecideActActionUsecase:
                 suggested_action="select_node",
                 context_node_ids=[],
                 candidates=candidates,
+                debug_prompt=debug_prompt,
             )
 
         return ActDecisionOutput(
@@ -193,4 +201,5 @@ class DecideActActionUsecase:
             message=output.message or _default_message("clarify", input.user_message),
             suggested_action=output.suggested_action or "select_node",
             context_node_ids=[],
+            debug_prompt=debug_prompt,
         )

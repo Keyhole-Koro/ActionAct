@@ -15,7 +15,7 @@ type SelectionNodeData = UiSelectionOption & {
 
 export type SelectionNode = Node<Record<string, unknown>, 'selectionNode'>;
 
-export function SelectionNodeCard({ data, isConnectable }: NodeProps<Node>) {
+export function SelectionNodeCard({ data, isConnectable, sourcePosition, targetPosition }: NodeProps<Node>) {
     const nodeData = data as unknown as SelectionNodeData;
     const { toggleOptionSelection } = useAgentInteractionStore();
     const isReadOnly = nodeData.groupStatus !== 'pending';
@@ -35,9 +35,9 @@ export function SelectionNodeCard({ data, isConnectable }: NodeProps<Node>) {
         <>
             <Handle
                 type="target"
-                position={Position.Top}
+                position={targetPosition ?? Position.Left}
                 isConnectable={isConnectable}
-                className="!w-2 !h-2 !bg-amber-400 !border-2 !border-background !-top-1"
+                className="!w-2 !h-2 !bg-amber-400 !border-2 !border-background !-left-1"
             />
 
             <div
@@ -132,9 +132,9 @@ export function SelectionNodeCard({ data, isConnectable }: NodeProps<Node>) {
 
             <Handle
                 type="source"
-                position={Position.Bottom}
+                position={sourcePosition ?? Position.Right}
                 isConnectable={isConnectable}
-                className="!w-2 !h-2 !bg-amber-400 !border-2 !border-background !-bottom-1"
+                className="!w-2 !h-2 !bg-amber-400 !border-2 !border-background !-right-1"
             />
         </>
     );

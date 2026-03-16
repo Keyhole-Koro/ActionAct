@@ -120,6 +120,20 @@ export function createRpcActService(): ActPort {
           const topicId = options?.topicId ?? runContext.topicId;
           const queryWithLanguagePreference = applyResponseLanguagePreference(query);
           const headers = await buildHeaders();
+          console.info("[RunAct request]", {
+            workspaceId,
+            topicId,
+            requestId: options?.requestId ?? null,
+            actType: options?.actType ?? "explore",
+            userMessage: queryWithLanguagePreference,
+            anchorNodeId: options?.anchorNodeId ?? "",
+            contextNodeIds: options?.contextNodeIds ?? [],
+            llmConfig: {
+              enableGrounding: options?.enableGrounding ?? false,
+              enableThinking: options?.includeThoughts ?? false,
+              modelProfile: options?.modelProfile ?? "flash",
+            },
+          });
           const response = client.runAct(
             {
               topicId,
