@@ -126,6 +126,7 @@ export function createRpcActService(): ActPort {
             requestId: options?.requestId ?? null,
             actType: options?.actType ?? "explore",
             userMessage: queryWithLanguagePreference,
+            userMediaCount: options?.userMedia?.length ?? 0,
             anchorNodeId: options?.anchorNodeId ?? "",
             contextNodeIds: options?.contextNodeIds ?? [],
             llmConfig: {
@@ -141,6 +142,7 @@ export function createRpcActService(): ActPort {
               requestId: options?.requestId ?? uuidv4(),
               actType: mapActType(options?.actType),
               userMessage: queryWithLanguagePreference,
+              userMedia: options?.userMedia ?? [],
               anchorNodeId: options?.anchorNodeId ?? "",
               contextNodeIds: options?.contextNodeIds ?? [],
               llmConfig: {

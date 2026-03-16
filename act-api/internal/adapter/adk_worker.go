@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,9 +47,15 @@ type workerRequest struct {
 	RequestID      string           `json:"request_id"`
 	ActType        string           `json:"act_type"`
 	UserMessage    string           `json:"user_message"`
+	UserMedia      []workerMedia    `json:"user_media,omitempty"`
 	AnchorNodeID   string           `json:"anchor_node_id,omitempty"`
 	ContextNodeIDs []string         `json:"context_node_ids,omitempty"`
 	LLMConfig      *workerLLMConfig `json:"llm_config,omitempty"`
+}
+
+type workerMedia struct {
+	MimeType   string `json:"mime_type"`
+	DataBase64 string `json:"data_base64"`
 }
 
 type workerLLMConfig struct {
@@ -89,6 +96,14 @@ func (e *ADKWorkerExecutor) Execute(
 ) error {
 	log := slog.With("trace_id", input.TraceID, "request_id", input.RequestID)
 
+	var userMedia []workerMedia
+	for _, m := range input.UserMedia {
+		userMedia = append(userMedia, workerMedia{
+			MimeType:   m.MimeType,
+			DataBase64: base64.StdEncoding.EncodeToString(m.Data),
+		})
+	}
+
 	// Build request body
 	reqBody := workerRequest{
 		TraceID:        input.TraceID,
@@ -98,6 +113,7 @@ func (e *ADKWorkerExecutor) Execute(
 		RequestID:      input.RequestID,
 		ActType:        input.ActType,
 		UserMessage:    input.UserMessage,
+		UserMedia:      userMedia,
 		AnchorNodeID:   input.AnchorID,
 		ContextNodeIDs: input.ContextIDs,
 	}

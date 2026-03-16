@@ -9,10 +9,13 @@ import {
     Edge,
     ReactFlow,
     SelectionMode,
+    type EdgeProps,
     type NodeChange,
     useEdgesState,
     useNodesState,
     useReactFlow,
+    BaseEdge,
+    getBezierPath,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { organizeService } from '@/services/organize';
@@ -213,6 +216,59 @@ const nodeTypes = {
     selectionNode: SelectionNodeCard,
 };
 
+function VisibleEdge(props: EdgeProps) {
+    const points = (props.data as {
+        sourceX?: number;
+        sourceY?: number;
+        targetX?: number;
+        targetY?: number;
+    } | undefined);
+
+    const sourceX = typeof points?.sourceX === 'number' ? points.sourceX : props.sourceX;
+    const sourceY = typeof points?.sourceY === 'number' ? points.sourceY : props.sourceY;
+    const targetX = typeof points?.targetX === 'number' ? points.targetX : props.targetX;
+    const targetY = typeof points?.targetY === 'number' ? points.targetY : props.targetY;
+
+    const edgePath = `M ${sourceX},${sourceY} L ${targetX},${targetY}`;
+
+    const style = (props.style ?? {}) as React.CSSProperties;
+    const stroke = typeof style.stroke === 'string' ? style.stroke : '#475569';
+    const strokeWidth = typeof style.strokeWidth === 'number' ? style.strokeWidth : 2;
+    const strokeOpacity = typeof style.strokeOpacity === 'number' ? style.strokeOpacity : 0.72;
+    const strokeDasharray = typeof style.strokeDasharray === 'string' ? style.strokeDasharray : undefined;
+    const diagnostic = Boolean((props.data as { diagnostic?: boolean } | undefined)?.diagnostic);
+
+    return (
+        <g className="react-flow__edge" data-edgeid={props.id}>
+            {diagnostic && (
+                <path
+                    d={edgePath}
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth={Math.max(strokeWidth + 2, 4)}
+                    strokeOpacity={0.35}
+                    vectorEffect="non-scaling-stroke"
+                    className="react-flow__edge-path"
+                />
+            )}
+            <path
+                d={edgePath}
+                fill="none"
+                stroke={stroke}
+                strokeWidth={strokeWidth}
+                strokeOpacity={strokeOpacity}
+                strokeDasharray={strokeDasharray}
+                vectorEffect="non-scaling-stroke"
+                className="react-flow__edge-path"
+            />
+        </g>
+    );
+}
+
+const edgeTypes = {
+    visible: VisibleEdge,
+};
+
 function isRenderableCoordinate(value: number | undefined) {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
 }
@@ -251,6 +307,9 @@ export function GraphCanvas() {
     const [manualNodeIds, setManualNodeIds] = useState<string[]>([]);
     const [recentClickedNodes, setRecentClickedNodes] = useState<RecentClickedNode[]>([]);
     const [showLayoutSandbox, setShowLayoutSandbox] = useState(false);
+    const [showGraphDebug, setShowGraphDebug] = useState(false);
+    const [showEdgeDiagnostic, setShowEdgeDiagnostic] = useState(false);
+    const [debugCopyStatus, setDebugCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
     const previousLayoutRef = useRef<Node[]>([]);
     const previousSandboxLayoutRef = useRef<Node[]>([]);
 
@@ -367,9 +426,23 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [setActGraph, topicId, workspaceId]);
 
+    const effectiveExpandedBranchNodeIds = useMemo(() => {
+        if (expandedBranchNodeIds.length > 0) {
+            return expandedBranchNodeIds;
+        }
+
+        const allPersistedIds = new Set((persistedNodes as GraphNodeBase[]).map((node) => node.id));
+        return (persistedNodes as GraphNodeBase[])
+            .filter((node) => {
+                const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
+                return !parentId || !allPersistedIds.has(parentId);
+            })
+            .map((node) => node.id);
+    }, [expandedBranchNodeIds, persistedNodes]);
+
     const persistedTree = useMemo(
-        () => buildVisibleTree(persistedNodes as GraphNodeBase[], persistedEdges, expandedBranchNodeIds),
-        [expandedBranchNodeIds, persistedEdges, persistedNodes],
+        () => buildVisibleTree(persistedNodes as GraphNodeBase[], persistedEdges, effectiveExpandedBranchNodeIds),
+        [effectiveExpandedBranchNodeIds, persistedEdges, persistedNodes],
     );
 
     const { mergedTreeNodes, standaloneActNodes } = useMemo(
@@ -669,33 +742,61 @@ export function GraphCanvas() {
     const displayEdges = useMemo(
         () => {
             const baseEdges = buildDisplayEdges(layoutedEdges, layoutInputEdges, actEdges, selectionOverlayEdges);
-            if (!showLayoutSandbox || sandboxOffsetDisplayNodes.length === 0 || sandboxDisplayEdges.length === 0) {
-                return baseEdges;
-            }
+            const edgesWithSandbox = (!showLayoutSandbox || sandboxOffsetDisplayNodes.length === 0 || sandboxDisplayEdges.length === 0)
+                ? baseEdges
+                : (() => {
+                    const sandboxViewNodeIdBySourceId = new Map(
+                        sandboxOffsetDisplayNodes.map((node) => [node.id.replace(/^sandbox-view-/, ''), node.id]),
+                    );
 
-            const sandboxViewNodeIdBySourceId = new Map(
-                sandboxOffsetDisplayNodes.map((node) => [node.id.replace(/^sandbox-view-/, ''), node.id]),
-            );
+                    return [
+                        ...baseEdges,
+                        ...sandboxDisplayEdges.map((edge) => ({
+                            ...edge,
+                            id: `sandbox-view-${edge.id}`,
+                            source: sandboxViewNodeIdBySourceId.get(edge.source) ?? edge.source,
+                            target: sandboxViewNodeIdBySourceId.get(edge.target) ?? edge.target,
+                            animated: edge.animated ?? false,
+                            style: ('style' in edge && edge.style) ? edge.style : { stroke: 'var(--primary)', strokeWidth: 1.5, strokeOpacity: 0.5 },
+                        })),
+                    ];
+                })();
 
-            return [
-                ...baseEdges,
-                ...sandboxDisplayEdges.map((edge) => ({
-                    ...edge,
-                    id: `sandbox-view-${edge.id}`,
-                    source: sandboxViewNodeIdBySourceId.get(edge.source) ?? edge.source,
-                    target: sandboxViewNodeIdBySourceId.get(edge.target) ?? edge.target,
-                    animated: edge.animated ?? false,
-                    style: ('style' in edge && edge.style) ? edge.style : { stroke: 'hsl(var(--primary) / 0.5)', strokeWidth: 1.5 },
-                })),
-            ];
+            const nodeById = new Map([
+                ...normalizedDisplayNodes,
+                ...sandboxOffsetDisplayNodes,
+            ].map((node) => [node.id, node]));
+
+            // Force a visible default so edges do not disappear when theme/CSS vars are unresolved.
+            return edgesWithSandbox.map((edge) => ({
+                ...edge,
+                type: 'visible',
+                data: {
+                    ...((edge as Edge).data ?? {}),
+                    diagnostic: showEdgeDiagnostic,
+                    sourceX: (nodeById.get(edge.source)?.position.x ?? 0) + 170,
+                    sourceY: (nodeById.get(edge.source)?.position.y ?? 0) + 90,
+                    targetX: (nodeById.get(edge.target)?.position.x ?? 0) + 170,
+                    targetY: (nodeById.get(edge.target)?.position.y ?? 0) + 90,
+                },
+                zIndex: (edge as Edge).zIndex ?? 60,
+                style: {
+                    stroke: '#475569',
+                    strokeWidth: 2,
+                    strokeOpacity: 0.72,
+                    ...((edge as Edge).style ?? {}),
+                },
+            }));
         },
         [
             actEdges,
             layoutInputEdges,
             layoutedEdges,
+            normalizedDisplayNodes,
             sandboxDisplayEdges,
             sandboxOffsetDisplayNodes,
             selectionOverlayEdges,
+            showEdgeDiagnostic,
             showLayoutSandbox,
         ],
     );
@@ -714,6 +815,106 @@ export function GraphCanvas() {
         const existingNodeIds = new Set(normalizedDisplayNodes.map((node) => node.id));
         return recentClickedNodes.filter((item) => existingNodeIds.has(item.id));
     }, [normalizedDisplayNodes, recentClickedNodes]);
+
+    const graphDebugMetrics = useMemo(() => {
+        const renderedNodeIds = new Set([
+            ...normalizedDisplayNodes.map((node) => node.id),
+            ...sandboxOffsetDisplayNodes.map((node) => node.id),
+        ]);
+
+        const danglingEdgeCount = displayEdges.filter((edge) => (
+            !renderedNodeIds.has(edge.source) || !renderedNodeIds.has(edge.target)
+        )).length;
+
+        return {
+            persistedNodes: persistedNodes.length,
+            persistedEdges: persistedEdges.length,
+            visibleTreeNodes: persistedTree.visibleNodes.length,
+            visibleTreeEdges: persistedTree.visibleEdges.length,
+            actNodes: actNodes.length,
+            actEdges: actEdges.length,
+            layoutInputNodes: layoutInputNodes.length,
+            layoutInputEdges: layoutInputEdges.length,
+            layoutedEdges: layoutedEdges.length,
+            displayEdges: displayEdges.length,
+            danglingEdges: danglingEdgeCount,
+            sandboxEnabled: showLayoutSandbox,
+            sandboxEdges: sandboxDisplayEdges.length,
+        };
+    }, [
+        actEdges,
+        actNodes.length,
+        displayEdges,
+        layoutInputEdges.length,
+        layoutInputNodes.length,
+        layoutedEdges.length,
+        normalizedDisplayNodes,
+        persistedEdges.length,
+        persistedNodes.length,
+        persistedTree.visibleEdges.length,
+        persistedTree.visibleNodes.length,
+        sandboxDisplayEdges.length,
+        sandboxOffsetDisplayNodes,
+        showLayoutSandbox,
+    ]);
+
+    const graphDebugDetails = useMemo(() => {
+        const allRenderedNodes = [...normalizedDisplayNodes, ...sandboxOffsetDisplayNodes];
+        const nodeById = new Map(allRenderedNodes.map((node) => [node.id, node]));
+
+        const edgeTypeCounts = displayEdges.reduce((acc, edge) => {
+            const key = edge.id.startsWith('sandbox-view-')
+                ? 'sandbox'
+                : edge.id.startsWith('edge-ctx-')
+                    ? 'act-context'
+                    : edge.id.startsWith('e-')
+                        ? 'tree-parent'
+                        : edge.id.startsWith('e-group-') || edge.id.startsWith('e-anchor-')
+                            ? 'selection'
+                            : 'other';
+            acc[key] = (acc[key] ?? 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        const sampledEdges = displayEdges.slice(0, 14).map((edge) => {
+            const sourceNode = nodeById.get(edge.source);
+            const targetNode = nodeById.get(edge.target);
+
+            return {
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                animated: edge.animated ?? false,
+                sourcePosition: sourceNode ? sourceNode.position : null,
+                targetPosition: targetNode ? targetNode.position : null,
+                style: (edge as Edge).style ?? null,
+            };
+        });
+
+        return {
+            edgeTypeCounts,
+            sampledEdges,
+        };
+    }, [displayEdges, normalizedDisplayNodes, sandboxOffsetDisplayNodes]);
+
+    const copyGraphDebugMetrics = useCallback(async () => {
+        const payload = {
+            timestamp: new Date().toISOString(),
+            workspaceId,
+            topicId,
+            metrics: graphDebugMetrics,
+            details: graphDebugDetails,
+        };
+
+        try {
+            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+            setDebugCopyStatus('copied');
+        } catch {
+            setDebugCopyStatus('failed');
+        }
+
+        window.setTimeout(() => setDebugCopyStatus('idle'), 1800);
+    }, [graphDebugDetails, graphDebugMetrics, topicId, workspaceId]);
 
     const focusNode = useCallback((nodeId: string) => {
         const targetNode = normalizedDisplayNodes.find((node) => node.id === nodeId);
@@ -857,6 +1058,34 @@ export function GraphCanvas() {
         return () => window.removeEventListener('keydown', handleSelectionTyping);
     }, [handleSelectionTyping]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        const persisted = window.localStorage.getItem('graph.debug.visible');
+        if (persisted === '1') {
+            setShowGraphDebug(true);
+        }
+        const persistedEdgeDiag = window.localStorage.getItem('graph.edgeDiag.visible');
+        if (persistedEdgeDiag === '1') {
+            setShowEdgeDiagnostic(true);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        window.localStorage.setItem('graph.debug.visible', showGraphDebug ? '1' : '0');
+    }, [showGraphDebug]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        window.localStorage.setItem('graph.edgeDiag.visible', showEdgeDiagnostic ? '1' : '0');
+    }, [showEdgeDiagnostic]);
+
     return (
         <div className="relative w-full h-full" onDoubleClick={handlePaneDoubleClick}>
             <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-xl border border-border/60 bg-background/95 p-1 shadow-sm backdrop-blur-sm">
@@ -900,7 +1129,63 @@ export function GraphCanvas() {
                 >
                     Demo
                 </button>
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setShowGraphDebug((current) => !current);
+                    }}
+                    className={[
+                        'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                        showGraphDebug
+                            ? 'bg-foreground text-background shadow-sm'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    ].join(' ')}
+                >
+                    Debug
+                </button>
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setShowEdgeDiagnostic((current) => !current);
+                    }}
+                    className={[
+                        'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                        showEdgeDiagnostic
+                            ? 'bg-red-500/15 text-red-700'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    ].join(' ')}
+                >
+                    EdgeDiag
+                </button>
             </div>
+            {showGraphDebug && (
+                <div className="absolute right-4 top-16 z-20 rounded-lg border border-border/70 bg-background/92 px-2.5 py-2 text-[10px] leading-4 text-foreground/90 shadow-sm backdrop-blur-sm pointer-events-auto">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                        <div className="font-semibold text-[10px] text-foreground/95">Graph Debug</div>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                void copyGraphDebugMetrics();
+                            }}
+                            className="rounded border border-border/80 bg-background px-1.5 py-0.5 text-[10px] font-semibold text-foreground/85 hover:bg-muted"
+                        >
+                            {debugCopyStatus === 'copied' ? 'Copied' : debugCopyStatus === 'failed' ? 'Failed' : 'Copy'}
+                        </button>
+                    </div>
+                    <div>persisted: {graphDebugMetrics.persistedNodes}n / {graphDebugMetrics.persistedEdges}e</div>
+                    <div>visible tree: {graphDebugMetrics.visibleTreeNodes}n / {graphDebugMetrics.visibleTreeEdges}e</div>
+                    <div>act: {graphDebugMetrics.actNodes}n / {graphDebugMetrics.actEdges}e</div>
+                    <div>layout input: {graphDebugMetrics.layoutInputNodes}n / {graphDebugMetrics.layoutInputEdges}e</div>
+                    <div>layouted edges: {graphDebugMetrics.layoutedEdges}</div>
+                    <div className="font-semibold">display edges: {graphDebugMetrics.displayEdges}</div>
+                    <div>dangling edges: {graphDebugMetrics.danglingEdges}</div>
+                    <div>sandbox: {graphDebugMetrics.sandboxEnabled ? 'on' : 'off'} ({graphDebugMetrics.sandboxEdges}e)</div>
+                    <div>edge diag: {showEdgeDiagnostic ? 'on' : 'off'}</div>
+                </div>
+            )}
             {visibleRecentClickedNodes.length > 0 && (
                 <div className="pointer-events-none absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 max-w-[min(62vw,760px)] overflow-x-auto px-1 py-1">
                     <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground whitespace-nowrap uppercase">Recent</span>
@@ -927,6 +1212,11 @@ export function GraphCanvas() {
             <ReactFlow
                 nodes={[...normalizedDisplayNodes, ...sandboxOffsetDisplayNodes] as GraphNodeRender[]}
                 edges={displayEdges}
+                edgeTypes={edgeTypes}
+                defaultEdgeOptions={{
+                    type: 'visible',
+                    style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },
+                }}
                 onlyRenderVisibleElements={false}
                 defaultViewport={{ x: 0, y: 0, zoom: 0.9 }}
                 proOptions={{ hideAttribution: true }}
@@ -980,12 +1270,12 @@ export function GraphCanvas() {
                 multiSelectionKeyCode="Shift"
                 fitView
             >
-                <Background color="hsl(var(--primary) / 0.1)" gap={24} size={1} />
+                <Background color="var(--border)" gap={24} size={1} />
                 <Controls className="!bg-white !border-border/40 !rounded-md !shadow-sm" />
                 <MiniMap
                     className="!bg-white !border-border/40 !rounded-md !shadow-sm"
                     maskColor="rgba(0,0,0,0.05)"
-                    nodeColor={() => 'hsl(var(--primary))'}
+                    nodeColor={() => 'var(--primary)'}
                 />
             </ReactFlow>
         </div>

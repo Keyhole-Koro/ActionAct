@@ -94,7 +94,9 @@ type RunActRequest struct {
 	// モデル設定（省略可）
 	LlmConfig *LLMConfig `protobuf:"bytes,8,opt,name=llm_config,json=llmConfig,proto3" json:"llm_config,omitempty"`
 	// 旧クライアント互換用。認証正本には使わない（deprecated）
-	Uid           string `protobuf:"bytes,9,opt,name=uid,proto3" json:"uid,omitempty"`
+	Uid string `protobuf:"bytes,9,opt,name=uid,proto3" json:"uid,omitempty"`
+	// インラインメディア（画像、ファイル等）
+	UserMedia     []*MediaData `protobuf:"bytes,10,rep,name=user_media,json=userMedia,proto3" json:"user_media,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -192,6 +194,65 @@ func (x *RunActRequest) GetUid() string {
 	return ""
 }
 
+func (x *RunActRequest) GetUserMedia() []*MediaData {
+	if x != nil {
+		return x.UserMedia
+	}
+	return nil
+}
+
+type MediaData struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MimeType      string                 `protobuf:"bytes,1,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MediaData) Reset() {
+	*x = MediaData{}
+	mi := &file_act_v1_act_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MediaData) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MediaData) ProtoMessage() {}
+
+func (x *MediaData) ProtoReflect() protoreflect.Message {
+	mi := &file_act_v1_act_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MediaData.ProtoReflect.Descriptor instead.
+func (*MediaData) Descriptor() ([]byte, []int) {
+	return file_act_v1_act_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *MediaData) GetMimeType() string {
+	if x != nil {
+		return x.MimeType
+	}
+	return ""
+}
+
+func (x *MediaData) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 type LLMConfig struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Model           string                 `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
@@ -203,7 +264,7 @@ type LLMConfig struct {
 
 func (x *LLMConfig) Reset() {
 	*x = LLMConfig{}
-	mi := &file_act_v1_act_proto_msgTypes[1]
+	mi := &file_act_v1_act_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -215,7 +276,7 @@ func (x *LLMConfig) String() string {
 func (*LLMConfig) ProtoMessage() {}
 
 func (x *LLMConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[1]
+	mi := &file_act_v1_act_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -228,7 +289,7 @@ func (x *LLMConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LLMConfig.ProtoReflect.Descriptor instead.
 func (*LLMConfig) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{1}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *LLMConfig) GetModel() string {
@@ -270,7 +331,7 @@ type RunActEvent struct {
 
 func (x *RunActEvent) Reset() {
 	*x = RunActEvent{}
-	mi := &file_act_v1_act_proto_msgTypes[2]
+	mi := &file_act_v1_act_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -282,7 +343,7 @@ func (x *RunActEvent) String() string {
 func (*RunActEvent) ProtoMessage() {}
 
 func (x *RunActEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[2]
+	mi := &file_act_v1_act_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -295,7 +356,7 @@ func (x *RunActEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunActEvent.ProtoReflect.Descriptor instead.
 func (*RunActEvent) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{2}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RunActEvent) GetEvent() isRunActEvent_Event {
@@ -370,7 +431,7 @@ type TextDelta struct {
 
 func (x *TextDelta) Reset() {
 	*x = TextDelta{}
-	mi := &file_act_v1_act_proto_msgTypes[3]
+	mi := &file_act_v1_act_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -382,7 +443,7 @@ func (x *TextDelta) String() string {
 func (*TextDelta) ProtoMessage() {}
 
 func (x *TextDelta) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[3]
+	mi := &file_act_v1_act_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -395,7 +456,7 @@ func (x *TextDelta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextDelta.ProtoReflect.Descriptor instead.
 func (*TextDelta) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{3}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *TextDelta) GetText() string {
@@ -414,7 +475,7 @@ type PatchOps struct {
 
 func (x *PatchOps) Reset() {
 	*x = PatchOps{}
-	mi := &file_act_v1_act_proto_msgTypes[4]
+	mi := &file_act_v1_act_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -426,7 +487,7 @@ func (x *PatchOps) String() string {
 func (*PatchOps) ProtoMessage() {}
 
 func (x *PatchOps) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[4]
+	mi := &file_act_v1_act_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -439,7 +500,7 @@ func (x *PatchOps) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PatchOps.ProtoReflect.Descriptor instead.
 func (*PatchOps) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{4}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PatchOps) GetOps() []*PatchOp {
@@ -460,7 +521,7 @@ type PatchOp struct {
 
 func (x *PatchOp) Reset() {
 	*x = PatchOp{}
-	mi := &file_act_v1_act_proto_msgTypes[5]
+	mi := &file_act_v1_act_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +533,7 @@ func (x *PatchOp) String() string {
 func (*PatchOp) ProtoMessage() {}
 
 func (x *PatchOp) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[5]
+	mi := &file_act_v1_act_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +546,7 @@ func (x *PatchOp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PatchOp.ProtoReflect.Descriptor instead.
 func (*PatchOp) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{5}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PatchOp) GetOp() string {
@@ -519,7 +580,7 @@ type Terminal struct {
 
 func (x *Terminal) Reset() {
 	*x = Terminal{}
-	mi := &file_act_v1_act_proto_msgTypes[6]
+	mi := &file_act_v1_act_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -531,7 +592,7 @@ func (x *Terminal) String() string {
 func (*Terminal) ProtoMessage() {}
 
 func (x *Terminal) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[6]
+	mi := &file_act_v1_act_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -544,7 +605,7 @@ func (x *Terminal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Terminal.ProtoReflect.Descriptor instead.
 func (*Terminal) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{6}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Terminal) GetDone() bool {
@@ -575,7 +636,7 @@ type ErrorInfo struct {
 
 func (x *ErrorInfo) Reset() {
 	*x = ErrorInfo{}
-	mi := &file_act_v1_act_proto_msgTypes[7]
+	mi := &file_act_v1_act_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -587,7 +648,7 @@ func (x *ErrorInfo) String() string {
 func (*ErrorInfo) ProtoMessage() {}
 
 func (x *ErrorInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[7]
+	mi := &file_act_v1_act_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,7 +661,7 @@ func (x *ErrorInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorInfo.ProtoReflect.Descriptor instead.
 func (*ErrorInfo) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{7}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ErrorInfo) GetCode() string {
@@ -649,7 +710,7 @@ var File_act_v1_act_proto protoreflect.FileDescriptor
 
 const file_act_v1_act_proto_rawDesc = "" +
 	"\n" +
-	"\x10act/v1/act.proto\x12\x06act.v1\"\xcf\x02\n" +
+	"\x10act/v1/act.proto\x12\x06act.v1\"\x81\x03\n" +
 	"\rRunActRequest\x12\x19\n" +
 	"\btopic_id\x18\x01 \x01(\tR\atopicId\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x1d\n" +
@@ -661,7 +722,13 @@ const file_act_v1_act_proto_rawDesc = "" +
 	"\x10context_node_ids\x18\a \x03(\tR\x0econtextNodeIds\x120\n" +
 	"\n" +
 	"llm_config\x18\b \x01(\v2\x11.act.v1.LLMConfigR\tllmConfig\x12\x10\n" +
-	"\x03uid\x18\t \x01(\tR\x03uid\"u\n" +
+	"\x03uid\x18\t \x01(\tR\x03uid\x120\n" +
+	"\n" +
+	"user_media\x18\n" +
+	" \x03(\v2\x11.act.v1.MediaDataR\tuserMedia\"<\n" +
+	"\tMediaData\x12\x1b\n" +
+	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"u\n" +
 	"\tLLMConfig\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12)\n" +
 	"\x10enable_grounding\x18\x02 \x01(\bR\x0fenableGrounding\x12'\n" +
@@ -714,33 +781,35 @@ func file_act_v1_act_proto_rawDescGZIP() []byte {
 }
 
 var file_act_v1_act_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_act_v1_act_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_act_v1_act_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_act_v1_act_proto_goTypes = []any{
 	(ActType)(0),          // 0: act.v1.ActType
 	(*RunActRequest)(nil), // 1: act.v1.RunActRequest
-	(*LLMConfig)(nil),     // 2: act.v1.LLMConfig
-	(*RunActEvent)(nil),   // 3: act.v1.RunActEvent
-	(*TextDelta)(nil),     // 4: act.v1.TextDelta
-	(*PatchOps)(nil),      // 5: act.v1.PatchOps
-	(*PatchOp)(nil),       // 6: act.v1.PatchOp
-	(*Terminal)(nil),      // 7: act.v1.Terminal
-	(*ErrorInfo)(nil),     // 8: act.v1.ErrorInfo
+	(*MediaData)(nil),     // 2: act.v1.MediaData
+	(*LLMConfig)(nil),     // 3: act.v1.LLMConfig
+	(*RunActEvent)(nil),   // 4: act.v1.RunActEvent
+	(*TextDelta)(nil),     // 5: act.v1.TextDelta
+	(*PatchOps)(nil),      // 6: act.v1.PatchOps
+	(*PatchOp)(nil),       // 7: act.v1.PatchOp
+	(*Terminal)(nil),      // 8: act.v1.Terminal
+	(*ErrorInfo)(nil),     // 9: act.v1.ErrorInfo
 }
 var file_act_v1_act_proto_depIdxs = []int32{
 	0, // 0: act.v1.RunActRequest.act_type:type_name -> act.v1.ActType
-	2, // 1: act.v1.RunActRequest.llm_config:type_name -> act.v1.LLMConfig
-	4, // 2: act.v1.RunActEvent.text_delta:type_name -> act.v1.TextDelta
-	5, // 3: act.v1.RunActEvent.patch_ops:type_name -> act.v1.PatchOps
-	7, // 4: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal
-	6, // 5: act.v1.PatchOps.ops:type_name -> act.v1.PatchOp
-	8, // 6: act.v1.Terminal.error:type_name -> act.v1.ErrorInfo
-	1, // 7: act.v1.ActService.RunAct:input_type -> act.v1.RunActRequest
-	3, // 8: act.v1.ActService.RunAct:output_type -> act.v1.RunActEvent
-	8, // [8:9] is the sub-list for method output_type
-	7, // [7:8] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	3, // 1: act.v1.RunActRequest.llm_config:type_name -> act.v1.LLMConfig
+	2, // 2: act.v1.RunActRequest.user_media:type_name -> act.v1.MediaData
+	5, // 3: act.v1.RunActEvent.text_delta:type_name -> act.v1.TextDelta
+	6, // 4: act.v1.RunActEvent.patch_ops:type_name -> act.v1.PatchOps
+	8, // 5: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal
+	7, // 6: act.v1.PatchOps.ops:type_name -> act.v1.PatchOp
+	9, // 7: act.v1.Terminal.error:type_name -> act.v1.ErrorInfo
+	1, // 8: act.v1.ActService.RunAct:input_type -> act.v1.RunActRequest
+	4, // 9: act.v1.ActService.RunAct:output_type -> act.v1.RunActEvent
+	9, // [9:10] is the sub-list for method output_type
+	8, // [8:9] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_act_v1_act_proto_init() }
@@ -748,7 +817,7 @@ func file_act_v1_act_proto_init() {
 	if File_act_v1_act_proto != nil {
 		return
 	}
-	file_act_v1_act_proto_msgTypes[2].OneofWrappers = []any{
+	file_act_v1_act_proto_msgTypes[3].OneofWrappers = []any{
 		(*RunActEvent_TextDelta)(nil),
 		(*RunActEvent_PatchOps)(nil),
 		(*RunActEvent_Terminal)(nil),
@@ -759,7 +828,7 @@ func file_act_v1_act_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_act_v1_act_proto_rawDesc), len(file_act_v1_act_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

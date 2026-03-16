@@ -16,9 +16,15 @@ type RunActInput struct {
 	TopicID     string
 	WorkspaceID string
 	UserMessage string
+	UserMedia   []MediaData
 	ActType     string
 	AnchorID    string
 	ContextIDs  []string
+}
+
+type MediaData struct {
+	MimeType string
+	Data     []byte
 }
 
 // ActExecutor sends the validated request to the downstream worker

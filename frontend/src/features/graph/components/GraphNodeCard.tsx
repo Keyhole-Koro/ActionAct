@@ -431,13 +431,13 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                 type="target"
                 position={targetPosition ?? Position.Left}
                 isConnectable={isConnectable}
-                className="!opacity-0 !pointer-events-none"
+                className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
             />
             <Handle
                 type="source"
                 position={sourcePosition ?? Position.Right}
                 isConnectable={isConnectable}
-                className="!opacity-0 !pointer-events-none"
+                className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
             />
         </div>
     );

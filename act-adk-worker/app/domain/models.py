@@ -15,6 +15,10 @@ class LLMConfig(BaseModel):
     enable_thinking: bool = False
 
 
+class WorkerMedia(BaseModel):
+    mime_type: str
+    data_base64: str
+
 class RunActInput(BaseModel):
     """JSON body sent by act-api to POST /run_act."""
 
@@ -25,6 +29,7 @@ class RunActInput(BaseModel):
     request_id: str
     act_type: str = "ACT_TYPE_EXPLORE"
     user_message: str
+    user_media: list[WorkerMedia] = Field(default_factory=list)
     anchor_node_id: Optional[str] = None
     context_node_ids: list[str] = Field(default_factory=list)
     llm_config: Optional[LLMConfig] = None
@@ -70,6 +75,7 @@ class PromptBundle(BaseModel):
 
     system_instruction: str = ""
     user_prompt: str = ""
+    user_media: list[WorkerMedia] = Field(default_factory=list)
     context_blocks: list[str] = Field(default_factory=list)
 
 

@@ -148,6 +148,14 @@ func (uc *RunActUsecase) Execute(
 		"act_type", msg.GetActType(),
 	)
 
+	var userMedia []domain.MediaData
+	for _, m := range msg.GetUserMedia() {
+		userMedia = append(userMedia, domain.MediaData{
+			MimeType: m.GetMimeType(),
+			Data:     m.GetData(),
+		})
+	}
+
 	// 6. EXECUTE
 	input := domain.RunActInput{
 		UID:         uid,
@@ -156,6 +164,7 @@ func (uc *RunActUsecase) Execute(
 		TopicID:     msg.GetTopicId(),
 		WorkspaceID: msg.GetWorkspaceId(),
 		UserMessage: msg.GetUserMessage(),
+		UserMedia:   userMedia,
 		ActType:     msg.GetActType().String(),
 		AnchorID:    msg.GetAnchorNodeId(),
 		ContextIDs:  msg.GetContextNodeIds(),

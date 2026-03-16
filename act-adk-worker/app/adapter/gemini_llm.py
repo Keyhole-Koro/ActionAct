@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 from typing import AsyncIterator
 
@@ -50,8 +51,22 @@ class GeminiLLM:
     ) -> AsyncIterator[LLMChunk]:
         model_name = config.model or "gemini-2.0-flash"
 
+        parts = []
+        if bundle.user_prompt:
+            parts.append(Part.from_text(text=bundle.user_prompt))
+            
+        for media in bundle.user_media:
+            try:
+                data = base64.b64decode(media.data_base64)
+                parts.append(Part.from_bytes(data=data, mime_type=media.mime_type))
+            except Exception as e:
+                logger.warning("Failed to decode user media", exc_info=e)
+
+        if not parts:
+            parts.append(Part.from_text(text="[empty message]"))
+
         # Keep the current user message as the sole user turn.
-        contents = [Content(role="user", parts=[Part(text=bundle.user_prompt)])]
+        contents = [Content(role="user", parts=parts)]
 
         tools = [Tool(googleSearch=GoogleSearch())] if config.enable_grounding else None
         gen_config = GenerateContentConfig(

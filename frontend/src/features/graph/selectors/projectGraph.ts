@@ -498,7 +498,6 @@ export function buildDisplayNodes({
                 ...(mergedNode.style ?? {}),
                 opacity: 1,
                 visibility: 'visible',
-                zIndex: 50,
                 pointerEvents: 'all',
             },
             data: renderData,

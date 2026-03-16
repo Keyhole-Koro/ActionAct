@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from app.domain.models import PromptBundle
+from app.domain.models import PromptBundle, WorkerMedia
 from app.domain.act_prompt_policy import build_act_system_instruction
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ class FirestoreAssembly:
         anchor_node_id: str | None,
         context_node_ids: list[str],
         user_message: str,
+        user_media: list[WorkerMedia] = [],
     ) -> PromptBundle:
         try:
             return await asyncio.to_thread(
@@ -56,13 +57,14 @@ class FirestoreAssembly:
                 anchor_node_id,
                 context_node_ids,
                 user_message,
+                user_media,
             )
         except Exception:
             logger.exception(
                 "Firestore context assembly failed; degrading to minimal bundle",
                 extra={"workspace_id": workspace_id, "topic_id": topic_id},
             )
-            return self._minimal_bundle(user_message)
+            return self._minimal_bundle(user_message, user_media)
 
     def _assemble_sync(
         self,
@@ -71,11 +73,12 @@ class FirestoreAssembly:
         anchor_node_id: str | None,
         context_node_ids: list[str],
         user_message: str,
+        user_media: list[WorkerMedia],
     ) -> PromptBundle:
         topic_path = f"workspaces/{workspace_id}/topics/{topic_id}"
         topic_doc = self._read_doc(topic_path)
         if not topic_doc:
-            return self._minimal_bundle(user_message)
+            return self._minimal_bundle(user_message, user_media)
 
         selected_node_ids = self._dedupe_ids(context_node_ids, anchor_node_id)[:30]
         all_nodes = self._read_nodes(topic_path)
@@ -104,13 +107,15 @@ class FirestoreAssembly:
         return PromptBundle(
             system_instruction=build_act_system_instruction(user_message),
             user_prompt=user_message,
+            user_media=user_media,
             context_blocks=context_blocks,
         )
 
-    def _minimal_bundle(self, user_message: str) -> PromptBundle:
+    def _minimal_bundle(self, user_message: str, user_media: list[WorkerMedia]) -> PromptBundle:
         return PromptBundle(
             system_instruction=build_act_system_instruction(user_message),
             user_prompt=user_message,
+            user_media=user_media,
             context_blocks=[],
         )
 

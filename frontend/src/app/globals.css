@@ -150,15 +150,28 @@
 }
 
 @layer components {
+  .react-flow__edges {
+    z-index: 30 !important;
+  }
+
   .react-flow__renderer,
   .react-flow__viewport,
+  .react-flow__edges,
+  .react-flow__edge,
+  .react-flow__edge-path,
   .react-flow__nodes,
   .react-flow__node {
     visibility: visible;
     opacity: 1;
   }
 
+  .react-flow__edge-path {
+    stroke: #475569;
+    stroke-width: 2;
+    stroke-opacity: 0.72;
+  }
+
   .react-flow__node {
-    z-index: 10;
+    z-index: 20;
   }
 }

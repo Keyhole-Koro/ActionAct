@@ -63,6 +63,7 @@ class RunActUsecase:
                 anchor_node_id=input.anchor_node_id,
                 context_node_ids=input.context_node_ids,
                 user_message=input.user_message,
+                user_media=input.user_media,
             )
         except Exception as e:
             logger.exception("Assembly failed")

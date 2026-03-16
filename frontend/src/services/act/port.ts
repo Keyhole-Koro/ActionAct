@@ -12,6 +12,7 @@ export interface StreamActOptions {
     enableGrounding?: boolean;
     anchorNodeId?: string;
     contextNodeIds?: string[];
+    userMedia?: { mimeType: string; data: Uint8Array }[];
     requestId?: string;
     includeThoughts?: boolean;
     workspaceId?: string;
