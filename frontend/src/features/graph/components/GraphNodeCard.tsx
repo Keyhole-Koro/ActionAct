@@ -79,9 +79,14 @@ export function GraphNodeCard({ data, selected, isConnectable }: NodeProps<Graph
     useEffect(() => {
         if (isEditing && inputRef.current) {
             inputRef.current.focus();
-            inputRef.current.select();
+            if ((data.label ?? '').trim().length === 0) {
+                inputRef.current.select();
+            } else {
+                const length = inputRef.current.value.length;
+                inputRef.current.setSelectionRange(length, length);
+            }
         }
-    }, [isEditing]);
+    }, [data.label, isEditing]);
 
     useEffect(() => {
         setEditValue(data.label);

@@ -64,6 +64,14 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         const trimmed = rawLabel.trim();
         const existingNode = actNodes.find((node) => node.id === nodeId);
         const previousLabel = typeof existingNode?.data?.label === 'string' ? existingNode.data.label : '';
+        const hasResolvedContent = [
+            existingNode?.data?.contentMd,
+            existingNode?.data?.contextSummary,
+            existingNode?.data?.detailHtml,
+        ].some((value) => typeof value === 'string' && value.trim().length > 0);
+        const referencedNodeIds = Array.isArray(existingNode?.data?.referencedNodeIds)
+            ? existingNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+            : [];
 
         if (!trimmed) {
             await removeActNodeAndDraft(workspaceId, topicId, nodeId);
@@ -71,12 +79,12 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         }
 
         updateActNodeLabel(nodeId, trimmed);
-        if (!previousLabel) {
+        if (!hasResolvedContent) {
             setSelectedNodes([nodeId]);
             const prepared = await prepareAnchoredActRun(frontendToolClient, {
                 anchorNodeId: nodeId,
                 userMessage: trimmed,
-                explicitContextNodeIds: [nodeId],
+                explicitContextNodeIds: referencedNodeIds,
             });
             if (prepared.status !== 'ready') {
                 await setPendingClarification({

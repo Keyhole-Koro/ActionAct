@@ -9,6 +9,7 @@ import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { emitAuthContext } from '@/features/auth/session';
 import { FrontendToolBridge } from '@/features/agentTools/components/FrontendToolBridge';
 import { UploadProgressList } from '@/features/action/actionOrganize/components/UploadProgressCard';
+import { useUploadStore } from '@/features/action/actionOrganize/store/useUploadStore';
 
 interface AppShellProps {
     children?: ReactNode; // Typically the GraphCanvas
@@ -81,6 +82,12 @@ export function AppShell({ children }: AppShellProps) {
         window.addEventListener('action:auth-context', onAuthContext);
         return () => window.removeEventListener('action:auth-context', onAuthContext);
     }, [setContext]);
+
+    // Restore any in-progress uploads that were running before the last page reload.
+    useEffect(() => {
+        if (!workspaceId) return;
+        useUploadStore.getState().bootstrapFromFirestore();
+    }, [workspaceId]);
 
     return (
         <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">

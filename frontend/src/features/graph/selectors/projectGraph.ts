@@ -1,7 +1,11 @@
 import type { Node } from '@xyflow/react';
 
 import type { GraphNodeBase, GraphNodeRender, GraphNodeRenderData, ReferencedNodeView } from '@/features/graph/types';
-import { getLayoutDimensionsForNodeType } from '@/features/graph/constants/nodeDimensions';
+import {
+    getCollapsedNodeWidth,
+    getExpandedNodeWidth,
+    getLayoutDimensionsForNodeType,
+} from '@/features/graph/constants/nodeDimensions';
 
 type PersistedTreeProjection = {
     childrenByParent: Map<string, string[]>;
@@ -66,6 +70,32 @@ export function buildVisibleTree(
 }
 
 export const projectPersistedTree = buildVisibleTree;
+
+function getNodeDimensions(node: Node, isExpandedOverride?: boolean) {
+    const nodeData = (node.data ?? {}) as Record<string, unknown>;
+    const isExpanded = isExpandedOverride ?? (nodeData.isExpanded === true);
+    const nodeKind = typeof nodeData.kind === 'string' ? nodeData.kind : undefined;
+    const label = typeof nodeData.label === 'string' ? nodeData.label : undefined;
+    const hasChildNodes = nodeData.hasChildNodes === true;
+    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
+
+    return {
+        width: node.type === 'customTask'
+            ? (isExpanded ? getExpandedNodeWidth(label, nodeKind) : getCollapsedNodeWidth(label, nodeKind, hasChildNodes))
+            : layoutDimensions.width,
+        height: layoutDimensions.height,
+    };
+}
+
+function getNodeRight(node: Node, isExpandedOverride?: boolean) {
+    const dimensions = getNodeDimensions(node, isExpandedOverride);
+    return node.position.x + dimensions.width;
+}
+
+function getNodeCenterY(node: Node, isExpandedOverride?: boolean) {
+    const dimensions = getNodeDimensions(node, isExpandedOverride);
+    return node.position.y + dimensions.height / 2;
+}
 
 export function mergeTreeWithActNodes(
     visiblePersistedNodes: GraphNodeBase[],
@@ -155,7 +185,7 @@ export function buildDisplayNodes({
     onAddMedia,
 }: BuildDisplayNodesParams): GraphNodeRender[] {
     const layoutById = new Map(layoutedNodes.map((node) => [node.id, node]));
-    const maxTreeX = layoutedNodes.reduce((max, node) => Math.max(max, node.position.x), 0);
+    const maxTreeRight = layoutedNodes.reduce((max, node) => Math.max(max, getNodeRight(node)), 0);
     const standaloneActNodesById = new Map(standaloneActNodes.map((node) => [node.id, node]));
 
     // Convert arrays to Sets for O(1) lookup
@@ -174,14 +204,53 @@ export function buildDisplayNodes({
         }
     });
 
-    const sortedLaneNodes = [...laneActNodes].sort((left, right) => left.position.y - right.position.y);
-    let actLaneY = 100;
+    const fallbackLaneX = maxTreeRight + 280;
+    const fallbackLaneYStart = 100;
+    const fallbackLaneGap = 32;
+    const clusterGap = 28;
+    const anchorClusterState = new Map<string, number>();
+    let fallbackLaneY = fallbackLaneYStart;
+    const sortedLaneNodes = [...laneActNodes].sort((left, right) => {
+        const leftRefs = Array.isArray(left.data?.referencedNodeIds) ? left.data.referencedNodeIds.length : 0;
+        const rightRefs = Array.isArray(right.data?.referencedNodeIds) ? right.data.referencedNodeIds.length : 0;
+        if (leftRefs !== rightRefs) {
+            return rightRefs - leftRefs;
+        }
+        if (left.position.y !== right.position.y) {
+            return left.position.y - right.position.y;
+        }
+        return left.id.localeCompare(right.id);
+    });
     const positionedLaneNodes = sortedLaneNodes.map((node) => {
         const layoutedNode = layoutById.get(node.id);
         const sourceNode = layoutedNode ?? node;
         const sourceNodeData = (sourceNode.data ?? {}) as Record<string, unknown>;
         const isExpanded = sourceNodeData.isExpanded === true || isNodeExpanded(node.id);
-        const dimensions = getLayoutDimensionsForNodeType(sourceNode.type, isExpanded);
+        const dimensions = getNodeDimensions(sourceNode, isExpanded);
+        const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
+            ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
+            : [];
+        const anchorNodes = referencedNodeIds
+            .map((nodeId) => layoutById.get(nodeId))
+            .filter((anchorNode): anchorNode is Node => Boolean(anchorNode));
+        const anchorKey = anchorNodes.length > 0
+            ? anchorNodes.map((anchorNode) => anchorNode.id).sort().join('|')
+            : `fallback:${node.id}`;
+        const preferredX = anchorNodes.length > 0
+            ? Math.max(...anchorNodes.map((anchorNode) => getNodeRight(anchorNode))) + 120
+            : fallbackLaneX;
+        const preferredCenterY = anchorNodes.length > 0
+            ? anchorNodes.reduce((sum, anchorNode) => sum + getNodeCenterY(anchorNode), 0) / anchorNodes.length
+            : fallbackLaneY + dimensions.height / 2;
+        const preferredTop = Math.max(40, Math.round(preferredCenterY - dimensions.height / 2));
+        const nextTopForCluster = anchorClusterState.get(anchorKey);
+        const nextY = nextTopForCluster === undefined
+            ? preferredTop
+            : Math.max(preferredTop, nextTopForCluster + clusterGap);
+        anchorClusterState.set(anchorKey, nextY + dimensions.height);
+        if (anchorNodes.length === 0) {
+            fallbackLaneY = nextY + dimensions.height + fallbackLaneGap;
+        }
         const positionedNode = {
             ...sourceNode,
             data: {
@@ -189,11 +258,10 @@ export function buildDisplayNodes({
                 isExpanded,
             },
             position: {
-                x: maxTreeX + 420,
-                y: actLaneY,
+                x: preferredX,
+                y: nextY,
             },
         };
-        actLaneY += dimensions.height + 40;
         return {
             ...positionedNode,
         };

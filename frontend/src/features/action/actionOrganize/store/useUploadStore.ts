@@ -1,16 +1,47 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { organizeService } from '@/services/organize';
-import { InputProgress, InputProgressStatus } from '@/services/organize/port';
+import type { InputProgress, InputProgressStatus } from '@/services/organize/port';
+
+const PENDING_KEY = 'action.uploads.pending';
+
+interface PendingEntry {
+    workspaceId: string;
+    topicId: string;
+    inputId: string;
+    filename: string;
+    addedAt: number;
+}
+
+function loadPending(): PendingEntry[] {
+    if (typeof window === 'undefined') return [];
+    try {
+        const raw = window.localStorage.getItem(PENDING_KEY);
+        return raw ? (JSON.parse(raw) as PendingEntry[]) : [];
+    } catch {
+        return [];
+    }
+}
+
+function savePending(entries: PendingEntry[]): void {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
+}
+
+// Keep Firestore unsubscribers outside of state to avoid triggering re-renders.
+const unsubscribers = new Map<string, () => void>();
+
+// Guard so bootstrapFromFirestore only runs once per page load.
+let bootstrapped = false;
 
 export interface UploadTask {
-    id: string; // usually inputId
+    id: string; // inputId
     filename: string;
     workspaceId: string;
     topicId: string;
     status: InputProgressStatus;
     progressPercentage: number;
-    _unsubscribe?: () => void;
+    resolvedTopicId?: string;
 }
 
 const statusPercentages: Record<InputProgressStatus, number> = {
@@ -28,6 +59,7 @@ interface UploadStoreState {
     addUpload: (workspaceId: string, topicId: string, inputId: string, filename: string) => void;
     removeUpload: (inputId: string) => void;
     updateProgress: (inputId: string, progress: InputProgress | null) => void;
+    bootstrapFromFirestore: () => void;
 }
 
 export const useUploadStore = create<UploadStoreState>()(
@@ -35,6 +67,10 @@ export const useUploadStore = create<UploadStoreState>()(
         uploads: {},
 
         addUpload: (workspaceId, topicId, inputId, filename) => {
+            // Persist to localStorage so reload can recover in-progress uploads.
+            const existing = loadPending().filter(e => e.inputId !== inputId);
+            savePending([...existing, { workspaceId, topicId, inputId, filename, addedAt: Date.now() }]);
+
             set((state) => ({
                 uploads: {
                     ...state.uploads,
@@ -44,33 +80,26 @@ export const useUploadStore = create<UploadStoreState>()(
                         topicId,
                         filename,
                         status: 'uploaded',
-                        progressPercentage: statusPercentages['uploaded']
-                    }
-                }
+                        progressPercentage: statusPercentages['uploaded'],
+                    },
+                },
             }));
 
-            // Start listening
             const unsubscribe = organizeService.subscribeInputProgress(workspaceId, topicId, inputId, (progress) => {
                 get().updateProgress(inputId, progress);
             });
-
-            // Store unsubscriber somewhere? Or we can let UI tear it down, but keeping it in store is fine for global uploads.
-            // For now, simple implementation: we just keep listening until it finishes.
-            // When taking `removeUpload`, we don't have unsubscribe easily here, so we could track it.
-            // Let's attach unsubscribe to a ref later if we need strict cleanup.
-            const currentTask = get().uploads[inputId];
-            if (currentTask) {
-                currentTask._unsubscribe = unsubscribe;
-            }
+            unsubscribers.set(inputId, unsubscribe);
         },
 
         removeUpload: (inputId) => {
+            const unsub = unsubscribers.get(inputId);
+            if (unsub) {
+                unsub();
+                unsubscribers.delete(inputId);
+            }
+            savePending(loadPending().filter(e => e.inputId !== inputId));
             set((state) => {
                 const next = { ...state.uploads };
-                const task = next[inputId];
-                if (task?._unsubscribe) {
-                    task._unsubscribe();
-                }
                 delete next[inputId];
                 return { uploads: next };
             });
@@ -78,31 +107,53 @@ export const useUploadStore = create<UploadStoreState>()(
 
         updateProgress: (inputId, progress) => {
             if (!progress) return;
-
             set((state) => {
                 const existing = state.uploads[inputId];
                 if (!existing) return state;
-
-                const isDone = progress.status === 'completed' || progress.status === 'failed';
-
-                // If it finished, schedule removal after 3s
-                if (isDone && existing.status !== progress.status) {
-                    setTimeout(() => {
-                        get().removeUpload(inputId);
-                    }, 3000);
-                }
-
                 return {
                     uploads: {
                         ...state.uploads,
                         [inputId]: {
                             ...existing,
                             status: progress.status,
-                            progressPercentage: statusPercentages[progress.status] ?? existing.progressPercentage
-                        }
-                    }
+                            progressPercentage: statusPercentages[progress.status] ?? existing.progressPercentage,
+                            resolvedTopicId: progress.resolvedTopicId ?? existing.resolvedTopicId,
+                        },
+                    },
                 };
             });
-        }
+        },
+
+        bootstrapFromFirestore: () => {
+            if (bootstrapped) return;
+            bootstrapped = true;
+
+            const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            const all = loadPending();
+            const valid = all.filter(e => e.addedAt > sevenDaysAgo);
+            if (valid.length < all.length) savePending(valid);
+
+            const current = get().uploads;
+            for (const { workspaceId, topicId, inputId, filename } of valid) {
+                if (current[inputId]) continue;
+                set((state) => ({
+                    uploads: {
+                        ...state.uploads,
+                        [inputId]: {
+                            id: inputId,
+                            workspaceId,
+                            topicId,
+                            filename,
+                            status: 'uploaded',
+                            progressPercentage: statusPercentages['uploaded'],
+                        },
+                    },
+                }));
+                const unsubscribe = organizeService.subscribeInputProgress(workspaceId, topicId, inputId, (progress) => {
+                    get().updateProgress(inputId, progress);
+                });
+                unsubscribers.set(inputId, unsubscribe);
+            }
+        },
     }))
 );
