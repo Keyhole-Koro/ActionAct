@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Background,
     Controls,
@@ -26,6 +26,7 @@ import {
     getExpandedNodeWidth,
     getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
+import { RADIAL_CENTER_X, RADIAL_CENTER_Y } from '../layout/layoutRadial';
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
 import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
@@ -89,6 +90,12 @@ function isRenderableCoordinate(value: number | undefined) {
 }
 
 function getDisplayNodeDimensions(node: GraphNodeRender) {
+    if (node.data?.layoutMode === 'radial' && node.data?.nodeSource === 'persisted') {
+        const radialDepth = typeof node.data.radialDepth === 'number' ? node.data.radialDepth : 0;
+        const size = radialDepth === 0 ? 132 : (radialDepth === 1 ? 120 : (radialDepth === 2 ? 110 : 96));
+        return { width: size, height: size };
+    }
+
     const nodeKind = typeof node.data?.kind === 'string' ? node.data.kind : undefined;
     const label = typeof node.data?.label === 'string' ? node.data.label : undefined;
     const isExpanded = node.data?.isExpanded === true;
@@ -117,6 +124,44 @@ function overlapsWithMargin(left: GraphNodeRender, right: GraphNodeRender, margi
     );
 }
 
+function midpointAngle(left: number, right: number) {
+    let normalizedRight = right;
+    if (normalizedRight < left) {
+        normalizedRight += Math.PI * 2;
+    }
+    return (left + normalizedRight) / 2;
+}
+
+function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
+    return {
+        x: cx + (Math.cos(angle) * radius),
+        y: cy + (Math.sin(angle) * radius),
+    };
+}
+
+function describeAnnularSector(
+    cx: number,
+    cy: number,
+    innerRadius: number,
+    outerRadius: number,
+    startAngle: number,
+    endAngle: number,
+) {
+    const startOuter = polarToCartesian(cx, cy, outerRadius, startAngle);
+    const endOuter = polarToCartesian(cx, cy, outerRadius, endAngle);
+    const startInner = polarToCartesian(cx, cy, innerRadius, startAngle);
+    const endInner = polarToCartesian(cx, cy, innerRadius, endAngle);
+    const largeArcFlag = endAngle - startAngle > Math.PI ? 1 : 0;
+
+    return [
+        `M ${startOuter.x} ${startOuter.y}`,
+        `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${endOuter.x} ${endOuter.y}`,
+        `L ${endInner.x} ${endInner.y}`,
+        `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${startInner.x} ${startInner.y}`,
+        'Z',
+    ].join(' ');
+}
+
 export function GraphCanvas() {
     const {
         persistedNodes,
@@ -143,11 +188,20 @@ export function GraphCanvas() {
     const setPersistedGraphRef = useRef(setPersistedGraph);
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
+    const [hoveredRadialRootId, setHoveredRadialRootId] = useState<string | null>(null);
     const usePersistedGraphMock = useMemo(() => {
         if (typeof window === 'undefined') {
             return false;
         }
         return new URLSearchParams(window.location.search).get('graphMock') === '1';
+    }, []);
+    const persistedLayoutMode = useMemo(() => {
+        if (typeof window === 'undefined') {
+            return 'force' as const;
+        }
+        return new URLSearchParams(window.location.search).get('layout') === 'radial'
+            ? 'radial' as const
+            : 'force' as const;
     }, []);
 
     useEffect(() => {
@@ -264,9 +318,11 @@ export function GraphCanvas() {
             persistedEdges,
             effectiveExpandedBranchNodeIds,
             expandedNodeIds,
+            persistedLayoutMode,
         ),
-        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
+        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
+    const isRadialLayout = persistedLayoutMode === 'radial';
 
     const positionedActNodes = useMemo(
         () => projectActOverlay({
@@ -321,8 +377,26 @@ export function GraphCanvas() {
         ],
     );
 
+    const layoutAwareDisplayNodes = useMemo(
+        () => displayNodes.map((node) => {
+            const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
+                ? 'radial'
+                : 'force';
+
+            return {
+                ...node,
+                data: {
+                    ...node.data,
+                    layoutMode,
+                    radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
+                },
+            };
+        }),
+        [displayNodes, isRadialLayout, persistedGraph.depthById],
+    );
+
     const normalizedDisplayNodes = useMemo(() => {
-        const safeDisplayNodes = displayNodes.map((node, index) => {
+        const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
             const x = node.position?.x;
             const y = node.position?.y;
             if (isRenderableCoordinate(x) && isRenderableCoordinate(y)) {
@@ -357,7 +431,7 @@ export function GraphCanvas() {
                 y: node.position.y + offsetY,
             },
         }));
-    }, [displayNodes]);
+    }, [layoutAwareDisplayNodes]);
 
     const emphasizedDisplayNodes = useMemo(() => {
         const expandedNodes = normalizedDisplayNodes.filter((node) => node.data?.isExpanded === true);
@@ -384,10 +458,15 @@ export function GraphCanvas() {
     }, [normalizedDisplayNodes, selectedNodeIds]);
 
     const displayEdges = useMemo(
-        () => buildDisplayEdges(
-            [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
-            actEdges,
-        ).map((edge) => {
+        () => {
+            if (isRadialLayout) {
+                return [];
+            }
+
+            return buildDisplayEdges(
+                [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
+                actEdges,
+            ).map((edge) => {
             const isActContext = edge.id.startsWith('edge-ctx-');
             const isRelation = 'relationType' in edge && edge.relationType === 'related';
             const isActContextFocused = isActContext
@@ -438,9 +517,98 @@ export function GraphCanvas() {
                     ...((edge as Edge).style ?? {}),
                 },
             };
-        }),
-        [actEdges, persistedGraph.hierarchyEdges, persistedGraph.relationEdges, selectedNodeIds],
+            });
+        },
+        [actEdges, isRadialLayout, persistedGraph.hierarchyEdges, persistedGraph.relationEdges, selectedNodeIds],
     );
+
+    const radialOverlay = useMemo(() => {
+        if (!isRadialLayout) {
+            return null;
+        }
+
+        const persistedDisplayNodes = emphasizedDisplayNodes.filter((node) => node.data?.nodeSource === 'persisted');
+        if (persistedDisplayNodes.length === 0) {
+            return null;
+        }
+
+        const rootNodes = persistedDisplayNodes.filter((node) => persistedGraph.rootIds.includes(node.id));
+        const rootCenters = rootNodes.map((node) => {
+            const dimensions = getDisplayNodeDimensions(node);
+            return {
+                x: node.position.x + (dimensions.width / 2),
+                y: node.position.y + (dimensions.height / 2),
+            };
+        });
+        const center = rootCenters.length > 0
+            ? {
+                x: rootCenters.reduce((sum, point) => sum + point.x, 0) / rootCenters.length,
+                y: rootCenters.reduce((sum, point) => sum + point.y, 0) / rootCenters.length,
+            }
+            : { x: RADIAL_CENTER_X, y: RADIAL_CENTER_Y };
+
+        const depthGroups = new Map<number, Array<{ x: number; y: number }>>();
+        persistedDisplayNodes.forEach((node) => {
+            const depth = persistedGraph.depthById.get(node.id) ?? 0;
+            const dimensions = getDisplayNodeDimensions(node);
+            const point = {
+                x: node.position.x + (dimensions.width / 2),
+                y: node.position.y + (dimensions.height / 2),
+            };
+            const group = depthGroups.get(depth) ?? [];
+            group.push(point);
+            depthGroups.set(depth, group);
+        });
+
+        const circles = [...depthGroups.entries()]
+            .sort((left, right) => left[0] - right[0])
+            .map(([depth, points]) => {
+                const radius = points.reduce((sum, point) => {
+                    const dx = point.x - center.x;
+                    const dy = point.y - center.y;
+                    return sum + Math.sqrt((dx * dx) + (dy * dy));
+                }, 0) / Math.max(points.length, 1);
+                return { depth, radius };
+            });
+
+        const rootSectors = rootNodes
+            .map((node) => {
+                const dimensions = getDisplayNodeDimensions(node);
+                const x = node.position.x + (dimensions.width / 2);
+                const y = node.position.y + (dimensions.height / 2);
+                return {
+                    id: node.id,
+                    label: node.data?.label ?? node.id,
+                    angle: Math.atan2(y - center.y, x - center.x),
+                };
+            })
+            .sort((left, right) => left.angle - right.angle)
+            .map((root, index, roots) => {
+                const previous = roots[(index - 1 + roots.length) % roots.length];
+                const next = roots[(index + 1) % roots.length];
+                const startAngle = midpointAngle(previous.angle, root.angle);
+                const endAngle = midpointAngle(root.angle, next.angle);
+                return {
+                    id: root.id,
+                    label: root.label,
+                    startAngle,
+                    endAngle: endAngle <= startAngle ? endAngle + (Math.PI * 2) : endAngle,
+                };
+            });
+
+        const rays = persistedDisplayNodes
+            .filter((node) => (persistedGraph.depthById.get(node.id) ?? 0) > 0)
+            .map((node) => {
+                const dimensions = getDisplayNodeDimensions(node);
+                return {
+                    id: node.id,
+                    x: node.position.x + (dimensions.width / 2),
+                    y: node.position.y + (dimensions.height / 2),
+                };
+            });
+
+        return { center, circles, rays, rootSectors };
+    }, [emphasizedDisplayNodes, isRadialLayout, persistedGraph.depthById, persistedGraph.rootIds]);
 
     const focusNode = useCallback((nodeId: string) => {
         const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId);
@@ -564,6 +732,95 @@ export function GraphCanvas() {
 
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
+            {radialOverlay && (
+                <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full">
+                    {radialOverlay.rootSectors.flatMap((sector, sectorIndex) => (
+                        radialOverlay.circles.map((circle, circleIndex) => {
+                            const previousRadius = circleIndex === 0
+                                ? Math.max(circle.radius - 84, 36)
+                                : radialOverlay.circles[circleIndex - 1].radius + 24;
+                            const nextRadius = circle.radius + 56;
+                            const fillPalette = [
+                                'rgba(226,232,240,0.16)',
+                                'rgba(191,219,254,0.12)',
+                                'rgba(196,181,253,0.12)',
+                                'rgba(167,243,208,0.12)',
+                            ];
+                            const isHoveredSector = hoveredRadialRootId === sector.id;
+
+                            return (
+                                <path
+                                    key={`radial-sector-${sector.id}-${circle.depth}`}
+                                    d={describeAnnularSector(
+                                        radialOverlay.center.x,
+                                        radialOverlay.center.y,
+                                        previousRadius,
+                                        nextRadius,
+                                        sector.startAngle,
+                                        sector.endAngle,
+                                    )}
+                                    fill={isHoveredSector
+                                        ? fillPalette[(sectorIndex + circleIndex) % fillPalette.length].replace('0.12', '0.24').replace('0.16', '0.28')
+                                        : fillPalette[(sectorIndex + circleIndex) % fillPalette.length]}
+                                    stroke={isHoveredSector ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.28)'}
+                                    strokeWidth={isHoveredSector ? '1.5' : '1'}
+                                />
+                            );
+                        })
+                    ))}
+                    {radialOverlay.rays.map((ray) => (
+                        <line
+                            key={`radial-ray-${ray.id}`}
+                            x1={radialOverlay.center.x}
+                            y1={radialOverlay.center.y}
+                            x2={ray.x}
+                            y2={ray.y}
+                            stroke="rgba(148,163,184,0.24)"
+                            strokeWidth="1.5"
+                        />
+                    ))}
+                </svg>
+            )}
+            {radialOverlay && (
+                <div className="pointer-events-none absolute inset-0 z-10">
+                    {radialOverlay.rootSectors.map((sector, index) => {
+                        const labelRadius = (radialOverlay.circles[0]?.radius ?? 180) + 54;
+                        const angle = (sector.startAngle + sector.endAngle) / 2;
+                        const point = polarToCartesian(
+                            radialOverlay.center.x,
+                            radialOverlay.center.y,
+                            labelRadius,
+                            angle,
+                        );
+                        const isHoveredSector = hoveredRadialRootId === sector.id;
+
+                        return (
+                            <button
+                                key={`radial-sector-button-${sector.id}`}
+                                type="button"
+                                className={[
+                                    'pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-3 py-1.5 text-[11px] font-semibold',
+                                    'backdrop-blur-sm transition-all duration-200',
+                                    isHoveredSector
+                                        ? 'border-slate-400 bg-white/96 text-slate-900 shadow-md'
+                                        : 'border-white/80 bg-white/82 text-slate-600 shadow-sm',
+                                ].join(' ')}
+                                style={{
+                                    left: point.x,
+                                    top: point.y,
+                                }}
+                                onMouseEnter={() => setHoveredRadialRootId(sector.id)}
+                                onMouseLeave={() => setHoveredRadialRootId(null)}
+                                onFocus={() => setHoveredRadialRootId(sector.id)}
+                                onBlur={() => setHoveredRadialRootId(null)}
+                                onClick={() => focusNode(sector.id)}
+                            >
+                                {sector.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
             <ReactFlow
                 nodes={emphasizedDisplayNodes as GraphNodeRender[]}
                 edges={displayEdges}

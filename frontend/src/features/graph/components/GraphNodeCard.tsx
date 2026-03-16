@@ -52,6 +52,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const hiddenChildCount = typeof data.hiddenChildCount === 'number' ? data.hiddenChildCount : 0;
     const isEditing = data.isEditing === true;
     const actStage = data.actStage;
+    const isRadialMode = data.layoutMode === 'radial' && data.nodeSource === 'persisted';
     const [editValue, setEditValue] = useState(data.label);
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const isActNode = data.kind === 'act';
@@ -141,6 +142,63 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
             }
         }
     }, [data]);
+
+    if (isRadialMode) {
+        const radialDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
+        const radialSize = radialDepth === 0 ? 132 : (radialDepth === 1 ? 120 : (radialDepth === 2 ? 108 : 96));
+
+        return (
+            <div className="relative group">
+                <div
+                    style={{ width: radialSize, height: radialSize }}
+                    className={[
+                        'relative flex items-center justify-center rounded-full border text-center transition-all duration-300',
+                        'bg-white/96 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.34)]',
+                        selected
+                            ? 'border-primary ring-2 ring-primary/80 ring-offset-2 ring-offset-background scale-[1.04]'
+                            : 'border-slate-200/90 hover:border-primary/40',
+                    ].join(' ')}
+                >
+                    <div className={`absolute inset-[7px] rounded-full border ${selected ? 'border-primary/18' : 'border-white/90'}`} />
+                    <div className="relative z-10 flex max-w-[78%] flex-col items-center justify-center gap-1">
+                        <span className={`${radialDepth === 0 ? 'text-[13px]' : 'text-[11px]'} font-semibold leading-tight text-slate-800`}>
+                            {data.label}
+                        </span>
+                        {data.kind && (
+                            <span className={`rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 ${radialDepth === 0 ? 'text-[10px]' : 'text-[9px]'} uppercase tracking-[0.08em] text-slate-500`}>
+                                {data.kind}
+                            </span>
+                        )}
+                    </div>
+                    {hasChildNodes && (
+                        <button
+                            type="button"
+                            className="absolute -bottom-1.5 left-1/2 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                data.onToggleBranch?.();
+                            }}
+                        >
+                            {branchExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            <span className="sr-only">Toggle children</span>
+                        </button>
+                    )}
+                </div>
+                <Handle
+                    type="target"
+                    position={targetPosition ?? Position.Left}
+                    isConnectable={isConnectable}
+                    className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+                />
+                <Handle
+                    type="source"
+                    position={sourcePosition ?? Position.Right}
+                    isConnectable={isConnectable}
+                    className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="relative group">
