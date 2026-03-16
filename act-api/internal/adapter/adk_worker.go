@@ -40,17 +40,28 @@ func NewADKWorkerExecutor(workerURL string, recorder domain.ActRunRecorder, idem
 
 // workerRequest is the JSON body sent to the ADK Worker.
 type workerRequest struct {
-	TraceID        string           `json:"trace_id"`
-	UID            string           `json:"uid"`
-	TopicID        string           `json:"topic_id"`
-	WorkspaceID    string           `json:"workspace_id"`
-	RequestID      string           `json:"request_id"`
-	ActType        string           `json:"act_type"`
-	UserMessage    string           `json:"user_message"`
-	UserMedia      []workerMedia    `json:"user_media,omitempty"`
-	AnchorNodeID   string           `json:"anchor_node_id,omitempty"`
-	ContextNodeIDs []string         `json:"context_node_ids,omitempty"`
-	LLMConfig      *workerLLMConfig `json:"llm_config,omitempty"`
+	TraceID              string                      `json:"trace_id"`
+	UID                  string                      `json:"uid"`
+	TopicID              string                      `json:"topic_id"`
+	WorkspaceID          string                      `json:"workspace_id"`
+	RequestID            string                      `json:"request_id"`
+	ActType              string                      `json:"act_type"`
+	UserMessage          string                      `json:"user_message"`
+	UserMedia            []workerMedia               `json:"user_media,omitempty"`
+	AnchorNodeID         string                      `json:"anchor_node_id,omitempty"`
+	ContextNodeIDs       []string                    `json:"context_node_ids,omitempty"`
+	SelectedNodeContexts []workerSelectedNodeContext `json:"selected_node_contexts,omitempty"`
+	LLMConfig            *workerLLMConfig            `json:"llm_config,omitempty"`
+}
+
+type workerSelectedNodeContext struct {
+	NodeID         string `json:"node_id"`
+	Label          string `json:"label,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	ContextSummary string `json:"context_summary,omitempty"`
+	ContentMD      string `json:"content_md,omitempty"`
+	ThoughtMD      string `json:"thought_md,omitempty"`
+	DetailHTML     string `json:"detail_html,omitempty"`
 }
 
 type workerMedia struct {
@@ -106,18 +117,32 @@ func (e *ADKWorkerExecutor) Execute(
 		})
 	}
 
+	selectedNodeContexts := make([]workerSelectedNodeContext, 0, len(input.SelectedNodeContexts))
+	for _, ctx := range input.SelectedNodeContexts {
+		selectedNodeContexts = append(selectedNodeContexts, workerSelectedNodeContext{
+			NodeID:         ctx.NodeID,
+			Label:          ctx.Label,
+			Kind:           ctx.Kind,
+			ContextSummary: ctx.ContextSummary,
+			ContentMD:      ctx.ContentMD,
+			ThoughtMD:      ctx.ThoughtMD,
+			DetailHTML:     ctx.DetailHTML,
+		})
+	}
+
 	// Build request body
 	reqBody := workerRequest{
-		TraceID:        input.TraceID,
-		UID:            input.UID,
-		TopicID:        input.TopicID,
-		WorkspaceID:    input.WorkspaceID,
-		RequestID:      input.RequestID,
-		ActType:        input.ActType,
-		UserMessage:    input.UserMessage,
-		UserMedia:      userMedia,
-		AnchorNodeID:   input.AnchorID,
-		ContextNodeIDs: input.ContextIDs,
+		TraceID:              input.TraceID,
+		UID:                  input.UID,
+		TopicID:              input.TopicID,
+		WorkspaceID:          input.WorkspaceID,
+		RequestID:            input.RequestID,
+		ActType:              input.ActType,
+		UserMessage:          input.UserMessage,
+		UserMedia:            userMedia,
+		AnchorNodeID:         input.AnchorID,
+		ContextNodeIDs:       input.ContextIDs,
+		SelectedNodeContexts: selectedNodeContexts,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

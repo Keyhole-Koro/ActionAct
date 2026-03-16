@@ -19,6 +19,16 @@ class WorkerMedia(BaseModel):
     mime_type: str
     data_base64: str
 
+
+class SelectedNodeContext(BaseModel):
+    node_id: str
+    label: str = ""
+    kind: str = ""
+    context_summary: str = ""
+    content_md: str = ""
+    thought_md: str = ""
+    detail_html: str = ""
+
 class RunActInput(BaseModel):
     """JSON body sent by act-api to POST /run_act."""
 
@@ -32,6 +42,7 @@ class RunActInput(BaseModel):
     user_media: list[WorkerMedia] = Field(default_factory=list)
     anchor_node_id: Optional[str] = None
     context_node_ids: list[str] = Field(default_factory=list)
+    selected_node_contexts: list[SelectedNodeContext] = Field(default_factory=list)
     llm_config: Optional[LLMConfig] = None
 
 

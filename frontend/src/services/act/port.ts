@@ -19,10 +19,21 @@ export interface StreamResponse {
     patch: PatchOp;
 }
 
+export interface SelectedNodeContext {
+    nodeId: string;
+    label?: string;
+    kind?: string;
+    contextSummary?: string;
+    contentMd?: string;
+    thoughtMd?: string;
+    detailHtml?: string;
+}
+
 export interface StreamActOptions {
     enableGrounding?: boolean;
     anchorNodeId?: string;
     contextNodeIds?: string[];
+    selectedNodeContexts?: SelectedNodeContext[];
     userMedia?: { mimeType: string; data: Uint8Array }[];
     requestId?: string;
     includeThoughts?: boolean;

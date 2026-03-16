@@ -33,6 +33,7 @@ def _bundle_debug_summary(input: RunActInput, *, system_instruction: str, user_p
         "workspace_id": input.workspace_id,
         "anchor_node_id": input.anchor_node_id,
         "context_node_ids": input.context_node_ids,
+        "selected_node_contexts": len(input.selected_node_contexts),
         "user_message": _truncate(input.user_message, 160),
         "system_instruction_preview": _truncate(system_instruction),
         "user_prompt_preview": _truncate(user_prompt, 160),
@@ -62,6 +63,7 @@ class RunActUsecase:
                 workspace_id=input.workspace_id,
                 anchor_node_id=input.anchor_node_id,
                 context_node_ids=input.context_node_ids,
+                selected_node_contexts=input.selected_node_contexts,
                 user_message=input.user_message,
                 user_media=input.user_media,
             )

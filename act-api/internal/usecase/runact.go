@@ -156,18 +156,32 @@ func (uc *RunActUsecase) Execute(
 		})
 	}
 
+	selectedNodeContexts := make([]domain.SelectedNodeContext, 0, len(msg.GetSelectedNodeContexts()))
+	for _, ctx := range msg.GetSelectedNodeContexts() {
+		selectedNodeContexts = append(selectedNodeContexts, domain.SelectedNodeContext{
+			NodeID:         ctx.GetNodeId(),
+			Label:          ctx.GetLabel(),
+			Kind:           ctx.GetKind(),
+			ContextSummary: ctx.GetContextSummary(),
+			ContentMD:      ctx.GetContentMd(),
+			ThoughtMD:      ctx.GetThoughtMd(),
+			DetailHTML:     ctx.GetDetailHtml(),
+		})
+	}
+
 	// 6. EXECUTE
 	input := domain.RunActInput{
-		UID:         uid,
-		TraceID:     traceID,
-		RequestID:   msg.GetRequestId(),
-		TopicID:     msg.GetTopicId(),
-		WorkspaceID: msg.GetWorkspaceId(),
-		UserMessage: msg.GetUserMessage(),
-		UserMedia:   userMedia,
-		ActType:     msg.GetActType().String(),
-		AnchorID:    msg.GetAnchorNodeId(),
-		ContextIDs:  msg.GetContextNodeIds(),
+		UID:                  uid,
+		TraceID:              traceID,
+		RequestID:            msg.GetRequestId(),
+		TopicID:              msg.GetTopicId(),
+		WorkspaceID:          msg.GetWorkspaceId(),
+		UserMessage:          msg.GetUserMessage(),
+		UserMedia:            userMedia,
+		ActType:              msg.GetActType().String(),
+		AnchorID:             msg.GetAnchorNodeId(),
+		ContextIDs:           msg.GetContextNodeIds(),
+		SelectedNodeContexts: selectedNodeContexts,
 	}
 
 	if uc.runs != nil {

@@ -133,6 +133,13 @@ function overlapsWithMargin(left: GraphNodeRender, right: GraphNodeRender, margi
     );
 }
 
+function sameSortedIds(left: string[], right: string[]) {
+    if (left.length !== right.length) {
+        return false;
+    }
+    return left.every((id, index) => id === right[index]);
+}
+
 function readClientPoint(event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent): { x: number; y: number } | null {
     const nativeEvent = 'nativeEvent' in event ? event.nativeEvent : event;
 
@@ -163,10 +170,13 @@ export function GraphCanvas() {
         setSelectedNodes,
         setActiveNode,
         toggleExpandedNode,
+        addOrUpdateActNode,
         addQueryActNode,
         addEmptyActNode,
+        removeActNode,
         setPersistedGraph,
         setActGraph,
+        activeNodeId,
         editingNodeId,
         selectedNodeIds,
         expandedNodeIds,
@@ -189,6 +199,7 @@ export function GraphCanvas() {
     const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
     const isShiftMarqueeSelectionRef = useRef(false);
     const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+    const selectionComposerNodeIdRef = useRef<string | null>(null);
     useLayoutEffect(() => {
         selectedNodeIdsRef.current = selectedNodeIds;
     });
@@ -467,6 +478,80 @@ export function GraphCanvas() {
         () => new Map(radialOverviewNodes.map((node) => [node.id, node])),
         [radialOverviewNodes],
     );
+
+    useEffect(() => {
+        const composerId = selectionComposerNodeIdRef.current;
+        if (composerId && !actNodes.some((node) => node.id === composerId)) {
+            selectionComposerNodeIdRef.current = null;
+        }
+
+        const contextNodeIds = [...new Set(selectedNodeIds.filter((id) => id !== selectionComposerNodeIdRef.current))].sort();
+
+        if (contextNodeIds.length === 0) {
+            const currentComposerId = selectionComposerNodeIdRef.current;
+            if (!currentComposerId) {
+                return;
+            }
+            const composerNode = actNodes.find((node) => node.id === currentComposerId);
+            const hasLabel = typeof composerNode?.data?.label === 'string' && composerNode.data.label.trim().length > 0;
+            const hasResolvedContent = [
+                composerNode?.data?.contentMd,
+                composerNode?.data?.contextSummary,
+                composerNode?.data?.detailHtml,
+                composerNode?.data?.thoughtMd,
+            ].some((value) => typeof value === 'string' && value.trim().length > 0);
+
+            if (composerNode && !hasLabel && !hasResolvedContent) {
+                removeActNode(currentComposerId);
+            }
+            selectionComposerNodeIdRef.current = null;
+            return;
+        }
+
+        const currentComposerId = selectionComposerNodeIdRef.current;
+        if (currentComposerId) {
+            const composerNode = actNodes.find((node) => node.id === currentComposerId);
+            if (!composerNode) {
+                selectionComposerNodeIdRef.current = null;
+                return;
+            }
+
+            const hasLabel = typeof composerNode.data?.label === 'string' && composerNode.data.label.trim().length > 0;
+            const hasResolvedContent = [
+                composerNode.data?.contentMd,
+                composerNode.data?.contextSummary,
+                composerNode.data?.detailHtml,
+                composerNode.data?.thoughtMd,
+            ].some((value) => typeof value === 'string' && value.trim().length > 0);
+
+            if (hasLabel || hasResolvedContent) {
+                selectionComposerNodeIdRef.current = null;
+                return;
+            }
+
+            const currentReferenced = Array.isArray(composerNode.data?.referencedNodeIds)
+                ? composerNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string').sort()
+                : [];
+            if (!sameSortedIds(currentReferenced, contextNodeIds)) {
+                addOrUpdateActNode(currentComposerId, { referencedNodeIds: contextNodeIds, kind: 'act', createdBy: 'user' });
+            }
+            return;
+        }
+
+        const contextNodes = regularGraphNodes.filter((node) => contextNodeIds.includes(node.id));
+        if (contextNodes.length === 0) {
+            return;
+        }
+
+        const maxRightX = contextNodes.reduce((max, node) => {
+            const { width } = getDisplayNodeDimensions(node as GraphNodeRender);
+            return Math.max(max, node.position.x + width);
+        }, contextNodes[0].position.x);
+        const averageY = contextNodes.reduce((sum, node) => sum + node.position.y, 0) / contextNodes.length;
+        const composerNodeId = addQueryActNode({ x: maxRightX + 220, y: averageY }, '');
+        selectionComposerNodeIdRef.current = composerNodeId;
+        addOrUpdateActNode(composerNodeId, { referencedNodeIds: contextNodeIds, kind: 'act', createdBy: 'user' });
+    }, [actNodes, addOrUpdateActNode, addQueryActNode, regularGraphNodes, removeActNode, selectedNodeIds]);
 
     const normalizedDisplayNodes = useMemo(() => {
         const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
@@ -793,6 +878,55 @@ export function GraphCanvas() {
         event.preventDefault();
     }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
 
+    const handleDraftNodeFocusNavigation = useCallback((event: KeyboardEvent) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+            return;
+        }
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+        }
+
+        const target = event.target;
+        if (
+            target instanceof HTMLElement
+            && (
+                target.tagName === 'INPUT'
+                || target.tagName === 'TEXTAREA'
+                || target.isContentEditable
+            )
+        ) {
+            return;
+        }
+
+        const draftActNodes = emphasizedDisplayNodes
+            .filter((node) => node.type === 'customTask')
+            .filter((node) => node.data?.kind === 'act' && node.data?.actStage === 'draft')
+            .sort((left, right) => {
+                if (left.position.y !== right.position.y) {
+                    return left.position.y - right.position.y;
+                }
+                return left.position.x - right.position.x;
+            });
+
+        if (draftActNodes.length === 0) {
+            return;
+        }
+
+        const currentIndex = draftActNodes.findIndex((node) => node.id === activeNodeId);
+        const movingDown = event.key === 'ArrowDown';
+        const fallbackIndex = movingDown ? -1 : 0;
+        const baseIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
+        const direction = movingDown ? 1 : -1;
+        const nextIndex = (baseIndex + direction + draftActNodes.length) % draftActNodes.length;
+
+        const nextNodeId = draftActNodes[nextIndex].id;
+        if (event.shiftKey) {
+            setSelectedNodes([nextNodeId]);
+        }
+        focusNode(nextNodeId);
+        event.preventDefault();
+    }, [activeNodeId, emphasizedDisplayNodes, focusNode, setSelectedNodes]);
+
     useEffect(() => {
         const handleFocusNode = (event: Event) => {
             const customEvent = event as CustomEvent<{ nodeId: string }>;
@@ -809,6 +943,11 @@ export function GraphCanvas() {
         window.addEventListener('keydown', handleSelectionTyping);
         return () => window.removeEventListener('keydown', handleSelectionTyping);
     }, [handleSelectionTyping]);
+
+    useEffect(() => {
+        window.addEventListener('keydown', handleDraftNodeFocusNavigation);
+        return () => window.removeEventListener('keydown', handleDraftNodeFocusNavigation);
+    }, [handleDraftNodeFocusNavigation]);
 
     const activateRadialNode = useCallback((nodeId: string) => {
         setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);

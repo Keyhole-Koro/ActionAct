@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from app.domain.models import PromptBundle, WorkerMedia
+from app.domain.models import PromptBundle, SelectedNodeContext, WorkerMedia
 from app.domain.act_prompt_policy import build_act_system_instruction
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ class FirestoreAssembly:
         workspace_id: str,
         anchor_node_id: str | None,
         context_node_ids: list[str],
+        selected_node_contexts: list[SelectedNodeContext],
         user_message: str,
         user_media: list[WorkerMedia] = [],
     ) -> PromptBundle:
@@ -56,6 +57,7 @@ class FirestoreAssembly:
                 workspace_id,
                 anchor_node_id,
                 context_node_ids,
+                selected_node_contexts,
                 user_message,
                 user_media,
             )
@@ -72,6 +74,7 @@ class FirestoreAssembly:
         workspace_id: str,
         anchor_node_id: str | None,
         context_node_ids: list[str],
+        selected_node_contexts: list[SelectedNodeContext],
         user_message: str,
         user_media: list[WorkerMedia],
     ) -> PromptBundle:
@@ -103,6 +106,9 @@ class FirestoreAssembly:
             evidences=evidences,
             act_runs=act_runs,
         )
+        selected_context_block = self._render_selected_node_contexts(selected_node_contexts)
+        if selected_context_block:
+            context_blocks = [selected_context_block, *context_blocks]
 
         return PromptBundle(
             system_instruction=build_act_system_instruction(user_message),
@@ -394,6 +400,23 @@ class FirestoreAssembly:
             blocks.append("\n".join(lines))
 
         return blocks
+
+    def _render_selected_node_contexts(self, selected_node_contexts: list[SelectedNodeContext]) -> str:
+        if not selected_node_contexts:
+            return ""
+
+        lines = ["## Selected Node Context Snapshot"]
+        for ctx in selected_node_contexts[:20]:
+            lines.append(f"- id={ctx.node_id} label={ctx.label or '(no label)'} kind={ctx.kind or 'unknown'}")
+            if ctx.context_summary:
+                lines.append(f"  summary: {ctx.context_summary}")
+            if ctx.content_md:
+                lines.append(f"  content: {ctx.content_md}")
+            if ctx.thought_md:
+                lines.append(f"  thought: {ctx.thought_md}")
+            if ctx.detail_html:
+                lines.append(f"  detail: {ctx.detail_html}")
+        return "\n".join(lines)
 
     def _relation_lookup(self, edges: list[dict[str, Any]]) -> dict[str, str]:
         relation_by_node: dict[str, str] = {}

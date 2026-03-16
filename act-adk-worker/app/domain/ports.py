@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator, Protocol
 
-from app.domain.models import LLMChunk, LLMConfig, PromptBundle, WorkerMedia
+from app.domain.models import LLMChunk, LLMConfig, PromptBundle, SelectedNodeContext, WorkerMedia
 
 
 class LLMPort(Protocol):
@@ -26,6 +26,7 @@ class AssemblyPort(Protocol):
         workspace_id: str,
         anchor_node_id: str | None,
         context_node_ids: list[str],
+        selected_node_contexts: list[SelectedNodeContext],
         user_message: str,
         user_media: list[WorkerMedia] = [],
     ) -> PromptBundle: ...

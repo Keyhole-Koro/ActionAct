@@ -10,16 +10,27 @@ import (
 
 // RunActInput is the validated, auth-verified input for an Act execution.
 type RunActInput struct {
-	UID         string
-	TraceID     string
-	RequestID   string
-	TopicID     string
-	WorkspaceID string
-	UserMessage string
-	UserMedia   []MediaData
-	ActType     string
-	AnchorID    string
-	ContextIDs  []string
+	UID                  string
+	TraceID              string
+	RequestID            string
+	TopicID              string
+	WorkspaceID          string
+	UserMessage          string
+	UserMedia            []MediaData
+	ActType              string
+	AnchorID             string
+	ContextIDs           []string
+	SelectedNodeContexts []SelectedNodeContext
+}
+
+type SelectedNodeContext struct {
+	NodeID         string
+	Label          string
+	Kind           string
+	ContextSummary string
+	ContentMD      string
+	ThoughtMD      string
+	DetailHTML     string
 }
 
 type MediaData struct {

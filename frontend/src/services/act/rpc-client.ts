@@ -26,6 +26,16 @@ function mapActType(actType: StreamActOptions["actType"]): ActType {
   }
 }
 
+function resolveLlmModel(modelProfile: StreamActOptions["modelProfile"]): string {
+  switch (modelProfile) {
+    case "deep_research":
+      return "deep_research";
+    case "flash":
+    default:
+      return "flash";
+  }
+}
+
 async function buildHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {};
 
@@ -158,6 +168,7 @@ export function createRpcActService(): ActPort {
           const workspaceId = options?.workspaceId ?? runContext.workspaceId;
           const topicId = options?.topicId ?? runContext.topicId;
           const queryWithLanguagePreference = applyResponseLanguagePreference(query);
+          const model = resolveLlmModel(options?.modelProfile);
           const headers = await buildHeaders();
           console.info("[RunAct request]", {
             workspaceId,
@@ -168,7 +179,9 @@ export function createRpcActService(): ActPort {
             userMediaCount: options?.userMedia?.length ?? 0,
             anchorNodeId: options?.anchorNodeId ?? "",
             contextNodeIds: options?.contextNodeIds ?? [],
+            selectedNodeContextsCount: options?.selectedNodeContexts?.length ?? 0,
             llmConfig: {
+              model,
               enableGrounding: options?.enableGrounding ?? false,
               enableThinking: options?.includeThoughts ?? false,
               modelProfile: options?.modelProfile ?? "flash",
@@ -184,7 +197,17 @@ export function createRpcActService(): ActPort {
               userMedia: options?.userMedia ?? [],
               anchorNodeId: options?.anchorNodeId ?? "",
               contextNodeIds: options?.contextNodeIds ?? [],
+              selectedNodeContexts: (options?.selectedNodeContexts ?? []).map((ctx) => ({
+                nodeId: ctx.nodeId,
+                label: ctx.label ?? "",
+                kind: ctx.kind ?? "",
+                contextSummary: ctx.contextSummary ?? "",
+                contentMd: ctx.contentMd ?? "",
+                thoughtMd: ctx.thoughtMd ?? "",
+                detailHtml: ctx.detailHtml ?? "",
+              })),
               llmConfig: {
+                model,
                 enableGrounding: options?.enableGrounding ?? false,
                 enableThinking: options?.includeThoughts ?? false,
               },

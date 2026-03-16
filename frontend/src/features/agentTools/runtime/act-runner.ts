@@ -38,6 +38,60 @@ function uniqueNodeIds(nodeIds: string[]): string[] {
   return ordered;
 }
 
+function compactText(value: unknown, maxLength = 500): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
+}
+
+function buildSelectedNodeContexts(
+  nodeIds: string[],
+  persistedNodes: Array<{ id: string; data?: Record<string, unknown> }>,
+  actNodes: Array<{ id: string; data?: Record<string, unknown> }>,
+): NonNullable<StreamActOptions["selectedNodeContexts"]> {
+  if (nodeIds.length === 0) {
+    return [];
+  }
+
+  const nodeById = new Map<string, { id: string; data?: Record<string, unknown> }>([
+    ...persistedNodes.map((node) => [node.id, node]),
+    ...actNodes.map((node) => [node.id, node]),
+  ]);
+
+  return nodeIds.map((nodeId) => {
+    const node = nodeById.get(nodeId);
+    if (!node) {
+      return { nodeId };
+    }
+
+    const data = node.data ?? {};
+    const label = compactText(data.label, 120) ?? "";
+    const kind = compactText(data.kind, 60);
+    const contextSummary = compactText(data.contextSummary, 400);
+    const contentMd = compactText(data.contentMd, 700);
+    const thoughtMd = compactText(data.thoughtMd, 300);
+    const detailHtml = compactText(data.detailHtml, 240);
+
+    return {
+      nodeId,
+      label,
+      kind: kind ?? undefined,
+      contextSummary: contextSummary ?? undefined,
+      contentMd: contentMd ?? undefined,
+      thoughtMd: thoughtMd ?? undefined,
+      detailHtml: detailHtml ?? undefined,
+    };
+  });
+}
+
 function shouldAutoEnableGrounding(query: string, actType: StreamActOptions["actType"]) {
   if (GROUNDING_HINT_PATTERN.test(query)) {
     return true;
@@ -64,6 +118,11 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
     ...(targetNodeId ? [targetNodeId] : []),
     ...(options?.contextNodeIds ?? selectedNodeIds),
   ]);
+  const selectedNodeContexts = buildSelectedNodeContexts(
+    options?.contextNodeIds ?? selectedNodeIds,
+    graphStore.persistedNodes as Array<{ id: string; data?: Record<string, unknown> }>,
+    graphStore.actNodes as Array<{ id: string; data?: Record<string, unknown> }>,
+  );
   const existingFrontendRootNode = graphStore.actNodes.find((node) => node.id === frontendRootNodeId);
 
   if (effectiveWorkspaceId !== runContext.workspaceId || effectiveTopicId !== runContext.topicId) {
@@ -202,6 +261,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       requestId,
       anchorNodeId: targetNodeId ?? options?.anchorNodeId,
       contextNodeIds: options?.contextNodeIds ?? selectedNodeIds,
+      selectedNodeContexts,
       enableGrounding: options?.enableGrounding
         ?? preferences.useWebGroundingOverride
         ?? shouldAutoEnableGrounding(query, options?.actType),
