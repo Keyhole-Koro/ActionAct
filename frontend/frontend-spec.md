@@ -222,6 +222,9 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * chevron click では直下の子ノード群を表示/非表示し、孫以下は親の表示状態に従って従属的に隠れる
 * persisted tree の初期表示は root のみでよい
 * current simplified frontend では persisted tree は Firestore 順の基本座標を使って表示してよく、force layout や自動クラスタ配置は要求しない
+* 追加の overview 表現として radial layout を持ってよい
+* radial layout は edge network を主表示にせず、親ノードの angular segment の中へ子ノード segment を再帰的に割り当てる `baumkuchen / sunburst` 型 UI とする
+* radial layout の hover は root 単位ではなく node segment 単位で扱い、hover した親 segment を拡大して配下 subtree を読みやすくしてよい
 * persisted tree の親子関係の間に `act-draft-node` を割り込ませない
 * `act-draft-node` は persisted tree と分離した補助表示として扱い、現在は単純な右側レーンまたは既存座標の維持でよい
 * `act-draft-node` は `created_by` または同等の frontend metadata を持ってよく、node card 上で `user` / `agent` の作成主体アイコンを表示してよい

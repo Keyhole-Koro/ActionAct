@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { GraphNodeRender } from '@/features/graph/types';
 
@@ -13,17 +13,25 @@ type RadialOverviewProps = {
     onToggleBranch: (nodeId: string) => void;
 };
 
-type RootSector = {
-    id: string;
-    label: string;
+type Segment = {
+    node: GraphNodeRender;
+    rootId: string;
+    depth: number;
     startAngle: number;
     endAngle: number;
+    innerRadius: number;
+    outerRadius: number;
+    hue: number;
 };
 
-type Ring = {
-    depth: number;
-    radius: number;
-};
+const CENTER_X = 940;
+const CENTER_Y = 680;
+const CANVAS_WIDTH = 1880;
+const CANVAS_HEIGHT = 1360;
+const INNER_RADIUS = 72;
+const RING_THICKNESS = 78;
+const RING_GAP = 10;
+const ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
 
 export function RadialOverview({
     nodes,
@@ -33,230 +41,558 @@ export function RadialOverview({
     onActivateNode,
     onToggleBranch,
 }: RadialOverviewProps) {
-    const [hoveredRootId, setHoveredRootId] = useState<string | null>(null);
+    const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+    const dragStateRef = useRef<{
+        pointerId: number;
+        startX: number;
+        startY: number;
+        scrollLeft: number;
+        scrollTop: number;
+    } | null>(null);
 
     const persistedNodes = useMemo(
         () => nodes.filter((node) => node.data?.nodeSource === 'persisted'),
         [nodes],
     );
 
-    const rootById = useMemo(() => {
-        const parentById = new Map(
-            persistedNodes.map((node) => {
-                const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
-                return [node.id, parentId];
-            }),
-        );
+    const nodeById = useMemo(
+        () => new Map(persistedNodes.map((node) => [node.id, node])),
+        [persistedNodes],
+    );
 
-        const resolved = new Map<string, string>();
-        for (const node of persistedNodes) {
-            let currentId: string | undefined = node.id;
-            let currentRoot = node.id;
-            while (currentId) {
-                const parentId = parentById.get(currentId);
-                if (!parentId) {
-                    currentRoot = currentId;
-                    break;
-                }
-                currentId = parentId;
+    const parentById = useMemo(
+        () => new Map(
+            persistedNodes.map((node) => [
+                node.id,
+                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
+            ]),
+        ),
+        [persistedNodes],
+    );
+
+    const childrenByParent = useMemo(() => {
+        const grouped = new Map<string | undefined, string[]>();
+
+        persistedNodes.forEach((node) => {
+            const parentId = parentById.get(node.id);
+            const bucket = grouped.get(parentId) ?? [];
+            bucket.push(node.id);
+            grouped.set(parentId, bucket);
+        });
+
+        for (const [parentId, childIds] of grouped.entries()) {
+            grouped.set(parentId, childIds.sort((leftId, rightId) => {
+                const left = nodeById.get(leftId);
+                const right = nodeById.get(rightId);
+                const leftDepth = depthById.get(leftId) ?? 0;
+                const rightDepth = depthById.get(rightId) ?? 0;
+                const leftLabel = left?.data?.label ?? leftId;
+                const rightLabel = right?.data?.label ?? rightId;
+
+                return leftDepth - rightDepth || leftLabel.localeCompare(rightLabel);
+            }));
+        }
+
+        return grouped;
+    }, [depthById, nodeById, parentById, persistedNodes]);
+
+    const ancestorPath = useMemo(() => {
+        if (!hoveredNodeId) {
+            return [];
+        }
+
+        const path: string[] = [];
+        let currentId: string | undefined = hoveredNodeId;
+
+        while (currentId) {
+            path.unshift(currentId);
+            currentId = parentById.get(currentId);
+        }
+
+        return path;
+    }, [hoveredNodeId, parentById]);
+
+    const ancestorSet = useMemo(() => new Set(ancestorPath), [ancestorPath]);
+
+    const descendantSet = useMemo(() => {
+        if (!hoveredNodeId) {
+            return new Set<string>();
+        }
+
+        const visited = new Set<string>();
+        const queue = [hoveredNodeId];
+
+        while (queue.length > 0) {
+            const currentId = queue.shift();
+            if (!currentId || visited.has(currentId)) {
+                continue;
             }
-            resolved.set(node.id, currentRoot);
-        }
-        return resolved;
-    }, [persistedNodes]);
-
-    const center = useMemo(() => {
-        const rootNodes = persistedNodes.filter((node) => rootIds.includes(node.id));
-        if (rootNodes.length === 0) {
-            return { x: 920, y: 700 };
+            visited.add(currentId);
+            const childIds = childrenByParent.get(currentId) ?? [];
+            queue.push(...childIds);
         }
 
-        const points = rootNodes.map((node) => ({
-            x: node.position.x,
-            y: node.position.y,
-        }));
+        return visited;
+    }, [childrenByParent, hoveredNodeId]);
 
-        return {
-            x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
-            y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
-        };
-    }, [persistedNodes, rootIds]);
-
-    const rings = useMemo(() => {
-        const depthGroups = new Map<number, Array<{ x: number; y: number }>>();
+    const visibleNodeIds = useMemo(() => {
+        const ids = new Set<string>();
 
         persistedNodes.forEach((node) => {
             const depth = depthById.get(node.id) ?? 0;
-            const bucket = depthGroups.get(depth) ?? [];
-            bucket.push({ x: node.position.x, y: node.position.y });
-            depthGroups.set(depth, bucket);
+            if (hoveredNodeId === null) {
+                if (depth <= 1) {
+                    ids.add(node.id);
+                }
+                return;
+            }
+
+            if (depth <= 1 || ancestorSet.has(node.id) || descendantSet.has(node.id)) {
+                ids.add(node.id);
+            }
         });
 
-        return [...depthGroups.entries()]
-            .sort((left, right) => left[0] - right[0])
-            .map(([depth, points]) => ({
-                depth,
-                radius: points.reduce((sum, point) => {
-                    const dx = point.x - center.x;
-                    const dy = point.y - center.y;
-                    return sum + Math.sqrt((dx * dx) + (dy * dy));
-                }, 0) / Math.max(points.length, 1),
-            }));
-    }, [center.x, center.y, depthById, persistedNodes]);
+        return ids;
+    }, [ancestorSet, depthById, descendantSet, hoveredNodeId, persistedNodes]);
 
-    const rootSectors = useMemo(() => {
-        return persistedNodes
-            .filter((node) => rootIds.includes(node.id))
-            .map((node) => ({
-                id: node.id,
-                label: node.data?.label ?? node.id,
-                angle: Math.atan2(node.position.y - center.y, node.position.x - center.x),
-            }))
-            .sort((left, right) => left.angle - right.angle)
-            .map((root, index, roots) => {
-                const previous = roots[(index - 1 + roots.length) % roots.length];
-                const next = roots[(index + 1) % roots.length];
-                const startAngle = midpointAngle(previous.angle, root.angle);
-                const endAngle = midpointAngle(root.angle, next.angle);
-                return {
-                    id: root.id,
-                    label: root.label,
-                    startAngle,
-                    endAngle: endAngle <= startAngle ? endAngle + (Math.PI * 2) : endAngle,
-                };
-            });
-    }, [center.x, center.y, persistedNodes, rootIds]);
+    const subtreeSizeById = useMemo(() => {
+        const memo = new Map<string, number>();
+
+        const countSubtree = (nodeId: string): number => {
+            const cached = memo.get(nodeId);
+            if (cached !== undefined) {
+                return cached;
+            }
+
+            const childIds = (childrenByParent.get(nodeId) ?? [])
+                .filter((childId) => visibleNodeIds.has(childId));
+
+            const size = 1 + childIds.reduce((sum, childId) => sum + countSubtree(childId), 0);
+            memo.set(nodeId, size);
+            return size;
+        };
+
+        visibleNodeIds.forEach((nodeId) => {
+            countSubtree(nodeId);
+        });
+
+        return memo;
+    }, [childrenByParent, visibleNodeIds]);
+
+    const segments = useMemo(() => {
+        const result: Segment[] = [];
+        const orderedRootIds = rootIds.filter((rootId) => visibleNodeIds.has(rootId));
+        if (orderedRootIds.length === 0) {
+            return result;
+        }
+
+        assignSegments({
+            nodeIds: orderedRootIds,
+            startAngle: -Math.PI / 2,
+            endAngle: (Math.PI * 3) / 2,
+            depth: 0,
+            rootId: null,
+            result,
+            nodeById,
+            childrenByParent,
+            visibleNodeIds,
+            subtreeSizeById,
+            hoveredNodeId,
+            branchHue: null,
+        });
+
+        return result;
+    }, [
+        childrenByParent,
+        hoveredNodeId,
+        nodeById,
+        rootIds,
+        subtreeSizeById,
+        visibleNodeIds,
+    ]);
+
+    useEffect(() => {
+        const viewport = viewportRef.current;
+        if (!viewport) {
+            return;
+        }
+
+        viewport.scrollLeft = Math.max((CANVAS_WIDTH - viewport.clientWidth) / 2, 0);
+        viewport.scrollTop = Math.max((CANVAS_HEIGHT - viewport.clientHeight) / 2, 0);
+    }, []);
+
+    const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        const viewport = viewportRef.current;
+        if (!viewport) {
+            return;
+        }
+
+        dragStateRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            scrollLeft: viewport.scrollLeft,
+            scrollTop: viewport.scrollTop,
+        };
+
+        viewport.setPointerCapture(event.pointerId);
+    };
+
+    const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        const viewport = viewportRef.current;
+        const dragState = dragStateRef.current;
+        if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
+            return;
+        }
+
+        const deltaX = event.clientX - dragState.startX;
+        const deltaY = event.clientY - dragState.startY;
+        viewport.scrollLeft = dragState.scrollLeft - deltaX;
+        viewport.scrollTop = dragState.scrollTop - deltaY;
+    };
+
+    const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+        const viewport = viewportRef.current;
+        const dragState = dragStateRef.current;
+        if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
+            return;
+        }
+
+        viewport.releasePointerCapture(event.pointerId);
+        dragStateRef.current = null;
+    };
 
     return (
-        <div className="relative h-full w-full overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.98),rgba(248,250,252,0.92)_54%,rgba(241,245,249,0.92)_100%)]">
-            <svg className="absolute inset-0 h-full w-full">
-                {rootSectors.flatMap((sector, sectorIndex) => (
-                    rings.map((ring, ringIndex) => {
-                        const previousRadius = ringIndex === 0
-                            ? Math.max(ring.radius - 74, 44)
-                            : rings[ringIndex - 1].radius + 20;
-                        const outerRadius = ring.radius + 52 + (hoveredRootId === sector.id ? 26 : 0);
-                        const startAngle = sector.startAngle - (hoveredRootId === sector.id ? 0.05 : 0);
-                        const endAngle = sector.endAngle + (hoveredRootId === sector.id ? 0.05 : 0);
-                        const fillPalette = [
-                            'rgba(191,219,254,0.22)',
-                            'rgba(196,181,253,0.18)',
-                            'rgba(167,243,208,0.18)',
-                            'rgba(253,230,138,0.18)',
-                        ];
+        <div
+            ref={viewportRef}
+            className="relative h-full w-full overflow-auto rounded-[28px] bg-slate-50 cursor-grab active:cursor-grabbing"
+            onMouseLeave={() => setHoveredNodeId(null)}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+        >
+            <div
+                className="relative"
+                style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
+            >
+            <svg className="absolute inset-0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
+                {segments.map((segment, index) => {
+                    const isFocused = hoveredNodeId !== null
+                        && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
+                    const isMuted = hoveredNodeId !== null && !isFocused;
+                    const palette = getSegmentPalette(segment.hue, segment.depth);
 
-                        return (
-                            <path
-                                key={`sector-${sector.id}-${ring.depth}`}
-                                d={describeAnnularSector(center.x, center.y, previousRadius, outerRadius, startAngle, endAngle)}
-                                fill={fillPalette[(sectorIndex + ringIndex) % fillPalette.length]}
-                                stroke={hoveredRootId === sector.id ? 'rgba(148,163,184,0.48)' : 'rgba(255,255,255,0.7)'}
-                                strokeWidth={hoveredRootId === sector.id ? 1.8 : 1}
-                                onMouseEnter={() => setHoveredRootId(sector.id)}
-                                onMouseLeave={() => setHoveredRootId(null)}
-                                onClick={() => onActivateNode(sector.id)}
-                                className="cursor-pointer transition-all duration-200"
-                            />
-                        );
-                    })
-                ))}
-                {persistedNodes.map((node) => {
-                    const rootId = rootById.get(node.id) ?? node.id;
-                    const isHovered = hoveredRootId === rootId;
                     return (
-                        <line
-                            key={`ray-${node.id}`}
-                            x1={center.x}
-                            y1={center.y}
-                            x2={node.position.x}
-                            y2={node.position.y}
-                            stroke={isHovered ? 'rgba(100,116,139,0.34)' : 'rgba(148,163,184,0.18)'}
-                            strokeWidth={isHovered ? 2 : 1.2}
-                        />
+                        <g key={`segment-${segment.node.id}`}>
+                            <path
+                                d={describeAnnularSector(
+                                    CENTER_X,
+                                    CENTER_Y,
+                                    segment.innerRadius,
+                                    segment.outerRadius,
+                                    segment.startAngle,
+                                    segment.endAngle,
+                                )}
+                                fill={palette[0]}
+                                fillOpacity={isMuted ? 0.18 : (isFocused ? 0.96 : 0.74)}
+                                stroke={palette[1]}
+                                strokeOpacity={isMuted ? 0.22 : 0.92}
+                                strokeWidth={isFocused ? 2.2 : 1.2}
+                                className="cursor-pointer transition-all duration-500 ease-out"
+                                onMouseEnter={() => setHoveredNodeId(segment.node.id)}
+                                onClick={() => onActivateNode(segment.node.id)}
+                            />
+                            <path
+                                d={describeRadialGuide(
+                                    CENTER_X,
+                                    CENTER_Y,
+                                    segment.innerRadius,
+                                    segment.outerRadius,
+                                    (segment.startAngle + segment.endAngle) / 2,
+                                )}
+                                stroke={isMuted ? 'rgba(148,163,184,0.08)' : 'rgba(71,85,105,0.16)'}
+                                strokeWidth={isFocused ? 1.6 : 1}
+                                strokeLinecap="round"
+                            />
+                        </g>
                     );
                 })}
             </svg>
 
-            {rootSectors.map((sector) => {
-                const angle = (sector.startAngle + sector.endAngle) / 2;
-                const labelRadius = (rings[0]?.radius ?? 180) + 46;
-                const point = polarToCartesian(center.x, center.y, labelRadius, angle);
-                const isHovered = hoveredRootId === sector.id;
-
-                return (
-                    <button
-                        key={`sector-label-${sector.id}`}
-                        type="button"
-                        className={[
-                            'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-3 py-1.5 text-[11px] font-semibold backdrop-blur-sm transition-all duration-200',
-                            isHovered
-                                ? 'border-slate-400 bg-white text-slate-900 shadow-md'
-                                : 'border-white/80 bg-white/84 text-slate-600 shadow-sm',
-                        ].join(' ')}
-                        style={{ left: point.x, top: point.y }}
-                        onMouseEnter={() => setHoveredRootId(sector.id)}
-                        onMouseLeave={() => setHoveredRootId(null)}
-                        onFocus={() => setHoveredRootId(sector.id)}
-                        onBlur={() => setHoveredRootId(null)}
-                        onClick={() => onActivateNode(sector.id)}
-                    >
-                        {sector.label}
-                    </button>
+            {segments.map((segment) => {
+                const point = polarToCartesian(
+                    CENTER_X,
+                    CENTER_Y,
+                    getNodeOrbitRadius(segment.depth),
+                    (segment.startAngle + segment.endAngle) / 2,
                 );
-            })}
-
-            {persistedNodes.map((node) => {
-                const rootId = rootById.get(node.id) ?? node.id;
-                const isHovered = hoveredRootId === rootId;
-                const hasHoveredRoot = hoveredRootId !== null;
-                const depth = depthById.get(node.id) ?? 0;
-                const selected = selectedNodeIds.includes(node.id);
-                const baseSize = depth === 0 ? 88 : (depth === 1 ? 62 : (depth === 2 ? 52 : 42));
-                const scale = isHovered ? 1.7 : (hasHoveredRoot ? 0.82 : 1);
-                const fontSize = isHovered ? (depth === 0 ? 13 : 11) : (depth === 0 ? 10 : 9);
+                const isSelected = selectedNodeIds.includes(segment.node.id);
+                const isFocused = hoveredNodeId !== null
+                    && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
+                const isMuted = hoveredNodeId !== null && !isFocused;
+                const depth = segment.depth;
+                const scale = hoveredNodeId === null
+                    ? (depth === 0 ? 1 : (depth === 1 ? 0.88 : 0.78))
+                    : (isFocused ? (depth <= 1 ? 1.22 : 1.48) : (depth <= 1 ? 0.82 : 0.58));
+                const baseSize = depth === 0 ? 66 : (depth === 1 ? 40 : (depth === 2 ? 24 : 18));
+                const size = Math.round(baseSize * scale);
+                const baseFontSize = hoveredNodeId !== null && isFocused
+                    ? (depth === 0 ? 11.5 : (depth === 1 ? 10 : 8.5))
+                    : (depth === 0 ? 8.5 : (depth === 1 ? 7.5 : 6.5));
+                const fontSize = baseFontSize * Math.max(scale, 0.85);
 
                 return (
                     <button
-                        key={`radial-node-${node.id}`}
+                        key={`node-${segment.node.id}`}
                         type="button"
                         className={[
-                            'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border text-center transition-all duration-200',
-                            selected
-                                ? 'border-primary bg-white text-slate-900 shadow-md ring-2 ring-primary/70'
-                                : 'border-white/90 bg-white/96 text-slate-700 shadow-sm',
+                            'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border text-center shadow-sm transition-all duration-500 ease-out',
+                            isSelected
+                                ? 'border-primary bg-white text-slate-900 ring-2 ring-primary/60'
+                                : 'border-white/90 bg-white text-slate-700',
                         ].join(' ')}
                         style={{
-                            left: node.position.x,
-                            top: node.position.y,
-                            width: baseSize,
-                            height: baseSize,
-                            transform: `translate(-50%, -50%) scale(${scale})`,
-                            zIndex: isHovered ? 50 : (selected ? 45 : 30),
+                            left: point.x,
+                            top: point.y,
+                            width: size,
+                            height: size,
+                            transform: 'translate(-50%, -50%)',
+                            opacity: isMuted ? (depth <= 1 ? 0.36 : 0.08) : 1,
+                            zIndex: isFocused ? 40 : (isSelected ? 35 : 20),
                         }}
-                        onMouseEnter={() => setHoveredRootId(rootId)}
-                        onMouseLeave={() => setHoveredRootId(null)}
-                        onClick={() => onActivateNode(node.id)}
-                        onDoubleClick={() => onToggleBranch(node.id)}
+                        onMouseEnter={() => setHoveredNodeId(segment.node.id)}
+                        onFocus={() => setHoveredNodeId(segment.node.id)}
+                        onBlur={() => setHoveredNodeId(null)}
+                        onClick={() => onActivateNode(segment.node.id)}
+                        onDoubleClick={() => onToggleBranch(segment.node.id)}
                     >
                         <span
-                            className="block px-2 font-semibold leading-tight"
+                            className="block px-1 font-semibold leading-tight"
                             style={{ fontSize }}
                         >
-                            {node.data?.label}
+                            {formatRadialLabel(
+                                segment.node.data?.label ?? segment.node.id,
+                                depth,
+                                hoveredNodeId !== null && isFocused,
+                            )}
                         </span>
                     </button>
                 );
             })}
+
+            {segments
+                .filter((segment) => segment.depth === 0)
+                .map((segment) => {
+                    const labelPoint = polarToCartesian(
+                        CENTER_X,
+                        CENTER_Y,
+                        getRootLabelRadius(),
+                        (segment.startAngle + segment.endAngle) / 2,
+                    );
+                    const isHovered = hoveredNodeId === segment.node.id || descendantSet.has(segment.node.id);
+
+                    return (
+                        <button
+                            key={`root-label-${segment.node.id}`}
+                        type="button"
+                        className={[
+                            'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-3 py-1 text-[11px] font-semibold transition-all duration-500 ease-out',
+                            isHovered
+                                ? 'border-slate-400 bg-white text-slate-900 shadow-md'
+                                : 'border-white/90 bg-white/92 text-slate-600 shadow-sm',
+                            ].join(' ')}
+                            style={{ left: labelPoint.x, top: labelPoint.y }}
+                            onMouseEnter={() => setHoveredNodeId(segment.node.id)}
+                            onFocus={() => setHoveredNodeId(segment.node.id)}
+                            onBlur={() => setHoveredNodeId(null)}
+                            onClick={() => onActivateNode(segment.node.id)}
+                        >
+                            {formatRootLabel(segment.node.data?.label ?? segment.node.id)}
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 }
 
-function midpointAngle(left: number, right: number) {
-    let normalizedRight = right;
-    if (normalizedRight < left) {
-        normalizedRight += Math.PI * 2;
+function assignSegments({
+    nodeIds,
+    startAngle,
+    endAngle,
+    depth,
+    rootId,
+    result,
+    nodeById,
+    childrenByParent,
+    visibleNodeIds,
+    subtreeSizeById,
+    hoveredNodeId,
+    branchHue,
+}: {
+    nodeIds: string[];
+    startAngle: number;
+    endAngle: number;
+    depth: number;
+    rootId: string | null;
+    result: Segment[];
+    nodeById: Map<string, GraphNodeRender>;
+    childrenByParent: Map<string | undefined, string[]>;
+    visibleNodeIds: Set<string>;
+    subtreeSizeById: Map<string, number>;
+    hoveredNodeId: string | null;
+    branchHue: number | null;
+}) {
+    const availableIds = nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId));
+    if (availableIds.length === 0) {
+        return;
     }
-    return (left + normalizedRight) / 2;
+
+    const siblingGap = Math.min(0.08, depth === 0 ? 0.06 : (depth === 1 ? 0.04 : 0.025));
+    const totalGap = siblingGap * Math.max(availableIds.length - 1, 0);
+    const span = Math.max(endAngle - startAngle - totalGap, 0.24);
+
+    const weightedChildren = availableIds.map((nodeId) => {
+        const subtreeSize = subtreeSizeById.get(nodeId) ?? 1;
+        const branchContainsHover = hoveredNodeId !== null && isSameOrAncestor(nodeId, hoveredNodeId, childrenByParent);
+        const branchMultiplier = hoveredNodeId === null
+            ? 1
+            : (nodeId === hoveredNodeId
+                ? 2.85
+                : (branchContainsHover ? 1.95 : 0.72));
+
+        return {
+            nodeId,
+            weight: subtreeSize * branchMultiplier,
+        };
+    });
+
+    const totalWeight = weightedChildren.reduce((sum, child) => sum + child.weight, 0);
+    let cursor = startAngle;
+
+    weightedChildren.forEach(({ nodeId, weight }) => {
+        const node = nodeById.get(nodeId);
+        if (!node) {
+            return;
+        }
+
+        const childSpan = span * (weight / Math.max(totalWeight, 1));
+        const childStart = cursor;
+        const childEnd = childStart + childSpan;
+        const resolvedRootId = rootId ?? nodeId;
+        const innerRadius = getRingInnerRadius(depth);
+        const outerRadius = getRingOuterRadius(depth);
+        const siblingIds = availableIds;
+        const siblingIndex = siblingIds.indexOf(nodeId);
+        const normalizedOffset = siblingIds.length <= 1
+            ? 0
+            : ((siblingIndex / (siblingIds.length - 1)) - 0.5);
+        const rootHue = branchHue ?? ROOT_HUES[siblingIndex % ROOT_HUES.length];
+        const childHue = normalizeHue(rootHue + (normalizedOffset * Math.max(28 - (depth * 5), 8)));
+
+        result.push({
+            node,
+            rootId: resolvedRootId,
+            depth,
+            startAngle: childStart,
+            endAngle: childEnd,
+            innerRadius,
+            outerRadius,
+            hue: childHue,
+        });
+
+        const childIds = childrenByParent.get(nodeId) ?? [];
+        assignSegments({
+            nodeIds: childIds,
+            startAngle: childStart,
+            endAngle: childEnd,
+            depth: depth + 1,
+            rootId: resolvedRootId,
+            result,
+            nodeById,
+            childrenByParent,
+            visibleNodeIds,
+            subtreeSizeById,
+            hoveredNodeId,
+            branchHue: childHue,
+        });
+
+        cursor = childEnd + siblingGap;
+    });
+}
+
+function getRingInnerRadius(depth: number) {
+    return INNER_RADIUS + (depth * (RING_THICKNESS + RING_GAP));
+}
+
+function getRingOuterRadius(depth: number) {
+    return getRingInnerRadius(depth) + RING_THICKNESS;
+}
+
+function getNodeOrbitRadius(depth: number) {
+    return getRingInnerRadius(depth) + (RING_THICKNESS / 2);
+}
+
+function getRootLabelRadius() {
+    return getRingOuterRadius(0) + 28;
+}
+
+function getSegmentPalette(hue: number, depth: number): [string, string] {
+    const saturation = Math.max(72 - (depth * 4), 54);
+    const fillLightness = Math.min(86 + (depth * 2), 94);
+    const strokeLightness = Math.min(74 + (depth * 2), 88);
+
+    return [
+        `hsla(${hue} ${saturation}% ${fillLightness}% / 1)`,
+        `hsla(${hue} ${Math.min(saturation + 4, 82)}% ${strokeLightness}% / 1)`,
+    ];
+}
+
+function normalizeHue(hue: number) {
+    const normalized = hue % 360;
+    return normalized < 0 ? normalized + 360 : normalized;
+}
+
+function isSameOrAncestor(
+    possibleAncestorId: string,
+    nodeId: string,
+    childrenByParent: Map<string | undefined, string[]>,
+) {
+    if (possibleAncestorId === nodeId) {
+        return true;
+    }
+
+    const queue = [...(childrenByParent.get(possibleAncestorId) ?? [])];
+    while (queue.length > 0) {
+        const currentId = queue.shift();
+        if (!currentId) {
+            continue;
+        }
+        if (currentId === nodeId) {
+            return true;
+        }
+        queue.push(...(childrenByParent.get(currentId) ?? []));
+    }
+
+    return false;
+}
+
+function formatRootLabel(label: string) {
+    return truncateLabel(label, 20);
+}
+
+function formatRadialLabel(label: string, depth: number, isFocused: boolean) {
+    if (isFocused) {
+        return depth <= 1 ? truncateLabel(label, 24) : truncateLabel(label, 18);
+    }
+
+    return truncateLabel(label, depth === 0 ? 14 : (depth === 1 ? 10 : 7));
+}
+
+function truncateLabel(label: string, maxLength: number) {
+    return label.length <= maxLength ? label : `${label.slice(0, maxLength - 1)}…`;
 }
 
 function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
@@ -264,6 +600,19 @@ function polarToCartesian(cx: number, cy: number, radius: number, angle: number)
         x: cx + (Math.cos(angle) * radius),
         y: cy + (Math.sin(angle) * radius),
     };
+}
+
+function describeRadialGuide(
+    cx: number,
+    cy: number,
+    innerRadius: number,
+    outerRadius: number,
+    angle: number,
+) {
+    const inner = polarToCartesian(cx, cy, innerRadius, angle);
+    const outer = polarToCartesian(cx, cy, outerRadius, angle);
+
+    return `M ${inner.x} ${inner.y} L ${outer.x} ${outer.y}`;
 }
 
 function describeAnnularSector(

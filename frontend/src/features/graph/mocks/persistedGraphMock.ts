@@ -24,6 +24,10 @@ type ClusterSeed = {
     }>;
 };
 
+const EXTRA_CLAIMS_PER_SUBCLUSTER = 2;
+const DETAILS_PER_CLAIM = 3;
+const LEAVES_PER_DETAIL = 2;
+
 const CLUSTER_SEEDS: ClusterSeed[] = [
     {
         id: 'policy',
@@ -381,10 +385,39 @@ export function createPersistedGraphMock(topicId: string): PersistedGraphMock {
             nodes.push(createNode(subclusterId, subcluster.label, topicId, clusterId, 'subcluster', subcluster.summary));
             edges.push(createContainsEdge(clusterId, subclusterId));
 
-            for (const claim of subcluster.claims) {
+            const claims = [
+                ...subcluster.claims,
+                ...createSyntheticClaims(cluster, subcluster, EXTRA_CLAIMS_PER_SUBCLUSTER),
+            ];
+
+            for (const claim of claims) {
                 const claimId = `claim:${cluster.id}:${subcluster.id}:${claim.id}`;
                 nodes.push(createNode(claimId, claim.label, topicId, subclusterId, 'claim', claim.summary));
                 edges.push(createContainsEdge(subclusterId, claimId));
+
+                for (let detailIndex = 0; detailIndex < DETAILS_PER_CLAIM; detailIndex += 1) {
+                    const detailId = `detail:${cluster.id}:${subcluster.id}:${claim.id}:${detailIndex}`;
+                    const detailLabel = detailIndex === 0
+                        ? 'Execution detail'
+                        : (detailIndex === 1 ? 'Constraint detail' : 'Signal detail');
+                    const detailSummary = detailIndex === 0
+                        ? `${claim.label} depends on concrete delivery sequencing, local implementation, and operator throughput.`
+                        : (detailIndex === 1
+                            ? `${claim.label} is limited by financing, permitting, or supply-side bottlenecks that vary by region.`
+                            : `${claim.label} becomes legible through recurring signals, lead indicators, and local measurement loops.`);
+                    nodes.push(createNode(detailId, detailLabel, topicId, claimId, 'claim', detailSummary));
+                    edges.push(createContainsEdge(claimId, detailId));
+
+                    for (let leafIndex = 0; leafIndex < LEAVES_PER_DETAIL; leafIndex += 1) {
+                        const leafId = `leaf:${cluster.id}:${subcluster.id}:${claim.id}:${detailIndex}:${leafIndex}`;
+                        const leafLabel = leafIndex === 0 ? 'Case note' : 'Metric note';
+                        const leafSummary = leafIndex === 0
+                            ? `${claim.label} shows up differently across regions, operators, and delivery environments.`
+                            : `${claim.label} can be tracked through local throughput, delay, cost, and adoption metrics.`;
+                        nodes.push(createNode(leafId, leafLabel, topicId, detailId, 'claim', leafSummary));
+                        edges.push(createContainsEdge(detailId, leafId));
+                    }
+                }
             }
         }
     }
@@ -484,4 +517,16 @@ function createRelationEdge(id: string, source: string, target: string): Edge {
             strokeWidth: 2,
         },
     };
+}
+
+function createSyntheticClaims(
+    cluster: ClusterSeed,
+    subcluster: ClusterSeed['subclusters'][number],
+    count: number,
+) {
+    return Array.from({ length: count }, (_, index) => ({
+        id: `synthetic-${index + 1}`,
+        label: `${subcluster.label} Pattern ${index + 1}`,
+        summary: `${subcluster.label} in ${cluster.label} depends on repeated operational patterns, region-specific constraints, and compounding execution choices.`,
+    }));
 }
