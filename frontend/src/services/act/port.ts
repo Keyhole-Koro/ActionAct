@@ -1,7 +1,18 @@
 export interface PatchOp {
-    type: 'upsert' | 'append_md' | 'remove';
+    type: 'upsert' | 'append_md' | 'text_delta' | 'remove';
     nodeId: string;
-    data?: Partial<{ label: string; kind: string; contentMd: string; referencedNodeIds: string[]; createdBy: 'user' | 'agent'; actions: { label: string, execute: string }[] }>;
+    data?: Partial<{
+        label: string;
+        kind: string;
+        contentMd: string;
+        seq: bigint;
+        expectedOffset: number;
+        thoughtMd: string;
+        isThought: boolean;
+        referencedNodeIds: string[];
+        createdBy: 'user' | 'agent';
+        actions: { label: string, execute: string }[];
+    }>;
 }
 
 export interface StreamResponse {

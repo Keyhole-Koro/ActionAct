@@ -14,6 +14,7 @@ import {
     Loader2,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
+import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import {
     GRAPH_NODE_EXPANDED_MAX_HEIGHT,
     GRAPH_NODE_EXPANDED_WIDTH,
@@ -40,6 +41,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
 
 export function GraphNodeCard({ id, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
     const updateNodeInternals = useUpdateNodeInternals();
+    const showThoughts = useStreamPreferencesStore((state) => state.showThoughts);
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
@@ -68,7 +70,8 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const inputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
-    const hasBodyText = Boolean(data.contextSummary || data.contentMd);
+    const hasThoughtText = Boolean(showThoughts && data.thoughtMd);
+    const hasBodyText = Boolean(data.contextSummary || data.contentMd || hasThoughtText);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
     const hasReferences = referencedNodes.length > 0;
     const actStageLabel = actStage === 'thinking'
@@ -85,7 +88,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
         streaming: data.isStreaming === true,
         actStage: data.isExpanded === true || data.isStreaming === true ? data.actStage : undefined,
         bodyLength: data.isExpanded === true
-            ? (data.contentMd?.length ?? 0) + (data.contextSummary?.length ?? 0) + (data.detailHtml?.length ?? 0)
+            ? (data.contentMd?.length ?? 0) + (data.thoughtMd?.length ?? 0) + (data.contextSummary?.length ?? 0) + (data.detailHtml?.length ?? 0)
             : 0,
         referenceCount: data.isExpanded === true ? (data.referencedNodes?.length ?? 0) : 0,
     });
@@ -386,6 +389,15 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                             {data.contentMd ? (
                                 <div className={`${isActNode ? 'text-[13px]' : 'text-sm'} text-foreground/80 leading-relaxed whitespace-pre-wrap`}>
                                     {data.contentMd}
+                                </div>
+                            ) : null}
+
+                            {showThoughts && data.thoughtMd ? (
+                                <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
+                                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                    <div className={`${isActNode ? 'text-[12px]' : 'text-xs'} whitespace-pre-wrap leading-relaxed text-amber-900/85`}>
+                                        {data.thoughtMd}
+                                    </div>
                                 </div>
                             ) : null}
 

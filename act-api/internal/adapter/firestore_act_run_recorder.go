@@ -48,11 +48,16 @@ func (r *FirestoreActRunRecorder) AppendEvent(ctx context.Context, input domain.
 	if patchOps := evt.GetPatchOps(); patchOps != nil {
 		ops := make([]map[string]any, 0, len(patchOps.GetOps()))
 		for _, op := range patchOps.GetOps() {
-			ops = append(ops, map[string]any{
+			payloadOp := map[string]any{
 				"op":      op.GetOp(),
 				"nodeId":  op.GetNodeId(),
 				"content": op.GetContent(),
-			})
+			}
+			if op.GetSeq() > 0 {
+				payloadOp["seq"] = op.GetSeq()
+				payloadOp["expectedOffset"] = op.GetExpectedOffset()
+			}
+			ops = append(ops, payloadOp)
 		}
 		payload["patchOps"] = ops
 	}

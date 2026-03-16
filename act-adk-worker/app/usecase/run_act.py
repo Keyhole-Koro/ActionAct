@@ -113,12 +113,15 @@ class RunActUsecase:
                 # Accumulate answer text (not thoughts) as append_md
                 if not chunk.is_thought and chunk.text:
                     seq += 1
+                    expected_offset = len(accumulated)
                     yield RunActEvent(
                         type="patch_ops",
                         ops=[PatchOp(
                             op="append_md",
                             node_id=node_id,
                             content=chunk.text,
+                            seq=seq,
+                            expected_offset=expected_offset,
                         )],
                     )
                     accumulated += chunk.text

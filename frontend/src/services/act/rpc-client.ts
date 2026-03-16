@@ -48,10 +48,15 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
   }
 
   if (op.op === "append_md") {
+    const hasSeq = op.seq > 0n;
     return {
       type: "append_md",
       nodeId: op.nodeId,
-      data: { contentMd: op.content ?? "" },
+      data: {
+        contentMd: op.content ?? "",
+        ...(hasSeq ? { seq: op.seq } : {}),
+        ...(hasSeq ? { expectedOffset: op.expectedOffset } : {}),
+      },
     };
   }
 
@@ -68,7 +73,34 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
   return null;
 }
 
-function handleEvent(event: RunActEvent, onPatch: (patch: PatchOp) => void, onDone: () => void, onError: (err: Error) => void): void {
+function toTextDeltaPatch(event: RunActEvent): PatchOp | null {
+  if (event.event.case !== "textDelta") {
+    return null;
+  }
+
+  const chunk = event.event.value.text ?? "";
+  if (!chunk) {
+    return null;
+  }
+
+  return {
+    type: "text_delta",
+    // Proto text_delta has no node_id. Root binding is resolved in act-runner.
+    nodeId: "root",
+    data: {
+      contentMd: chunk,
+      thoughtMd: chunk,
+      isThought: event.isThought,
+    },
+  };
+}
+
+function handleEvent(
+  event: RunActEvent,
+  onPatch: (patch: PatchOp) => void,
+  onDone: () => void,
+  onError: (err: Error) => void,
+): { reachedTerminal: boolean } {
   if (event.event.case === "patchOps") {
     for (const op of event.event.value.ops) {
       const mapped = toUiPatch(op);
@@ -76,12 +108,15 @@ function handleEvent(event: RunActEvent, onPatch: (patch: PatchOp) => void, onDo
         onPatch(mapped);
       }
     }
-    return;
+    return { reachedTerminal: false };
   }
 
   if (event.event.case === "textDelta") {
-    // Spec: text_delta is a transient stream buffer, not canonical node content.
-    return;
+    const transientPatch = toTextDeltaPatch(event);
+    if (transientPatch) {
+      onPatch(transientPatch);
+    }
+    return { reachedTerminal: false };
   }
 
   if (event.event.case === "terminal") {
@@ -89,12 +124,15 @@ function handleEvent(event: RunActEvent, onPatch: (patch: PatchOp) => void, onDo
     if (terminal.error) {
       const stage = terminal.error.stage ? `[${terminal.error.stage}] ` : "";
       onError(new Error(`${stage}${terminal.error.message || "RunAct failed"}`));
-      return;
+      return { reachedTerminal: true };
     }
     if (terminal.done) {
       onDone();
+      return { reachedTerminal: true };
     }
   }
+
+  return { reachedTerminal: false };
 }
 
 export function createRpcActService(): ActPort {
@@ -112,6 +150,7 @@ export function createRpcActService(): ActPort {
   return {
     streamAct(query, onPatch, onDone, onError, options?: StreamActOptions) {
       const abortController = new AbortController();
+      let terminalSeen = false;
 
       void (async () => {
         try {
@@ -160,10 +199,18 @@ export function createRpcActService(): ActPort {
             if (abortController.signal.aborted) {
               return;
             }
-            handleEvent(event, onPatch, onDone, onError);
+
+            if (terminalSeen) {
+              continue;
+            }
+
+            const { reachedTerminal } = handleEvent(event, onPatch, onDone, onError);
+            if (reachedTerminal) {
+              terminalSeen = true;
+            }
           }
 
-          if (!abortController.signal.aborted) {
+          if (!abortController.signal.aborted && !terminalSeen) {
             onDone();
           }
         } catch (e) {

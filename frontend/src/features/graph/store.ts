@@ -39,6 +39,7 @@ interface GraphState {
     resetActNode: (nodeId: string, payload?: { label?: string; referencedNodeIds?: string[] }) => void;
     updateActNodeLabel: (nodeId: string, label: string) => void;
     appendActNodeContent: (nodeId: string, content: string) => void;
+    appendActNodeThought: (nodeId: string, thought: string) => void;
     removeActNode: (nodeId: string) => void;
 }
 
@@ -293,6 +294,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                             ...(payload?.label !== undefined ? { label: payload.label } : {}),
                             ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                             contentMd: '',
+                            thoughtMd: '',
                             contextSummary: '',
                             detailHtml: '',
                         },
@@ -314,6 +316,14 @@ export const useGraphStore = create<GraphState>((set) => ({
         actNodes: state.actNodes.map(n =>
             n.id === nodeId
                 ? { ...n, data: { ...n.data, contentMd: (n.data.contentMd as string || '') + content } }
+                : n
+        )
+    })),
+
+    appendActNodeThought: (nodeId, thought) => set((state) => ({
+        actNodes: state.actNodes.map(n =>
+            n.id === nodeId
+                ? { ...n, data: { ...n.data, thoughtMd: ((n.data.thoughtMd as string) || '') + thought } }
                 : n
         )
     })),

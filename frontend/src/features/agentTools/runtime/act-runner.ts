@@ -84,6 +84,8 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
   graphStore.addStreamingNode(frontendRootNodeId);
 
   const touchedNodeIds = new Set<string>();
+  const seenAppendSeqByNode = new Map<string, Set<bigint>>();
+  const seenAppendSignaturesByNode = new Map<string, Set<string>>();
   const persistTouchedNodes = async () => {
     const { actNodes } = useGraphStore.getState();
     const nodesById = new Map(actNodes.map((node) => [node.id, node]));
@@ -142,7 +144,46 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       }
 
       if (patch.type === "append_md" && patch.data?.contentMd) {
-        useGraphStore.getState().appendActNodeContent(normalizedNodeId, patch.data.contentMd);
+        const chunk = patch.data.contentMd;
+        const currentNode = useGraphStore.getState().actNodes.find((node) => node.id === normalizedNodeId);
+        const beforeLength = typeof currentNode?.data?.contentMd === "string"
+          ? currentNode.data.contentMd.length
+          : 0;
+
+        if (typeof patch.data.expectedOffset === "number" && patch.data.expectedOffset >= 0 && patch.data.expectedOffset !== beforeLength) {
+          console.warn("[RunAct] append_md dropped due to expectedOffset mismatch", {
+            nodeId: normalizedNodeId,
+            expectedOffset: patch.data.expectedOffset,
+            actualOffset: beforeLength,
+            requestId,
+          });
+          return;
+        }
+
+        if (typeof patch.data.seq === "bigint") {
+          const seenSeqForNode = seenAppendSeqByNode.get(normalizedNodeId) ?? new Set<bigint>();
+          if (seenSeqForNode.has(patch.data.seq)) {
+            return;
+          }
+          seenSeqForNode.add(patch.data.seq);
+          seenAppendSeqByNode.set(normalizedNodeId, seenSeqForNode);
+          useGraphStore.getState().appendActNodeContent(normalizedNodeId, chunk);
+          return;
+        }
+
+        const signature = `${beforeLength}:${chunk}`;
+        const seenForNode = seenAppendSignaturesByNode.get(normalizedNodeId) ?? new Set<string>();
+        if (seenForNode.has(signature)) {
+          return;
+        }
+        seenForNode.add(signature);
+        seenAppendSignaturesByNode.set(normalizedNodeId, seenForNode);
+        useGraphStore.getState().appendActNodeContent(normalizedNodeId, chunk);
+        return;
+      }
+
+      if (patch.type === "text_delta" && patch.data?.isThought && patch.data.thoughtMd) {
+        useGraphStore.getState().appendActNodeThought(normalizedNodeId, patch.data.thoughtMd);
       }
     },
     async () => {

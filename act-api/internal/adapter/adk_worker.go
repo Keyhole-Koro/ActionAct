@@ -75,9 +75,11 @@ type workerEvent struct {
 }
 
 type workerPatch struct {
-	Op      string `json:"op"`
-	NodeID  string `json:"node_id"`
-	Content string `json:"content"`
+	Op             string `json:"op"`
+	NodeID         string `json:"node_id"`
+	Content        string `json:"content"`
+	Seq            uint64 `json:"seq,omitempty"`
+	ExpectedOffset uint32 `json:"expected_offset,omitempty"`
 }
 
 type workerError struct {
@@ -222,9 +224,11 @@ func toProtoEvent(evt workerEvent) (*actv1.RunActEvent, bool, error) {
 		ops := make([]*actv1.PatchOp, len(evt.Ops))
 		for i, op := range evt.Ops {
 			ops[i] = &actv1.PatchOp{
-				Op:      op.Op,
-				NodeId:  op.NodeID,
-				Content: op.Content,
+				Op:             op.Op,
+				NodeId:         op.NodeID,
+				Content:        op.Content,
+				Seq:            op.Seq,
+				ExpectedOffset: op.ExpectedOffset,
 			}
 		}
 		return &actv1.RunActEvent{

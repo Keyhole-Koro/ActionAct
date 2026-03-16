@@ -511,12 +511,16 @@ func (x *PatchOps) GetOps() []*PatchOp {
 }
 
 type PatchOp struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Op            string                 `protobuf:"bytes,1,opt,name=op,proto3" json:"op,omitempty"` // "upsert" or "append_md"
-	NodeId        string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Op      string                 `protobuf:"bytes,1,opt,name=op,proto3" json:"op,omitempty"` // "upsert" or "append_md"
+	NodeId  string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Content string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	// request 内で単調増加する append シーケンス。
+	Seq uint64 `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
+	// append 適用前の本文長。frontend 側の安全適用に使う。
+	ExpectedOffset uint32 `protobuf:"varint,5,opt,name=expected_offset,json=expectedOffset,proto3" json:"expected_offset,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PatchOp) Reset() {
@@ -568,6 +572,20 @@ func (x *PatchOp) GetContent() string {
 		return x.Content
 	}
 	return ""
+}
+
+func (x *PatchOp) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PatchOp) GetExpectedOffset() uint32 {
+	if x != nil {
+		return x.ExpectedOffset
+	}
+	return 0
 }
 
 type Terminal struct {
@@ -744,11 +762,13 @@ const file_act_v1_act_proto_rawDesc = "" +
 	"\tTextDelta\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\"-\n" +
 	"\bPatchOps\x12!\n" +
-	"\x03ops\x18\x01 \x03(\v2\x0f.act.v1.PatchOpR\x03ops\"L\n" +
+	"\x03ops\x18\x01 \x03(\v2\x0f.act.v1.PatchOpR\x03ops\"\x87\x01\n" +
 	"\aPatchOp\x12\x0e\n" +
 	"\x02op\x18\x01 \x01(\tR\x02op\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x18\n" +
-	"\acontent\x18\x03 \x01(\tR\acontent\"G\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\x12\x10\n" +
+	"\x03seq\x18\x04 \x01(\x04R\x03seq\x12'\n" +
+	"\x0fexpected_offset\x18\x05 \x01(\rR\x0eexpectedOffset\"G\n" +
 	"\bTerminal\x12\x12\n" +
 	"\x04done\x18\x01 \x01(\bR\x04done\x12'\n" +
 	"\x05error\x18\x02 \x01(\v2\x11.act.v1.ErrorInfoR\x05error\"\xae\x01\n" +

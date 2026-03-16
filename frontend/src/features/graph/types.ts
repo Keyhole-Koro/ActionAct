@@ -20,6 +20,7 @@ export type BaseNodeData = {
     kind?: string;
     actions?: GraphNodeAction[];
     contentMd?: string;
+    thoughtMd?: string;
     contextSummary?: string;
     detailHtml?: string;
     evidenceRefs?: EvidenceRef[];

@@ -100,6 +100,8 @@ class PatchOp(BaseModel):
     op: str  # "upsert" or "append_md"
     node_id: str
     content: str
+    seq: Optional[int] = None
+    expected_offset: Optional[int] = None
 
 
 class ErrorInfo(BaseModel):
