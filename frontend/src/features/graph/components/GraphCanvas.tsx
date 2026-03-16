@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
     Background,
     Controls,
@@ -31,7 +32,6 @@ import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph'
 import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
-import { createPersistedGraphMock } from '../mocks/persistedGraphMock';
 
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
@@ -85,6 +85,52 @@ const nodeTypes = {
     customTask: GraphNodeCardWithBoundary,
 };
 
+function createPersistedGraphMock(topicId: string): { nodes: Node<PersistedNodeData>[]; edges: Edge[] } {
+    const nodes: Node<PersistedNodeData>[] = [
+        // Level 0
+        { id: 'mock-root-1', type: 'customTask', position: { x: 100, y: 100 }, data: { nodeSource: 'persisted', topicId, label: 'The Future of AI', kind: 'topic', createdBy: 'user' } },
+        { id: 'mock-root-2', type: 'customTask', position: { x: 800, y: 100 }, data: { nodeSource: 'persisted', topicId, label: 'Renewable Energy', kind: 'topic', createdBy: 'user' } },
+        { id: 'mock-root-3', type: 'customTask', position: { x: 1500, y: 100 }, data: { nodeSource: 'persisted', topicId, label: 'Space Exploration', kind: 'topic', createdBy: 'user' } },
+
+        // Level 1: Children of Root 1
+        { id: 'mock-child-1-1', type: 'customTask', position: { x: 100, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'AI in Healthcare', parentId: 'mock-root-1', kind: 'cluster', createdBy: 'agent' } },
+        { id: 'mock-child-1-2', type: 'customTask', position: { x: 350, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'Ethical Considerations', parentId: 'mock-root-1', kind: 'cluster', createdBy: 'agent', contextSummary: 'Exploring the ethical dilemmas posed by advanced AI.' } },
+        { id: 'mock-child-1-3', type: 'customTask', position: { x: 600, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'AI in Finance', parentId: 'mock-root-1', kind: 'cluster', createdBy: 'agent' } },
+
+        // Level 1: Children of Root 2
+        { id: 'mock-child-2-1', type: 'customTask', position: { x: 800, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'Solar Power', parentId: 'mock-root-2', kind: 'cluster', createdBy: 'agent' } },
+        { id: 'mock-child-2-2', type: 'customTask', position: { x: 1050, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'Wind Energy', parentId: 'mock-root-2', kind: 'cluster', createdBy: 'agent' } },
+
+        // Level 2: Grandchildren of Root 1
+        { id: 'mock-grandchild-1-1-1', type: 'customTask', position: { x: 100, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Diagnostic Tools', parentId: 'mock-child-1-1', kind: 'subcluster', createdBy: 'user' } },
+        { id: 'mock-grandchild-1-1-2', type: 'customTask', position: { x: 250, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Personalized Medicine', parentId: 'mock-child-1-1', kind: 'subcluster', createdBy: 'user' } },
+        { id: 'mock-grandchild-1-2-1', type: 'customTask', position: { x: 450, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Job Displacement', parentId: 'mock-child-1-2', kind: 'subcluster', createdBy: 'agent' } },
+        { id: 'mock-grandchild-1-2-2', type: 'customTask', position: { x: 600, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Algorithmic Bias', parentId: 'mock-child-1-2', kind: 'subcluster', createdBy: 'agent', contentMd: 'Bias in algorithms can perpetuate and amplify societal inequalities.' } },
+
+        // Level 2: Grandchildren of Root 2
+        { id: 'mock-grandchild-2-1-1', type: 'customTask', position: { x: 800, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Photovoltaic Cells', parentId: 'mock-child-2-1', kind: 'subcluster', createdBy: 'user' } },
+        { id: 'mock-grandchild-2-1-2', type: 'customTask', position: { x: 950, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Grid Integration', parentId: 'mock-child-2-1', kind: 'subcluster', createdBy: 'agent' } },
+
+        // Level 3: Great-grandchildren
+        { id: 'mock-gg-1-1-1-1', type: 'customTask', position: { x: 100, y: 700 }, data: { nodeSource: 'persisted', topicId, label: 'Cancer Detection AI', parentId: 'mock-grandchild-1-1-1', kind: 'claim', createdBy: 'user' } },
+        { id: 'mock-gg-1-2-2-1', type: 'customTask', position: { x: 600, y: 700 }, data: { nodeSource: 'persisted', topicId, label: 'Fairness Audits', parentId: 'mock-grandchild-1-2-2', kind: 'claim', createdBy: 'agent', referencedNodeIds: ['mock-child-1-2'] } },
+
+        // Level 4: Great-great-grandchildren
+        { id: 'mock-ggg-1', type: 'customTask', position: { x: 600, y: 900 }, data: { nodeSource: 'persisted', topicId, label: 'Debiasing Techniques', parentId: 'mock-gg-1-2-2-1', kind: 'note', createdBy: 'user' } },
+    ];
+
+    const edges: Edge[] = nodes
+        .filter((node) => node.data.parentId)
+        .map((node) => ({
+            id: `e-${node.data.parentId}-${node.id}`,
+            source: node.data.parentId!,
+            target: node.id,
+            animated: true,
+        }));
+
+    return { nodes, edges };
+}
+
 function isRenderableCoordinate(value: number | undefined) {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
 }
@@ -125,6 +171,9 @@ function overlapsWithMargin(left: GraphNodeRender, right: GraphNodeRender, margi
 }
 
 export function GraphCanvas() {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const {
         persistedNodes,
         persistedEdges,
@@ -151,19 +200,13 @@ export function GraphCanvas() {
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
     const usePersistedGraphMock = useMemo(() => {
-        if (typeof window === 'undefined') {
-            return false;
-        }
-        return new URLSearchParams(window.location.search).get('graphMock') === '1';
-    }, []);
+        return searchParams.get('graphMock') === '1';
+    }, [searchParams]);
     const persistedLayoutMode = useMemo(() => {
-        if (typeof window === 'undefined') {
-            return 'force' as const;
-        }
-        return new URLSearchParams(window.location.search).get('layout') === 'radial'
+        return searchParams.get('layout') === 'radial'
             ? 'radial' as const
             : 'force' as const;
-    }, []);
+    }, [searchParams]);
 
     useEffect(() => {
         setPersistedGraphRef.current = setPersistedGraph;
@@ -608,9 +651,44 @@ export function GraphCanvas() {
         setActiveNode(nodeId);
     }, [setActiveNode, setSelectedNodes]);
 
+    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial') => {
+        const nextParams = new URLSearchParams(searchParams.toString());
+        if (nextLayout === 'force') {
+            nextParams.delete('layout');
+        } else {
+            nextParams.set('layout', nextLayout);
+        }
+        const nextQuery = nextParams.toString();
+        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+    }, [pathname, router, searchParams]);
+
+    const layoutToggle = (
+        <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
+            {(['force', 'radial'] as const).map((mode) => {
+                const active = persistedLayoutMode === mode;
+                return (
+                    <button
+                        key={mode}
+                        type="button"
+                        className={[
+                            'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200',
+                            active
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-600 hover:bg-slate-100',
+                        ].join(' ')}
+                        onClick={() => setLayoutMode(mode)}
+                    >
+                        {mode === 'force' ? 'Force' : 'Radial'}
+                    </button>
+                );
+            })}
+        </div>
+    );
+
     if (isRadialLayout) {
         return (
             <div className="relative h-full w-full">
+                {layoutToggle}
                 <RadialOverview
                     nodes={emphasizedDisplayNodes as GraphNodeRender[]}
                     rootIds={persistedGraph.rootIds}
@@ -625,6 +703,7 @@ export function GraphCanvas() {
 
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
+            {layoutToggle}
             <ReactFlow
                 nodes={emphasizedDisplayNodes as GraphNodeRender[]}
                 edges={displayEdges}

@@ -24,14 +24,14 @@ type Segment = {
     hue: number;
 };
 
-const CENTER_X = 940;
-const CENTER_Y = 680;
-const CANVAS_WIDTH = 1880;
-const CANVAS_HEIGHT = 1360;
 const INNER_RADIUS = 72;
 const RING_THICKNESS = 78;
 const RING_GAP = 10;
 const ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
+const DEFAULT_VISIBLE_DEPTH = 10;
+const MIN_CANVAS_WIDTH = 1880;
+const MIN_CANVAS_HEIGHT = 1360;
+const RADIAL_CANVAS_PADDING = 180;
 
 export function RadialOverview({
     nodes,
@@ -142,13 +142,13 @@ export function RadialOverview({
         persistedNodes.forEach((node) => {
             const depth = depthById.get(node.id) ?? 0;
             if (hoveredNodeId === null) {
-                if (depth <= 1) {
+                if (depth <= DEFAULT_VISIBLE_DEPTH) {
                     ids.add(node.id);
                 }
                 return;
             }
 
-            if (depth <= 1 || ancestorSet.has(node.id) || descendantSet.has(node.id)) {
+            if (depth <= DEFAULT_VISIBLE_DEPTH || ancestorSet.has(node.id) || descendantSet.has(node.id)) {
                 ids.add(node.id);
             }
         });
@@ -212,15 +212,30 @@ export function RadialOverview({
         visibleNodeIds,
     ]);
 
+    const layoutMetrics = useMemo(() => {
+        const maxPersistedDepth = [...depthById.values()].reduce((max, depth) => Math.max(max, depth), 0);
+        const maxRingDepth = Math.max(maxPersistedDepth, 0);
+        const radialExtent = getRingOuterRadius(maxRingDepth) + 84;
+        const canvasRadius = radialExtent + RADIAL_CANVAS_PADDING;
+        const width = Math.max(MIN_CANVAS_WIDTH, Math.ceil(canvasRadius * 2));
+        const height = Math.max(MIN_CANVAS_HEIGHT, Math.ceil(canvasRadius * 2));
+        return {
+            centerX: width / 2,
+            centerY: height / 2,
+            width,
+            height,
+        };
+    }, [depthById]);
+
     useEffect(() => {
         const viewport = viewportRef.current;
         if (!viewport) {
             return;
         }
 
-        viewport.scrollLeft = Math.max((CANVAS_WIDTH - viewport.clientWidth) / 2, 0);
-        viewport.scrollTop = Math.max((CANVAS_HEIGHT - viewport.clientHeight) / 2, 0);
-    }, []);
+        viewport.scrollLeft = Math.max((layoutMetrics.width - viewport.clientWidth) / 2, 0);
+        viewport.scrollTop = Math.max((layoutMetrics.height - viewport.clientHeight) / 2, 0);
+    }, [layoutMetrics.height, layoutMetrics.width]);
 
     const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
         const viewport = viewportRef.current;
@@ -275,9 +290,9 @@ export function RadialOverview({
         >
             <div
                 className="relative"
-                style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
+                style={{ width: layoutMetrics.width, height: layoutMetrics.height }}
             >
-            <svg className="absolute inset-0" width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
+            <svg className="absolute inset-0" width={layoutMetrics.width} height={layoutMetrics.height}>
                 {segments.map((segment, index) => {
                     const isFocused = hoveredNodeId !== null
                         && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
@@ -288,8 +303,8 @@ export function RadialOverview({
                         <g key={`segment-${segment.node.id}`}>
                             <path
                                 d={describeAnnularSector(
-                                    CENTER_X,
-                                    CENTER_Y,
+                                    layoutMetrics.centerX,
+                                    layoutMetrics.centerY,
                                     segment.innerRadius,
                                     segment.outerRadius,
                                     segment.startAngle,
@@ -306,8 +321,8 @@ export function RadialOverview({
                             />
                             <path
                                 d={describeRadialGuide(
-                                    CENTER_X,
-                                    CENTER_Y,
+                                    layoutMetrics.centerX,
+                                    layoutMetrics.centerY,
                                     segment.innerRadius,
                                     segment.outerRadius,
                                     (segment.startAngle + segment.endAngle) / 2,
@@ -323,8 +338,8 @@ export function RadialOverview({
 
             {segments.map((segment) => {
                 const point = polarToCartesian(
-                    CENTER_X,
-                    CENTER_Y,
+                    layoutMetrics.centerX,
+                    layoutMetrics.centerY,
                     getNodeOrbitRadius(segment.depth),
                     (segment.startAngle + segment.endAngle) / 2,
                 );
@@ -386,8 +401,8 @@ export function RadialOverview({
                 .filter((segment) => segment.depth === 0)
                 .map((segment) => {
                     const labelPoint = polarToCartesian(
-                        CENTER_X,
-                        CENTER_Y,
+                        layoutMetrics.centerX,
+                        layoutMetrics.centerY,
                         getRootLabelRadius(),
                         (segment.startAngle + segment.endAngle) / 2,
                     );
@@ -457,11 +472,12 @@ function assignSegments({
     const weightedChildren = availableIds.map((nodeId) => {
         const subtreeSize = subtreeSizeById.get(nodeId) ?? 1;
         const branchContainsHover = hoveredNodeId !== null && isSameOrAncestor(nodeId, hoveredNodeId, childrenByParent);
+        const sizeFactor = Math.min(Math.log2(subtreeSize + 1), 3) / 3;
         const branchMultiplier = hoveredNodeId === null
             ? 1
             : (nodeId === hoveredNodeId
-                ? 2.85
-                : (branchContainsHover ? 1.95 : 0.72));
+                ? (1.22 + (sizeFactor * 0.26))
+                : (branchContainsHover ? (1.1 + (sizeFactor * 0.18)) : 0.9));
 
         return {
             nodeId,

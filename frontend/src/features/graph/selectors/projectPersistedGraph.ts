@@ -14,7 +14,11 @@ export function projectPersistedGraph(
     expandedNodeIds: string[],
     layoutMode: PersistedGraphLayoutMode = 'force',
 ) {
-    const hierarchy = buildVisibleHierarchy(persistedNodes, persistedEdges, expandedBranchNodeIds);
+    const hierarchy = buildVisibleHierarchy(
+        persistedNodes,
+        persistedEdges,
+        layoutMode === 'radial' ? persistedNodes.map((node) => node.id) : expandedBranchNodeIds,
+    );
     const relations = partitionVisibleEdges(hierarchy.visibleNodes, hierarchy.visibleEdges);
     const positionedNodes = layoutMode === 'radial'
         ? layoutPersistedRadial({
