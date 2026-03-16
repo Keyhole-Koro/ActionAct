@@ -21,6 +21,11 @@ import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
 
 import { GraphNodeCard } from './GraphNodeCard';
+import {
+    getCollapsedNodeWidth,
+    getExpandedNodeWidth,
+    getLayoutDimensionsForNodeType,
+} from '../constants/nodeDimensions';
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
 import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
@@ -81,6 +86,35 @@ const nodeTypes = {
 
 function isRenderableCoordinate(value: number | undefined) {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
+}
+
+function getDisplayNodeDimensions(node: GraphNodeRender) {
+    const nodeKind = typeof node.data?.kind === 'string' ? node.data.kind : undefined;
+    const label = typeof node.data?.label === 'string' ? node.data.label : undefined;
+    const isExpanded = node.data?.isExpanded === true;
+    const hasChildNodes = node.data?.hasChildNodes === true;
+    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
+
+    return {
+        width: node.type === 'customTask'
+            ? (isExpanded
+                ? getExpandedNodeWidth(label, nodeKind)
+                : getCollapsedNodeWidth(label, nodeKind, hasChildNodes))
+            : layoutDimensions.width,
+        height: layoutDimensions.height,
+    };
+}
+
+function overlapsWithMargin(left: GraphNodeRender, right: GraphNodeRender, margin = 28) {
+    const leftDimensions = getDisplayNodeDimensions(left);
+    const rightDimensions = getDisplayNodeDimensions(right);
+
+    return !(
+        left.position.x + leftDimensions.width + margin < right.position.x - margin
+        || left.position.x - margin > right.position.x + rightDimensions.width + margin
+        || left.position.y + leftDimensions.height + margin < right.position.y - margin
+        || left.position.y - margin > right.position.y + rightDimensions.height + margin
+    );
 }
 
 export function GraphCanvas() {
@@ -213,17 +247,15 @@ export function GraphCanvas() {
     }, [setActGraph, topicId, workspaceId]);
 
     const effectiveExpandedBranchNodeIds = useMemo(() => {
-        if (expandedBranchNodeIds.length > 0) {
-            return expandedBranchNodeIds;
-        }
-
         const allPersistedIds = new Set((persistedNodes as GraphNodeBase[]).map((node) => node.id));
-        return (persistedNodes as GraphNodeBase[])
+        const rootIds = (persistedNodes as GraphNodeBase[])
             .filter((node) => {
                 const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
                 return !parentId || !allPersistedIds.has(parentId);
             })
             .map((node) => node.id);
+
+        return [...new Set([...rootIds, ...expandedBranchNodeIds])];
     }, [expandedBranchNodeIds, persistedNodes]);
 
     const persistedGraph = useMemo(
@@ -327,6 +359,30 @@ export function GraphCanvas() {
         }));
     }, [displayNodes]);
 
+    const emphasizedDisplayNodes = useMemo(() => {
+        const expandedNodes = normalizedDisplayNodes.filter((node) => node.data?.isExpanded === true);
+        if (expandedNodes.length === 0) {
+            return normalizedDisplayNodes;
+        }
+
+        return normalizedDisplayNodes.map((node) => {
+            const isExpanded = node.data?.isExpanded === true;
+            const isSelected = selectedNodeIds.includes(node.id);
+            const overlapsExpanded = !isExpanded && expandedNodes.some((expandedNode) => (
+                expandedNode.id !== node.id && overlapsWithMargin(node, expandedNode)
+            ));
+
+            return {
+                ...node,
+                zIndex: isExpanded ? 120 : (isSelected ? 110 : (overlapsExpanded ? 30 : 80)),
+                style: {
+                    ...(node.style ?? {}),
+                    opacity: overlapsExpanded && !isSelected ? 0.4 : 1,
+                },
+            };
+        });
+    }, [normalizedDisplayNodes, selectedNodeIds]);
+
     const displayEdges = useMemo(
         () => buildDisplayEdges(
             [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
@@ -336,11 +392,13 @@ export function GraphCanvas() {
             const isRelation = 'relationType' in edge && edge.relationType === 'related';
             const isActContextFocused = isActContext
                 && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
+            const isRelationFocused = isRelation
+                && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
 
             return {
                 ...edge,
                 type: isActContext ? 'simplebezier' : (isRelation ? 'smoothstep' : 'default'),
-                zIndex: isActContext ? 70 : (isRelation ? 40 : 60),
+                zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
                 interactionWidth: isActContext ? 32 : 24,
                 markerEnd: isActContext
                     ? {
@@ -369,9 +427,13 @@ export function GraphCanvas() {
                 style: {
                     stroke: isActContext
                         ? (isActContextFocused ? '#0f766e' : '#64748b')
-                        : (isRelation ? '#94a3b8' : 'var(--primary)'),
-                    strokeWidth: isActContext ? (isActContextFocused ? 2.1 : 1.4) : (isRelation ? 2 : 3),
-                    strokeOpacity: isActContext ? (isActContextFocused ? 0.9 : 0.46) : (isRelation ? 0.72 : 1),
+                        : (isRelation ? (isRelationFocused ? '#64748b' : '#cbd5e1') : 'var(--primary)'),
+                    strokeWidth: isActContext
+                        ? (isActContextFocused ? 2.1 : 1.4)
+                        : (isRelation ? (isRelationFocused ? 2.2 : 1.6) : 3),
+                    strokeOpacity: isActContext
+                        ? (isActContextFocused ? 0.9 : 0.46)
+                        : (isRelation ? (isRelationFocused ? 0.72 : 0.34) : 1),
                     strokeDasharray: isActContext ? '6 4' : (isRelation ? '7 5' : undefined),
                     ...((edge as Edge).style ?? {}),
                 },
@@ -381,7 +443,7 @@ export function GraphCanvas() {
     );
 
     const focusNode = useCallback((nodeId: string) => {
-        const targetNode = normalizedDisplayNodes.find((node) => node.id === nodeId);
+        const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId);
         if (!targetNode) {
             return;
         }
@@ -395,7 +457,7 @@ export function GraphCanvas() {
             targetNode.position.y + 90,
             { duration: 240, zoom: nextZoom },
         );
-    }, [normalizedDisplayNodes, reactFlowInstance, setActiveNode]);
+    }, [emphasizedDisplayNodes, reactFlowInstance, setActiveNode]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         const target = event.target;
@@ -418,14 +480,14 @@ export function GraphCanvas() {
 
     const viewSignature = useMemo(
         () => JSON.stringify({
-            nodeIds: normalizedDisplayNodes.map((node) => node.id),
+            nodeIds: emphasizedDisplayNodes.map((node) => node.id),
             edgeIds: displayEdges.map((edge) => edge.id),
         }),
-        [displayEdges, normalizedDisplayNodes],
+        [displayEdges, emphasizedDisplayNodes],
     );
 
     useEffect(() => {
-        if (normalizedDisplayNodes.length === 0) {
+        if (emphasizedDisplayNodes.length === 0) {
             previousViewSignatureRef.current = null;
             return;
         }
@@ -447,7 +509,7 @@ export function GraphCanvas() {
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [normalizedDisplayNodes.length, reactFlowInstance, viewSignature]);
+    }, [emphasizedDisplayNodes.length, reactFlowInstance, viewSignature]);
 
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
         if (selectedNodeIds.length === 0 || editingNodeId) {
@@ -472,7 +534,7 @@ export function GraphCanvas() {
             return;
         }
 
-        const selectedNodes = normalizedDisplayNodes.filter((node) => selectedNodeIds.includes(node.id));
+        const selectedNodes = emphasizedDisplayNodes.filter((node) => selectedNodeIds.includes(node.id));
         if (selectedNodes.length === 0) {
             return;
         }
@@ -481,7 +543,7 @@ export function GraphCanvas() {
         const maxY = selectedNodes.reduce((max, node) => Math.max(max, node.position.y), selectedNodes[0].position.y);
         addQueryActNode({ x: averageX, y: maxY + 240 }, event.key);
         event.preventDefault();
-    }, [addQueryActNode, editingNodeId, normalizedDisplayNodes, selectedNodeIds]);
+    }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
 
     useEffect(() => {
         const handleFocusNode = (event: Event) => {
@@ -503,7 +565,7 @@ export function GraphCanvas() {
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             <ReactFlow
-                nodes={normalizedDisplayNodes as GraphNodeRender[]}
+                nodes={emphasizedDisplayNodes as GraphNodeRender[]}
                 edges={displayEdges}
                 defaultEdgeOptions={{
                     style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },

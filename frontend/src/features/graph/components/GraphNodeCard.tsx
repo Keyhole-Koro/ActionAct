@@ -69,6 +69,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const showMetaRow = isExpanded || isNodeStreaming;
     const hasBodyText = Boolean(data.contextSummary || data.contentMd);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
+    const hasReferences = referencedNodes.length > 0;
     const actStageLabel = actStage === 'thinking'
         ? 'Thinking'
         : actStage === 'ready'
@@ -175,8 +176,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                 ${isNodeStreaming ? 'animate-pulse-subtle' : ''}
             `}
             >
-                {/* Subtle top primary line accent */}
-                <div className={`absolute top-0 left-0 right-0 ${isActNode ? 'h-px opacity-70' : 'h-1 opacity-80'} rounded-t-2xl bg-gradient-to-r ${cfg.gradient}`} />
                 {isExpanded && !isDraftAct && <div className={`absolute inset-y-3 left-0 ${isActNode ? 'w-[3px]' : 'hidden'} rounded-r-full bg-gradient-to-b from-blue-500/75 via-sky-400/55 to-transparent`} />}
                 {isExpanded && !isDraftAct && <div className={`absolute top-0 right-0 ${isActNode ? 'w-20 h-20 -mr-10 -mt-10 bg-blue-100/50' : 'w-32 h-32 -mr-16 -mt-16 bg-white/5'} rounded-full blur-3xl pointer-events-none`} />}
                 <div className={`absolute ${isActNode ? 'right-2.5 top-2.5' : 'right-3 top-3'} z-10`}>
@@ -250,6 +249,13 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                                 </span>
                             )}
+                            </div>
+                        )}
+                        {!isExpanded && isActNode && hasReferences && (
+                            <div className="mb-1 flex items-center gap-1.5">
+                                <span className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700">
+                                    {referencedNodes.length} context
+                                </span>
                             </div>
                         )}
 
