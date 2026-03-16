@@ -31,6 +31,7 @@ import {
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
 import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
+import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 
 class GraphNodeRenderBoundary extends React.Component<
@@ -84,52 +85,6 @@ function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeC
 const nodeTypes = {
     customTask: GraphNodeCardWithBoundary,
 };
-
-function createPersistedGraphMock(topicId: string): { nodes: Node<PersistedNodeData>[]; edges: Edge[] } {
-    const nodes: Node<PersistedNodeData>[] = [
-        // Level 0
-        { id: 'mock-root-1', type: 'customTask', position: { x: 100, y: 100 }, data: { nodeSource: 'persisted', topicId, label: 'The Future of AI', kind: 'topic', createdBy: 'user' } },
-        { id: 'mock-root-2', type: 'customTask', position: { x: 800, y: 100 }, data: { nodeSource: 'persisted', topicId, label: 'Renewable Energy', kind: 'topic', createdBy: 'user' } },
-        { id: 'mock-root-3', type: 'customTask', position: { x: 1500, y: 100 }, data: { nodeSource: 'persisted', topicId, label: 'Space Exploration', kind: 'topic', createdBy: 'user' } },
-
-        // Level 1: Children of Root 1
-        { id: 'mock-child-1-1', type: 'customTask', position: { x: 100, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'AI in Healthcare', parentId: 'mock-root-1', kind: 'cluster', createdBy: 'agent' } },
-        { id: 'mock-child-1-2', type: 'customTask', position: { x: 350, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'Ethical Considerations', parentId: 'mock-root-1', kind: 'cluster', createdBy: 'agent', contextSummary: 'Exploring the ethical dilemmas posed by advanced AI.' } },
-        { id: 'mock-child-1-3', type: 'customTask', position: { x: 600, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'AI in Finance', parentId: 'mock-root-1', kind: 'cluster', createdBy: 'agent' } },
-
-        // Level 1: Children of Root 2
-        { id: 'mock-child-2-1', type: 'customTask', position: { x: 800, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'Solar Power', parentId: 'mock-root-2', kind: 'cluster', createdBy: 'agent' } },
-        { id: 'mock-child-2-2', type: 'customTask', position: { x: 1050, y: 300 }, data: { nodeSource: 'persisted', topicId, label: 'Wind Energy', parentId: 'mock-root-2', kind: 'cluster', createdBy: 'agent' } },
-
-        // Level 2: Grandchildren of Root 1
-        { id: 'mock-grandchild-1-1-1', type: 'customTask', position: { x: 100, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Diagnostic Tools', parentId: 'mock-child-1-1', kind: 'subcluster', createdBy: 'user' } },
-        { id: 'mock-grandchild-1-1-2', type: 'customTask', position: { x: 250, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Personalized Medicine', parentId: 'mock-child-1-1', kind: 'subcluster', createdBy: 'user' } },
-        { id: 'mock-grandchild-1-2-1', type: 'customTask', position: { x: 450, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Job Displacement', parentId: 'mock-child-1-2', kind: 'subcluster', createdBy: 'agent' } },
-        { id: 'mock-grandchild-1-2-2', type: 'customTask', position: { x: 600, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Algorithmic Bias', parentId: 'mock-child-1-2', kind: 'subcluster', createdBy: 'agent', contentMd: 'Bias in algorithms can perpetuate and amplify societal inequalities.' } },
-
-        // Level 2: Grandchildren of Root 2
-        { id: 'mock-grandchild-2-1-1', type: 'customTask', position: { x: 800, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Photovoltaic Cells', parentId: 'mock-child-2-1', kind: 'subcluster', createdBy: 'user' } },
-        { id: 'mock-grandchild-2-1-2', type: 'customTask', position: { x: 950, y: 500 }, data: { nodeSource: 'persisted', topicId, label: 'Grid Integration', parentId: 'mock-child-2-1', kind: 'subcluster', createdBy: 'agent' } },
-
-        // Level 3: Great-grandchildren
-        { id: 'mock-gg-1-1-1-1', type: 'customTask', position: { x: 100, y: 700 }, data: { nodeSource: 'persisted', topicId, label: 'Cancer Detection AI', parentId: 'mock-grandchild-1-1-1', kind: 'claim', createdBy: 'user' } },
-        { id: 'mock-gg-1-2-2-1', type: 'customTask', position: { x: 600, y: 700 }, data: { nodeSource: 'persisted', topicId, label: 'Fairness Audits', parentId: 'mock-grandchild-1-2-2', kind: 'claim', createdBy: 'agent', referencedNodeIds: ['mock-child-1-2'] } },
-
-        // Level 4: Great-great-grandchildren
-        { id: 'mock-ggg-1', type: 'customTask', position: { x: 600, y: 900 }, data: { nodeSource: 'persisted', topicId, label: 'Debiasing Techniques', parentId: 'mock-gg-1-2-2-1', kind: 'note', createdBy: 'user' } },
-    ];
-
-    const edges: Edge[] = nodes
-        .filter((node) => node.data.parentId)
-        .map((node) => ({
-            id: `e-${node.data.parentId}-${node.id}`,
-            source: node.data.parentId!,
-            target: node.id,
-            animated: true,
-        }));
-
-    return { nodes, edges };
-}
 
 function isRenderableCoordinate(value: number | undefined) {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
@@ -199,6 +154,9 @@ export function GraphCanvas() {
     const setPersistedGraphRef = useRef(setPersistedGraph);
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
+    const hoverFocusRafRef = useRef<number | null>(null);
+    const pendingHoverFocusNodeIdRef = useRef<string | null>(null);
+    const lastHoverFocusedNodeIdRef = useRef<string | null>(null);
     const usePersistedGraphMock = useMemo(() => {
         return searchParams.get('graphMock') === '1';
     }, [searchParams]);
@@ -214,7 +172,7 @@ export function GraphCanvas() {
 
     useEffect(() => {
         if (usePersistedGraphMock) {
-            const mock = createPersistedGraphMock(topicId);
+            const mock = createPersistedGraphMockHundred(topicId);
             persistedNodeCountRef.current = mock.nodes.length;
             setPersistedGraphRef.current(mock.nodes, mock.edges);
             return;
@@ -594,6 +552,27 @@ export function GraphCanvas() {
         );
     }, [emphasizedDisplayNodes, reactFlowInstance, setActiveNode]);
 
+    const hoverFocusNode = useCallback((nodeId: string) => {
+        pendingHoverFocusNodeIdRef.current = nodeId;
+
+        if (hoverFocusRafRef.current !== null) {
+            return;
+        }
+
+        hoverFocusRafRef.current = window.requestAnimationFrame(() => {
+            hoverFocusRafRef.current = null;
+            const nextNodeId = pendingHoverFocusNodeIdRef.current;
+            pendingHoverFocusNodeIdRef.current = null;
+
+            if (!nextNodeId || nextNodeId === lastHoverFocusedNodeIdRef.current) {
+                return;
+            }
+
+            lastHoverFocusedNodeIdRef.current = nextNodeId;
+            focusNode(nextNodeId);
+        });
+    }, [focusNode]);
+
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
@@ -750,7 +729,7 @@ export function GraphCanvas() {
                     selectedNodeIds={selectedNodeIds}
                     onActivateNode={activateRadialNode}
                     onToggleBranch={commands.toggleBranch}
-                    onHoverNode={focusNode}
+                    onHoverNode={hoverFocusNode}
                 />
             </div>
         );
@@ -781,7 +760,7 @@ export function GraphCanvas() {
                         selectedNodeIds={selectedNodeIds}
                         onActivateNode={activateRadialNode}
                         onToggleBranch={commands.toggleBranch}
-                        onHoverNode={focusNode}
+                        onHoverNode={hoverFocusNode}
                         zoomBias={1.35}
                     />
                 </div>

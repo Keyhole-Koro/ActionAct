@@ -122,26 +122,40 @@ export function RadialOverview({
 
     const ancestorSet = useMemo(() => new Set(ancestorPath), [ancestorPath]);
 
+    const descendantSetById = useMemo(() => {
+        const memo = new Map<string, Set<string>>();
+
+        const buildDescendants = (nodeId: string): Set<string> => {
+            const cached = memo.get(nodeId);
+            if (cached) {
+                return cached;
+            }
+
+            const descendants = new Set<string>([nodeId]);
+            const childIds = childrenByParent.get(nodeId) ?? [];
+
+            childIds.forEach((childId) => {
+                buildDescendants(childId).forEach((descendantId) => descendants.add(descendantId));
+            });
+
+            memo.set(nodeId, descendants);
+            return descendants;
+        };
+
+        persistedNodes.forEach((node) => {
+            buildDescendants(node.id);
+        });
+
+        return memo;
+    }, [childrenByParent, persistedNodes]);
+
     const descendantSet = useMemo(() => {
         if (!hoveredNodeId) {
             return new Set<string>();
         }
 
-        const visited = new Set<string>();
-        const queue = [hoveredNodeId];
-
-        while (queue.length > 0) {
-            const currentId = queue.shift();
-            if (!currentId || visited.has(currentId)) {
-                continue;
-            }
-            visited.add(currentId);
-            const childIds = childrenByParent.get(currentId) ?? [];
-            queue.push(...childIds);
-        }
-
-        return visited;
-    }, [childrenByParent, hoveredNodeId]);
+        return descendantSetById.get(hoveredNodeId) ?? new Set<string>([hoveredNodeId]);
+    }, [descendantSetById, hoveredNodeId]);
 
     const visibleNodeIds = useMemo(() => {
         const ids = new Set<string>();
@@ -163,6 +177,19 @@ export function RadialOverview({
         return ids;
     }, [ancestorSet, depthById, descendantSet, hoveredNodeId, persistedNodes]);
 
+    const visibleChildrenByParent = useMemo(() => {
+        const filtered = new Map<string | undefined, string[]>();
+
+        for (const [parentId, childIds] of childrenByParent.entries()) {
+            const visibleChildren = childIds.filter((childId) => visibleNodeIds.has(childId));
+            if (visibleChildren.length > 0) {
+                filtered.set(parentId, visibleChildren);
+            }
+        }
+
+        return filtered;
+    }, [childrenByParent, visibleNodeIds]);
+
     const subtreeSizeById = useMemo(() => {
         const memo = new Map<string, number>();
 
@@ -172,20 +199,23 @@ export function RadialOverview({
                 return cached;
             }
 
-            const childIds = (childrenByParent.get(nodeId) ?? [])
-                .filter((childId) => visibleNodeIds.has(childId));
+            const childIds = visibleChildrenByParent.get(nodeId) ?? [];
 
             const size = 1 + childIds.reduce((sum, childId) => sum + countSubtree(childId), 0);
             memo.set(nodeId, size);
             return size;
         };
 
+        persistedNodes.forEach((node) => {
+            countSubtree(node.id);
+        });
+
         visibleNodeIds.forEach((nodeId) => {
             countSubtree(nodeId);
         });
 
         return memo;
-    }, [childrenByParent, visibleNodeIds]);
+    }, [persistedNodes, visibleChildrenByParent, visibleNodeIds]);
 
     const segments = useMemo(() => {
         const result: Segment[] = [];
@@ -206,6 +236,7 @@ export function RadialOverview({
             visibleNodeIds,
             subtreeSizeById,
             hoveredNodeId,
+            ancestorSet,
             branchHue: null,
         });
 
@@ -217,6 +248,7 @@ export function RadialOverview({
         rootIds,
         subtreeSizeById,
         visibleNodeIds,
+        ancestorSet,
     ]);
 
     const layoutMetrics = useMemo(() => {
@@ -380,11 +412,11 @@ export function RadialOverview({
                         && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
                     const isMuted = hoveredNodeId !== null && !isFocused;
                     const palette = getSegmentPalette(segment.hue, segment.depth);
-                    const segmentCenterPoint = polarToCartesian(
+                    const segmentCenterPoint = getSegmentCenterPoint(
+                        segment,
                         scaledCenterX,
                         scaledCenterY,
-                        getNodeOrbitRadius(segment.depth) * effectiveZoom,
-                        (segment.startAngle + segment.endAngle) / 2,
+                        effectiveZoom,
                     );
 
                     return (
@@ -417,7 +449,7 @@ export function RadialOverview({
                                     scaledCenterY,
                                     segment.innerRadius * effectiveZoom,
                                     segment.outerRadius * effectiveZoom,
-                                    (segment.startAngle + segment.endAngle) / 2,
+                                    getSegmentMidAngle(segment),
                                 )}
                                 stroke={isMuted ? 'rgba(148,163,184,0.08)' : 'rgba(71,85,105,0.16)'}
                                 strokeWidth={isFocused ? 1.6 : 1}
@@ -429,12 +461,7 @@ export function RadialOverview({
             </svg>
 
             {segments.map((segment) => {
-                const point = polarToCartesian(
-                    scaledCenterX,
-                    scaledCenterY,
-                    getNodeOrbitRadius(segment.depth) * effectiveZoom,
-                    (segment.startAngle + segment.endAngle) / 2,
-                );
+                const point = getSegmentCenterPoint(segment, scaledCenterX, scaledCenterY, effectiveZoom);
                 const isSelected = selectedNodeIds.includes(segment.node.id);
                 const isFocused = hoveredNodeId !== null
                     && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
@@ -500,7 +527,7 @@ export function RadialOverview({
                         scaledCenterX,
                         scaledCenterY,
                         getRootLabelRadius() * effectiveZoom,
-                        (segment.startAngle + segment.endAngle) / 2,
+                        getSegmentMidAngle(segment),
                     );
                     const isHovered = hoveredNodeId === segment.node.id || descendantSet.has(segment.node.id);
 
@@ -545,6 +572,7 @@ function assignSegments({
     visibleNodeIds,
     subtreeSizeById,
     hoveredNodeId,
+    ancestorSet,
     branchHue,
 }: {
     nodeIds: string[];
@@ -558,6 +586,7 @@ function assignSegments({
     visibleNodeIds: Set<string>;
     subtreeSizeById: Map<string, number>;
     hoveredNodeId: string | null;
+    ancestorSet: Set<string>;
     branchHue: number | null;
 }) {
     const availableIds = nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId));
@@ -571,7 +600,7 @@ function assignSegments({
 
     const weightedChildren = availableIds.map((nodeId) => {
         const subtreeSize = subtreeSizeById.get(nodeId) ?? 1;
-        const branchContainsHover = hoveredNodeId !== null && isSameOrAncestor(nodeId, hoveredNodeId, childrenByParent);
+        const branchContainsHover = hoveredNodeId !== null && ancestorSet.has(nodeId);
         const sizeFactor = Math.min(Math.log2(subtreeSize + 1), 3) / 3;
         const branchMultiplier = hoveredNodeId === null
             ? 1
@@ -632,6 +661,7 @@ function assignSegments({
             visibleNodeIds,
             subtreeSizeById,
             hoveredNodeId,
+            ancestorSet,
             branchHue: childHue,
         });
 
@@ -655,6 +685,24 @@ function getRootLabelRadius() {
     return getRingOuterRadius(0) + 28;
 }
 
+function getSegmentMidAngle(segment: Pick<Segment, 'startAngle' | 'endAngle'>) {
+    return segment.startAngle + ((segment.endAngle - segment.startAngle) / 2);
+}
+
+function getSegmentCenterPoint(
+    segment: Pick<Segment, 'depth' | 'startAngle' | 'endAngle'>,
+    centerX: number,
+    centerY: number,
+    zoom: number,
+) {
+    return polarToCartesian(
+        centerX,
+        centerY,
+        getNodeOrbitRadius(segment.depth) * zoom,
+        getSegmentMidAngle(segment),
+    );
+}
+
 function getSegmentPalette(hue: number, depth: number): [string, string] {
     const saturation = Math.max(72 - (depth * 4), 54);
     const fillLightness = Math.min(86 + (depth * 2), 94);
@@ -669,30 +717,6 @@ function getSegmentPalette(hue: number, depth: number): [string, string] {
 function normalizeHue(hue: number) {
     const normalized = hue % 360;
     return normalized < 0 ? normalized + 360 : normalized;
-}
-
-function isSameOrAncestor(
-    possibleAncestorId: string,
-    nodeId: string,
-    childrenByParent: Map<string | undefined, string[]>,
-) {
-    if (possibleAncestorId === nodeId) {
-        return true;
-    }
-
-    const queue = [...(childrenByParent.get(possibleAncestorId) ?? [])];
-    while (queue.length > 0) {
-        const currentId = queue.shift();
-        if (!currentId) {
-            continue;
-        }
-        if (currentId === nodeId) {
-            return true;
-        }
-        queue.push(...(childrenByParent.get(currentId) ?? []));
-    }
-
-    return false;
 }
 
 function formatRootLabel(label: string) {
