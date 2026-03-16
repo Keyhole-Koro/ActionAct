@@ -5,6 +5,7 @@ import {
     Background,
     Controls,
     Edge,
+    MarkerType,
     MiniMap,
     Node,
     ReactFlow,
@@ -21,6 +22,7 @@ import { organizeService } from '@/services/organize';
 
 import { GraphNodeCard } from './GraphNodeCard';
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
+import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 import { createPersistedGraphMock } from '../mocks/persistedGraphMock';
@@ -234,14 +236,23 @@ export function GraphCanvas() {
         [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
     );
 
+    const positionedActNodes = useMemo(
+        () => projectActOverlay({
+            actNodes: actNodes as GraphNodeBase[],
+            persistedNodes: persistedGraph.positionedNodes,
+            expandedNodeIds,
+        }),
+        [actNodes, expandedNodeIds, persistedGraph.positionedNodes],
+    );
+
     const graphNodes = useMemo(
-        () => [...persistedGraph.positionedNodes, ...(actNodes as GraphNodeBase[])],
-        [actNodes, persistedGraph.positionedNodes],
+        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
+        [persistedGraph.positionedNodes, positionedActNodes],
     );
 
     const allReferenceableNodes = useMemo(
-        () => [...persistedGraph.positionedNodes, ...actNodes],
-        [actNodes, persistedGraph.positionedNodes],
+        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
+        [persistedGraph.positionedNodes, positionedActNodes],
     );
 
     const displayNodes = useMemo(
@@ -320,17 +331,53 @@ export function GraphCanvas() {
         () => buildDisplayEdges(
             [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
             actEdges,
-        ).map((edge) => ({
-            ...edge,
-            zIndex: (edge as Edge).zIndex ?? 60,
-            style: {
-                stroke: 'var(--primary)',
-                strokeWidth: 3,
-                strokeOpacity: 1,
-                ...((edge as Edge).style ?? {}),
-            },
-        })),
-        [actEdges, persistedGraph.hierarchyEdges, persistedGraph.relationEdges],
+        ).map((edge) => {
+            const isActContext = edge.id.startsWith('edge-ctx-');
+            const isRelation = 'relationType' in edge && edge.relationType === 'related';
+            const isActContextFocused = isActContext
+                && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
+
+            return {
+                ...edge,
+                type: isActContext ? 'simplebezier' : (isRelation ? 'smoothstep' : 'default'),
+                zIndex: isActContext ? 70 : (isRelation ? 40 : 60),
+                interactionWidth: isActContext ? 32 : 24,
+                markerEnd: isActContext
+                    ? {
+                        type: MarkerType.ArrowClosed,
+                        width: 18,
+                        height: 18,
+                        color: isActContextFocused ? '#0f766e' : '#64748b',
+                    }
+                    : undefined,
+                label: isActContextFocused ? 'context' : undefined,
+                labelStyle: isActContextFocused
+                    ? {
+                        fill: '#0f766e',
+                        fontSize: 11,
+                        fontWeight: 600,
+                    }
+                    : undefined,
+                labelBgStyle: isActContextFocused
+                    ? {
+                        fill: 'rgba(248, 250, 252, 0.92)',
+                        fillOpacity: 1,
+                    }
+                    : undefined,
+                labelBgPadding: isActContextFocused ? [6, 3] as [number, number] : undefined,
+                labelBgBorderRadius: isActContextFocused ? 6 : undefined,
+                style: {
+                    stroke: isActContext
+                        ? (isActContextFocused ? '#0f766e' : '#64748b')
+                        : (isRelation ? '#94a3b8' : 'var(--primary)'),
+                    strokeWidth: isActContext ? (isActContextFocused ? 2.1 : 1.4) : (isRelation ? 2 : 3),
+                    strokeOpacity: isActContext ? (isActContextFocused ? 0.9 : 0.46) : (isRelation ? 0.72 : 1),
+                    strokeDasharray: isActContext ? '6 4' : (isRelation ? '7 5' : undefined),
+                    ...((edge as Edge).style ?? {}),
+                },
+            };
+        }),
+        [actEdges, persistedGraph.hierarchyEdges, persistedGraph.relationEdges, selectedNodeIds],
     );
 
     const focusNode = useCallback((nodeId: string) => {
