@@ -327,6 +327,16 @@ export function GraphCanvas() {
         [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
+    const radialOverviewGraph = useMemo(
+        () => projectPersistedGraph(
+            persistedNodes as GraphNodeBase[],
+            persistedEdges,
+            effectiveExpandedBranchNodeIds,
+            expandedNodeIds,
+            'radial',
+        ),
+        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
+    );
 
     const positionedActNodes = useMemo(
         () => projectActOverlay({
@@ -397,6 +407,47 @@ export function GraphCanvas() {
             };
         }),
         [displayNodes, isRadialLayout, persistedGraph.depthById],
+    );
+
+    const radialOverviewNodes = useMemo(
+        () => buildDisplayNodes({
+            nodes: radialOverviewGraph.positionedNodes,
+            selectedNodeIds,
+            expandedBranchNodeIds,
+            visiblePersistedNodeIds: radialOverviewGraph.visibleNodeIds,
+            childrenByParent: radialOverviewGraph.childrenByParent,
+            allReferenceableNodes: radialOverviewGraph.positionedNodes,
+            isNodeExpanded: (nodeId) => expandedNodeIds.includes(nodeId),
+            isNodeEditing: (nodeId) => editingNodeId === nodeId,
+            isNodeStreaming: (nodeId) => streamingNodeIds.includes(nodeId),
+            onToggleBranch: commands.toggleBranch,
+            onOpenDetails: commands.openDetails,
+            onOpenReferencedNode: commands.openReferencedNode,
+            onCommitLabel: (nodeId, label) => {
+                void commands.commitActNodeLabel(nodeId, label);
+            },
+            onRunAction: commands.runActFromNode,
+            onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
+        }).map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                layoutMode: 'radial' as const,
+                radialDepth: radialOverviewGraph.depthById.get(node.id) ?? 0,
+            },
+        })),
+        [
+            commands,
+            editingNodeId,
+            expandedBranchNodeIds,
+            expandedNodeIds,
+            radialOverviewGraph.childrenByParent,
+            radialOverviewGraph.depthById,
+            radialOverviewGraph.positionedNodes,
+            radialOverviewGraph.visibleNodeIds,
+            selectedNodeIds,
+            streamingNodeIds,
+        ],
     );
 
     const normalizedDisplayNodes = useMemo(() => {
@@ -649,7 +700,10 @@ export function GraphCanvas() {
     const activateRadialNode = useCallback((nodeId: string) => {
         setSelectedNodes([nodeId]);
         setActiveNode(nodeId);
-    }, [setActiveNode, setSelectedNodes]);
+        if (!isRadialLayout) {
+            focusNode(nodeId);
+        }
+    }, [focusNode, isRadialLayout, setActiveNode, setSelectedNodes]);
 
     const setLayoutMode = useCallback((nextLayout: 'force' | 'radial') => {
         const nextParams = new URLSearchParams(searchParams.toString());
@@ -690,12 +744,13 @@ export function GraphCanvas() {
             <div className="relative h-full w-full">
                 {layoutToggle}
                 <RadialOverview
-                    nodes={emphasizedDisplayNodes as GraphNodeRender[]}
-                    rootIds={persistedGraph.rootIds}
-                    depthById={persistedGraph.depthById}
+                    nodes={radialOverviewNodes as GraphNodeRender[]}
+                    rootIds={radialOverviewGraph.rootIds}
+                    depthById={radialOverviewGraph.depthById}
                     selectedNodeIds={selectedNodeIds}
                     onActivateNode={activateRadialNode}
                     onToggleBranch={commands.toggleBranch}
+                    onHoverNode={focusNode}
                 />
             </div>
         );
@@ -704,6 +759,33 @@ export function GraphCanvas() {
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             {layoutToggle}
+            <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
+                <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Radial Overview</p>
+                        <p className="text-xs text-slate-600">Hover to enlarge, drag to pan, hover segments to navigate</p>
+                    </div>
+                    <button
+                        type="button"
+                        className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                        onClick={() => setLayoutMode('radial')}
+                    >
+                        Open full
+                    </button>
+                </div>
+                <div className="h-[calc(100%-53px)]">
+                    <RadialOverview
+                        nodes={radialOverviewNodes as GraphNodeRender[]}
+                        rootIds={radialOverviewGraph.rootIds}
+                        depthById={radialOverviewGraph.depthById}
+                        selectedNodeIds={selectedNodeIds}
+                        onActivateNode={activateRadialNode}
+                        onToggleBranch={commands.toggleBranch}
+                        onHoverNode={focusNode}
+                        zoomBias={1.35}
+                    />
+                </div>
+            </div>
             <ReactFlow
                 nodes={emphasizedDisplayNodes as GraphNodeRender[]}
                 edges={displayEdges}

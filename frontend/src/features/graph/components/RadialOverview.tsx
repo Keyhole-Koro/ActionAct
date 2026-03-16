@@ -11,6 +11,8 @@ type RadialOverviewProps = {
     selectedNodeIds: string[];
     onActivateNode: (nodeId: string) => void;
     onToggleBranch: (nodeId: string) => void;
+    onHoverNode?: (nodeId: string) => void;
+    zoomBias?: number;
 };
 
 type Segment = {
@@ -40,9 +42,14 @@ export function RadialOverview({
     selectedNodeIds,
     onActivateNode,
     onToggleBranch,
+    onHoverNode,
+    zoomBias = 1,
 }: RadialOverviewProps) {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+    const [zoom, setZoom] = useState(1);
     const viewportRef = useRef<HTMLDivElement | null>(null);
+    const viewportAnimationRef = useRef<number | null>(null);
+    const viewportTargetRef = useRef<{ left: number; top: number } | null>(null);
     const dragStateRef = useRef<{
         pointerId: number;
         startX: number;
@@ -227,15 +234,21 @@ export function RadialOverview({
         };
     }, [depthById]);
 
+    const effectiveZoom = Math.min(Math.max(zoom * zoomBias, 0.6), 2.4);
+    const scaledCanvasWidth = Math.ceil(layoutMetrics.width * effectiveZoom);
+    const scaledCanvasHeight = Math.ceil(layoutMetrics.height * effectiveZoom);
+    const scaledCenterX = layoutMetrics.centerX * effectiveZoom;
+    const scaledCenterY = layoutMetrics.centerY * effectiveZoom;
+
     useEffect(() => {
         const viewport = viewportRef.current;
         if (!viewport) {
             return;
         }
 
-        viewport.scrollLeft = Math.max((layoutMetrics.width - viewport.clientWidth) / 2, 0);
-        viewport.scrollTop = Math.max((layoutMetrics.height - viewport.clientHeight) / 2, 0);
-    }, [layoutMetrics.height, layoutMetrics.width]);
+        viewport.scrollLeft = Math.max((scaledCanvasWidth - viewport.clientWidth) / 2, 0);
+        viewport.scrollTop = Math.max((scaledCanvasHeight - viewport.clientHeight) / 2, 0);
+    }, [scaledCanvasHeight, scaledCanvasWidth]);
 
     const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
         const viewport = viewportRef.current;
@@ -278,6 +291,74 @@ export function RadialOverview({
         dragStateRef.current = null;
     };
 
+    const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+        const viewport = viewportRef.current;
+        if (!viewport) {
+            return;
+        }
+
+        if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            setZoom((currentZoom) => {
+                const nextZoom = currentZoom + (event.deltaY < 0 ? 0.08 : -0.08);
+                return Math.min(Math.max(nextZoom, 0.85), 2);
+            });
+            return;
+        }
+
+        viewport.scrollLeft += event.deltaX;
+        viewport.scrollTop += event.deltaY;
+    };
+
+    const focusViewportOnPoint = (x: number, y: number) => {
+        const viewport = viewportRef.current;
+        if (!viewport) {
+            return;
+        }
+
+        const nextLeft = Math.max(
+            Math.min(x - (viewport.clientWidth / 2), scaledCanvasWidth - viewport.clientWidth),
+            0,
+        );
+        const nextTop = Math.max(
+            Math.min(y - (viewport.clientHeight / 2), scaledCanvasHeight - viewport.clientHeight),
+            0,
+        );
+
+        viewportTargetRef.current = { left: nextLeft, top: nextTop };
+
+        if (viewportAnimationRef.current !== null) {
+            return;
+        }
+
+        const step = () => {
+            const currentViewport = viewportRef.current;
+            const currentTarget = viewportTargetRef.current;
+
+            if (!currentViewport || !currentTarget) {
+                viewportAnimationRef.current = null;
+                return;
+            }
+
+            const deltaLeft = currentTarget.left - currentViewport.scrollLeft;
+            const deltaTop = currentTarget.top - currentViewport.scrollTop;
+
+            currentViewport.scrollLeft += deltaLeft * 0.12;
+            currentViewport.scrollTop += deltaTop * 0.12;
+
+            if (Math.abs(deltaLeft) < 0.6 && Math.abs(deltaTop) < 0.6) {
+                currentViewport.scrollLeft = currentTarget.left;
+                currentViewport.scrollTop = currentTarget.top;
+                viewportAnimationRef.current = null;
+                return;
+            }
+
+            viewportAnimationRef.current = window.requestAnimationFrame(step);
+        };
+
+        viewportAnimationRef.current = window.requestAnimationFrame(step);
+    };
+
     return (
         <div
             ref={viewportRef}
@@ -287,26 +368,33 @@ export function RadialOverview({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onWheel={handleWheel}
         >
             <div
                 className="relative"
-                style={{ width: layoutMetrics.width, height: layoutMetrics.height }}
+                style={{ width: scaledCanvasWidth, height: scaledCanvasHeight }}
             >
-            <svg className="absolute inset-0" width={layoutMetrics.width} height={layoutMetrics.height}>
+            <svg className="absolute inset-0" width={scaledCanvasWidth} height={scaledCanvasHeight}>
                 {segments.map((segment, index) => {
                     const isFocused = hoveredNodeId !== null
                         && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
                     const isMuted = hoveredNodeId !== null && !isFocused;
                     const palette = getSegmentPalette(segment.hue, segment.depth);
+                    const segmentCenterPoint = polarToCartesian(
+                        scaledCenterX,
+                        scaledCenterY,
+                        getNodeOrbitRadius(segment.depth) * effectiveZoom,
+                        (segment.startAngle + segment.endAngle) / 2,
+                    );
 
                     return (
                         <g key={`segment-${segment.node.id}`}>
                             <path
                                 d={describeAnnularSector(
-                                    layoutMetrics.centerX,
-                                    layoutMetrics.centerY,
-                                    segment.innerRadius,
-                                    segment.outerRadius,
+                                    scaledCenterX,
+                                    scaledCenterY,
+                                    segment.innerRadius * effectiveZoom,
+                                    segment.outerRadius * effectiveZoom,
                                     segment.startAngle,
                                     segment.endAngle,
                                 )}
@@ -316,15 +404,19 @@ export function RadialOverview({
                                 strokeOpacity={isMuted ? 0.22 : 0.92}
                                 strokeWidth={isFocused ? 2.2 : 1.2}
                                 className="cursor-pointer transition-all duration-500 ease-out"
-                                onMouseEnter={() => setHoveredNodeId(segment.node.id)}
+                                onMouseEnter={() => {
+                                    setHoveredNodeId(segment.node.id);
+                                    focusViewportOnPoint(segmentCenterPoint.x, segmentCenterPoint.y);
+                                    onHoverNode?.(segment.node.id);
+                                }}
                                 onClick={() => onActivateNode(segment.node.id)}
                             />
                             <path
                                 d={describeRadialGuide(
-                                    layoutMetrics.centerX,
-                                    layoutMetrics.centerY,
-                                    segment.innerRadius,
-                                    segment.outerRadius,
+                                    scaledCenterX,
+                                    scaledCenterY,
+                                    segment.innerRadius * effectiveZoom,
+                                    segment.outerRadius * effectiveZoom,
                                     (segment.startAngle + segment.endAngle) / 2,
                                 )}
                                 stroke={isMuted ? 'rgba(148,163,184,0.08)' : 'rgba(71,85,105,0.16)'}
@@ -338,9 +430,9 @@ export function RadialOverview({
 
             {segments.map((segment) => {
                 const point = polarToCartesian(
-                    layoutMetrics.centerX,
-                    layoutMetrics.centerY,
-                    getNodeOrbitRadius(segment.depth),
+                    scaledCenterX,
+                    scaledCenterY,
+                    getNodeOrbitRadius(segment.depth) * effectiveZoom,
                     (segment.startAngle + segment.endAngle) / 2,
                 );
                 const isSelected = selectedNodeIds.includes(segment.node.id);
@@ -377,7 +469,11 @@ export function RadialOverview({
                             opacity: isMuted ? (depth <= 1 ? 0.36 : 0.08) : 1,
                             zIndex: isFocused ? 40 : (isSelected ? 35 : 20),
                         }}
-                        onMouseEnter={() => setHoveredNodeId(segment.node.id)}
+                        onMouseEnter={() => {
+                            setHoveredNodeId(segment.node.id);
+                            focusViewportOnPoint(point.x, point.y);
+                            onHoverNode?.(segment.node.id);
+                        }}
                         onFocus={() => setHoveredNodeId(segment.node.id)}
                         onBlur={() => setHoveredNodeId(null)}
                         onClick={() => onActivateNode(segment.node.id)}
@@ -401,9 +497,9 @@ export function RadialOverview({
                 .filter((segment) => segment.depth === 0)
                 .map((segment) => {
                     const labelPoint = polarToCartesian(
-                        layoutMetrics.centerX,
-                        layoutMetrics.centerY,
-                        getRootLabelRadius(),
+                        scaledCenterX,
+                        scaledCenterY,
+                        getRootLabelRadius() * effectiveZoom,
                         (segment.startAngle + segment.endAngle) / 2,
                     );
                     const isHovered = hoveredNodeId === segment.node.id || descendantSet.has(segment.node.id);
@@ -412,14 +508,18 @@ export function RadialOverview({
                         <button
                             key={`root-label-${segment.node.id}`}
                         type="button"
-                        className={[
-                            'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-3 py-1 text-[11px] font-semibold transition-all duration-500 ease-out',
+                            className={[
+                                'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-3 py-1 text-[11px] font-semibold transition-all duration-500 ease-out',
                             isHovered
                                 ? 'border-slate-400 bg-white text-slate-900 shadow-md'
                                 : 'border-white/90 bg-white/92 text-slate-600 shadow-sm',
                             ].join(' ')}
                             style={{ left: labelPoint.x, top: labelPoint.y }}
-                            onMouseEnter={() => setHoveredNodeId(segment.node.id)}
+                            onMouseEnter={() => {
+                                setHoveredNodeId(segment.node.id);
+                                focusViewportOnPoint(labelPoint.x, labelPoint.y);
+                                onHoverNode?.(segment.node.id);
+                            }}
                             onFocus={() => setHoveredNodeId(segment.node.id)}
                             onBlur={() => setHoveredNodeId(null)}
                             onClick={() => onActivateNode(segment.node.id)}
