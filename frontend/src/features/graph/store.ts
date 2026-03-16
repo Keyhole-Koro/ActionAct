@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
-import type { GraphLayoutMode } from './layout/types';
 
 /**
  * Graph store — manages act-generated nodes, user-created nodes, edges, and selection.
@@ -11,7 +10,6 @@ interface GraphState {
     persistedEdges: Edge[];
     actNodes: Node[];
     actEdges: Edge[];
-    layoutMode: GraphLayoutMode;
     selectedNodeIds: string[];
     expandedNodeIds: string[];
     expandedBranchNodeIds: string[];
@@ -25,7 +23,6 @@ interface GraphState {
     setActGraph: (nodes: Node[], edges: Edge[]) => void;
     clearActGraph: () => void;
     clearSelection: () => void;
-    setLayoutMode: (mode: GraphLayoutMode) => void;
     setActiveNode: (id: string | null) => void;
     toggleExpandedNode: (id: string) => void;
     expandNode: (id: string) => void;
@@ -96,7 +93,6 @@ export const useGraphStore = create<GraphState>((set) => ({
     persistedEdges: [],
     actNodes: [],
     actEdges: [],
-    layoutMode: 'tree-act-cluster',
     selectedNodeIds: [],
     expandedNodeIds: [],
     expandedBranchNodeIds: [],
@@ -136,9 +132,6 @@ export const useGraphStore = create<GraphState>((set) => ({
         };
     }),
     clearSelection: () => set({ selectedNodeIds: [] }),
-    setLayoutMode: (mode) => set((state) => (
-        state.layoutMode === mode ? state : { layoutMode: mode }
-    )),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
     toggleExpandedNode: (id: string) => set((state) => ({
         expandedNodeIds: state.expandedNodeIds.includes(id)
@@ -213,19 +206,24 @@ export const useGraphStore = create<GraphState>((set) => ({
             }
         };
 
-        let newEdges = syncActReferenceEdges(state.actEdges, nodeId, payload.referencedNodeIds ?? []);
-        if (state.actNodes.length > 0 && (payload.referencedNodeIds?.length ?? 0) === 0) {
-            if (state.selectedNodeIds.length === 0) {
-                newEdges.push({
+        const newEdges = syncActReferenceEdges(state.actEdges, nodeId, payload.referencedNodeIds ?? []);
+        const shouldLinkToFirstActNode = state.actNodes.length > 0
+            && (payload.referencedNodeIds?.length ?? 0) === 0
+            && state.selectedNodeIds.length === 0;
+
+        const nextActEdges = shouldLinkToFirstActNode
+            ? [
+                ...newEdges,
+                {
                     id: `e-${state.actNodes[0].id}-${nodeId}`,
                     source: state.actNodes[0].id,
                     target: nodeId,
                     animated: true,
-                });
-            }
-        }
+                },
+            ]
+            : newEdges;
 
-        return { actNodes: [...state.actNodes, newNode], actEdges: newEdges };
+        return { actNodes: [...state.actNodes, newNode], actEdges: nextActEdges };
     }),
 
     addEmptyActNode: (position) => {

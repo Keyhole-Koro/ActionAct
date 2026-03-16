@@ -1,7 +1,6 @@
 import type { Edge, Node } from '@xyflow/react';
 
 import type { EvidenceRef } from '@/services/organize/port';
-import type { SelectionHeaderData, UiSelectionOption, SelectionMode, SelectionStatus } from '@/features/agentInteraction/types';
 
 export type GraphNodeAction = {
     label: string;
@@ -35,14 +34,6 @@ export type PersistedNodeData = BaseNodeData & {
 
 export type ActNodeData = BaseNodeData & {
     kind: 'act';
-};
-
-export type SelectionHeaderNodeData = SelectionHeaderData;
-
-export type SelectionOptionNodeData = UiSelectionOption & {
-    groupId: string;
-    selectionMode: SelectionMode;
-    groupStatus: SelectionStatus;
 };
 
 export type GraphNodeBaseData = PersistedNodeData | ActNodeData;

@@ -17,7 +17,6 @@
 ### 採用ライブラリ（確定）
 
 * reactflow
-* elkjs
 * Tailwind CSS
 * shadcn/ui（Radix）
 * Zustand
@@ -215,19 +214,16 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 
 3. Graph canvas
 * ReactFlow による主表示
-* canvas 上の node は `persisted-node`, `act-draft-node`, `selection-node` の3 class を持つ
+* canvas 上の node は `persisted-node`, `act-draft-node` の2 class を持つ
 * `persisted-node` は Firestore `topics/{topicId}/nodes/{nodeId}` を正本とする
 * `act-draft-node` は Firestore `topics/{topicId}/actDrafts/{draftId}` を正本とする
-* `selection-node` は frontend 内の一時 UI node であり Firestore 正本を持たない
 * node click は node を active にし、node card を展開して detail を読みやすくする
 * tree 子ノードの開閉は node 本体クリックではなく、node card 内の chevron control で行う
 * chevron click では直下の子ノード群を表示/非表示し、孫以下は親の表示状態に従って従属的に隠れる
 * persisted tree の初期表示は root のみでよい
-* persisted tree の主レイアウト軸は left-to-right とし、分岐は進行方向に対して上下へ展開する
-* persisted tree の親子関係の間に `act-draft-node` / `selection-node` を割り込ませない
-* `act-draft-node` は auxiliary lane に置く
-* 自動配置の `act-draft-node` は、可能なら `anchor_node_id` / `context_node_ids` / `referencedNodeIds` に対応する参照元ノードの右側 sidecar に寄せ、参照元がない場合のみ general lane に置く
-* 同じ参照元クラスタに属する複数の `act-draft-node` は cluster 内で Dagre などの layered layout で整列してよい
+* current simplified frontend では persisted tree は Firestore 順の基本座標を使って表示してよく、force layout や自動クラスタ配置は要求しない
+* persisted tree の親子関係の間に `act-draft-node` を割り込ませない
+* `act-draft-node` は persisted tree と分離した補助表示として扱い、現在は単純な右側レーンまたは既存座標の維持でよい
 * `act-draft-node` は `created_by` または同等の frontend metadata を持ってよく、node card 上で `user` / `agent` の作成主体アイコンを表示してよい
 * `act-draft-node` は current MVP で `Draft` / `Thinking` / `Ready` の簡潔な状態ラベルを持ってよい
 * 状態ラベルの意味は以下とする
@@ -235,8 +231,6 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
   * `Thinking`: request 送信後、streaming 中
   * `Ready`: 最初の応答が返り、内容を読める状態
 * expanded した `act-draft-node` は `Draft` 状態のときに限り `Add Media` control を持ってよく、ここから upload した media は current workspace/topic context へ投入してよい
-* `selection-node` は overlay layer とし、tree layout 入力には含めない
-* canvas は display-only の layout mode toggle を持ってよく、`Tree` と `Radial` を切り替えても Firestore 正本や graph data 自体は変更しない
 * `New ACT` は新規 `act-draft-node` を作る主経路とする
 * double click は補助操作であり、node 作成の主経路にしない
 * canvas は ACT draft nodes を一括で除去する `Clear ACT` control を持つ
@@ -245,9 +239,7 @@ MVP の SPA は、1画面の中で次の領域に責務を分ける。
 * grounding 利用は query 内容と act type に応じて runtime が自動判定してよい
 * tool / agent / explicit request がある場合のみ grounding 設定を明示 override してよい
 * Ask bar は clarification が必要な場合、小さな clarification card を bar 直上に出し、`Continue without context` と `Use selected node and retry` を提供してよい
-* clarification が曖昧なノード参照に由来する場合、candidate `selection-node` を canvas 上へ一時表示し、ユーザーが click で選べるようにしてよい
-* clarification が broad な UI 参照に由来する場合、`何を知りたいか` の option `selection-node` を canvas 上へ一時表示し、ユーザーが click で選べるようにしてよい
-* current MVP では browser-side candidate agent が visible graph を集め、server-side candidate model で候補を解決し、`selection-node` 生成まで自律実行してよい
+* current simplified frontend では clarification 用の一時候補 UI を canvas node として描画しない
 * candidate model が unavailable な場合に限り、browser-side heuristic ranking へ degrade してよい
 
 4. Node detail
@@ -294,7 +286,7 @@ node detail は `MarkdownPane` 1つ中心で完結。
 * `services/act/*`：Connect RPC
 * `services/organize/*`：Firestore（snapshot購読）
 * Firebase初期化/Authは `services/firebase/*`
-* ReactFlowとELKは `features/graph/*`
+* ReactFlow 実装は `features/graph/*`
 * 左ペイン統合は `features/knowledgeTree/*`
 * node detail Markdown は `features/nodeMarkdown/*`
 * ZustandはUI状態のみ（データの真実は organize側）
@@ -302,9 +294,10 @@ node detail は `MarkdownPane` 1つ中心で完結。
 ### Graph GUI 実装ルール
 
 * `useGraphStore` は persisted graph / ACT graph / selection などの正本に近い state を保持し、表示用の派生値は持たない
-* `GraphCanvas` は store から直接描画せず、selector を通して visible tree / ACT overlay / auxiliary lanes を投影する
+* `GraphCanvas` は store から直接描画せず、selector を通して visible hierarchy と ACT overlay を投影する
 * `GraphNodeCard` は render component とし、details open / branch toggle / act action などの command は parent から渡す
-* persisted tree の layout と auxiliary lane の配置規則は分け、ACT / selection node を tree 親子の間に割り込ませない
+* persisted hierarchy の可視判定と表示用 node/edge の組み立ては分離する
+* persisted hierarchy と ACT overlay は分け、`act-draft-node` を主階層の親子関係に割り込ませない
 * `persisted-node` と `act-draft-node` は別 id 空間として扱う
 * `anchor_node_id` / `context_node_ids` は relation metadata であり node id の同一視には使わない
 * fallback で Organize 操作と ACT draft 操作を横断してはならず、node source に基づいて routing する
@@ -317,9 +310,6 @@ node detail は `MarkdownPane` 1つ中心で完結。
   * Firestore `topics/{topicId}/nodes/{nodeId}` を正本とする knowledge node
 * `act-draft-node`
   * Firestore `topics/{topicId}/actDrafts/{draftId}` を正本とする ACT draft node
-* `selection-node`
-  * frontend 内の一時 UI node。Firestore 正本を持たない
-
 #### Source Of Truth
 
 * `persisted-node` の正本は Firestore `nodes/*`
@@ -353,7 +343,7 @@ node detail は `MarkdownPane` 1つ中心で完結。
   * node を active にする
   * 詳細用の別 pane は開かない
 * chevron
-  * persisted tree の直下子だけを開閉する
+  * persisted hierarchy の直下子だけを開閉する
 * double click
   * 補助操作であり、node 作成の主経路にしない
 * `New ACT`
@@ -372,7 +362,7 @@ node detail は `MarkdownPane` 1つ中心で完結。
 
 #### Multi-Tab / Reconnect Rule
 
-* persisted tree は Firestore snapshot を常に正本とする
+* persisted hierarchy / relation graph は Firestore snapshot を常に正本とする
 * ACT draft は Firestore snapshot を復元基準とする
 * stream 中の未保存 ACT node は local memory に残してよいが、保存後に Firestore 状態へ収束させる
 * 他タブで ACT draft が削除/更新された場合、現タブも snapshot に追従する
@@ -385,7 +375,7 @@ node detail は `MarkdownPane` 1つ中心で完結。
 * current MVP では browser-attached orchestrator が backend decision DTO を先に取得し、その結果に応じて clarification / candidate selection / `RunAct` を分岐してよい
 * `select_nodes` / `open_node_detail` は UI state 操作のみで、knowledge 正本は更新しない
 * `open_node_detail` は current MVP では active node 設定と node card 展開を意味する
-* `create_selectable_nodes` は `selection-node` を作るだけで、knowledge node は作らない
+* `create_selectable_nodes` は clarification 用の一時 UI state を作るだけで、knowledge node は作らない
 * current MVP の transport surface は `window.__ACTION_FRONTEND_TOOLS__`, `window.__ACTION_FRONTEND_TOOLS_TRANSPORT__`, `window.postMessage(...)` を持ってよい
 * transport availability 確認は direct transport `available()` または bridge `get_status` で行ってよい
 * direct transport timeout の current MVP default は `5000ms` とし、browser message bridge timeout は caller 側責務とする
@@ -609,7 +599,7 @@ frontend/
 * Token注入：`services/firebase/token.ts` を経由して `Authorization` を付与
 * CSRF付与：`services/firebase/csrf.ts` を経由して `X-CSRF-Token` を付与
 * ReactFlow描画：`features/graph/components/GraphCanvas.tsx`
-* ELKレイアウト：`features/graph/utils/layoutElk.ts`
+* tree-backed force レイアウト：`features/graph/utils/layoutForce.ts`
 * Markdown表示：`features/nodeMarkdown/components/MarkdownPane.tsx`（sanitize必須）
 * node detail 統合：`features/nodeDetail/components/NodeDetailPanel.tsx`
 ## Patch責務分離（MUST）

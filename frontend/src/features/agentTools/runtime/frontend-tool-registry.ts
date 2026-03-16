@@ -4,8 +4,7 @@ import type { Node, Edge } from "@xyflow/react";
 
 import type { SelectionMode } from "@/features/agentInteraction/types";
 import { useAgentInteractionStore } from "@/features/agentInteraction/store/interactionStore";
-import { toSelectionFlow } from "@/features/graph/selectors/toSelectionFlow";
-import { mergeTreeWithActNodes, projectPersistedTree } from "@/features/graph/selectors/projectGraph";
+import { projectPersistedTree } from "@/features/graph/selectors/projectGraph";
 import { useGraphStore } from "@/features/graph/store";
 import { startActRun } from "@/features/agentTools/runtime/act-runner";
 import { prepareAnchoredActRun, prepareSubmitAskRun } from "@/features/agentTools/runtime/frontend-tool-orchestrator";
@@ -114,12 +113,7 @@ function currentRegularNodes(): Node[] {
     graphStore.persistedEdges,
     graphStore.expandedBranchNodeIds,
   );
-  const { mergedTreeNodes, standaloneActNodes } = mergeTreeWithActNodes(
-    persistedTree.visibleNodes,
-    graphStore.persistedNodes as GraphNodeBase[],
-    graphStore.actNodes as GraphNodeBase[],
-  );
-  return [...mergedTreeNodes, ...standaloneActNodes];
+  return [...persistedTree.visibleNodes, ...(graphStore.actNodes as GraphNodeBase[])];
 }
 
 function currentVisibleGraph(): { nodes: Node[]; edges: Edge[] } {
@@ -130,15 +124,9 @@ function currentVisibleGraph(): { nodes: Node[]; edges: Edge[] } {
     graphStore.persistedEdges,
     graphStore.expandedBranchNodeIds,
   );
-  const regularEdges = [...persistedTree.visibleEdges, ...graphStore.actEdges];
-  const { nodes: selectionNodes, edges: selectionEdges } = toSelectionFlow(
-    useAgentInteractionStore.getState().groups,
-    persistedTree.visibleNodes,
-  );
-
   return {
-    nodes: [...regularNodes, ...selectionNodes],
-    edges: [...regularEdges, ...selectionEdges],
+    nodes: regularNodes,
+    edges: [...persistedTree.visibleEdges, ...graphStore.actEdges],
   };
 }
 

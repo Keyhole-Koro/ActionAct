@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 
 import { useUploadStore } from '@/features/action/actionOrganize/store/useUploadStore';
@@ -28,7 +28,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
     } = useGraphStore();
     const setPendingClarification = useActClarificationStore((state) => state.setPendingClarification);
 
-    const frontendToolClient = createDirectFrontendToolClient();
+    const frontendToolClient = useMemo(() => createDirectFrontendToolClient(), []);
 
     const openDetails = useCallback((nodeId: string) => {
         setActiveNode(nodeId);
@@ -58,12 +58,11 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
             return;
         }
         startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
-    }, [setPendingClarification, setSelectedNodes]);
+    }, [frontendToolClient, setPendingClarification, setSelectedNodes]);
 
     const commitActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
         const trimmed = rawLabel.trim();
         const existingNode = actNodes.find((node) => node.id === nodeId);
-        const previousLabel = typeof existingNode?.data?.label === 'string' ? existingNode.data.label : '';
         const hasResolvedContent = [
             existingNode?.data?.contentMd,
             existingNode?.data?.contextSummary,
@@ -103,7 +102,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
                 options: { clear: false, contextNodeIds: prepared.contextNodeIds },
             });
         }
-    }, [actNodes, setPendingClarification, setSelectedNodes, topicId, updateActNodeLabel, workspaceId]);
+    }, [actNodes, frontendToolClient, setPendingClarification, setSelectedNodes, topicId, updateActNodeLabel, workspaceId]);
 
     const clearAct = useCallback(async () => {
         await clearAllActNodes(workspaceId, topicId);
