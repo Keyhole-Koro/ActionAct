@@ -23,6 +23,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         setActiveNode,
         setSelectedNodes,
         toggleExpandedBranchNode,
+        expandBranchNode,
         updateActNodeLabel,
         expandNode,
     } = useGraphStore();
@@ -118,6 +119,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         openDetails,
         openReferencedNode,
         toggleBranch: toggleExpandedBranchNode,
+        expandBranch: expandBranchNode,
         runActFromNode,
         commitActNodeLabel,
         addMediaContext,

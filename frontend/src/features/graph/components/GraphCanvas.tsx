@@ -34,6 +34,8 @@ import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 
+const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
+
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
     { hasError: boolean; errorMessage: string | null }
@@ -154,9 +156,7 @@ export function GraphCanvas() {
     const setPersistedGraphRef = useRef(setPersistedGraph);
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
-    const hoverFocusRafRef = useRef<number | null>(null);
-    const pendingHoverFocusNodeIdRef = useRef<string | null>(null);
-    const lastHoverFocusedNodeIdRef = useRef<string | null>(null);
+    const pendingRadialFocusNodeIdRef = useRef<string | null>(null);
     const usePersistedGraphMock = useMemo(() => {
         return searchParams.get('graphMock') === '1';
     }, [searchParams]);
@@ -408,6 +408,11 @@ export function GraphCanvas() {
         ],
     );
 
+    const radialOverviewNodeById = useMemo(
+        () => new Map(radialOverviewNodes.map((node) => [node.id, node])),
+        [radialOverviewNodes],
+    );
+
     const normalizedDisplayNodes = useMemo(() => {
         const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
             const x = node.position?.x;
@@ -470,6 +475,44 @@ export function GraphCanvas() {
         });
     }, [normalizedDisplayNodes, selectedNodeIds]);
 
+    const persistedRootIdByNode = useMemo(() => {
+        const resolved = new Map<string, string>();
+        const parentById = new Map(
+            persistedGraph.positionedNodes.map((node) => [
+                node.id,
+                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
+            ]),
+        );
+
+        persistedGraph.positionedNodes.forEach((node) => {
+            let currentId: string | undefined = node.id;
+            let currentRoot = node.id;
+
+            while (currentId) {
+                const parentId = parentById.get(currentId);
+                if (!parentId) {
+                    currentRoot = currentId;
+                    break;
+                }
+                currentId = parentId;
+            }
+
+            resolved.set(node.id, currentRoot);
+        });
+
+        return resolved;
+    }, [persistedGraph.positionedNodes]);
+
+    const persistedParentById = useMemo(
+        () => new Map(
+            persistedNodes.map((node) => [
+                node.id,
+                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
+            ]),
+        ),
+        [persistedNodes],
+    );
+
     const displayEdges = useMemo(
         () => {
             if (isRadialLayout) {
@@ -486,6 +529,16 @@ export function GraphCanvas() {
                 && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
             const isRelationFocused = isRelation
                 && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
+            const sourceRootId = persistedRootIdByNode.get(edge.source);
+            const targetRootId = persistedRootIdByNode.get(edge.target);
+            const rootId = sourceRootId ?? targetRootId;
+            const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
+            const rootHue = rootIndex >= 0
+                ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length]
+                : 210;
+            const sourceDepth = persistedGraph.depthById.get(edge.source) ?? persistedGraph.depthById.get(edge.target) ?? 0;
+            const hierarchyStroke = `hsla(${rootHue} 70% ${Math.min(54 + (sourceDepth * 5), 72)}% / 1)`;
+            const relationStroke = `hsla(${rootHue} 56% ${Math.min(68 + (sourceDepth * 3), 82)}% / 1)`;
 
             return {
                 ...edge,
@@ -519,7 +572,9 @@ export function GraphCanvas() {
                 style: {
                     stroke: isActContext
                         ? (isActContextFocused ? '#0f766e' : '#64748b')
-                        : (isRelation ? (isRelationFocused ? '#64748b' : '#cbd5e1') : 'var(--primary)'),
+                        : (isRelation
+                            ? (isRelationFocused ? hierarchyStroke : relationStroke)
+                            : hierarchyStroke),
                     strokeWidth: isActContext
                         ? (isActContextFocused ? 2.1 : 1.4)
                         : (isRelation ? (isRelationFocused ? 2.2 : 1.6) : 3),
@@ -532,7 +587,16 @@ export function GraphCanvas() {
             };
             });
         },
-        [actEdges, isRadialLayout, persistedGraph.hierarchyEdges, persistedGraph.relationEdges, selectedNodeIds],
+        [
+            actEdges,
+            isRadialLayout,
+            persistedGraph.depthById,
+            persistedGraph.hierarchyEdges,
+            persistedGraph.relationEdges,
+            persistedGraph.rootIds,
+            persistedRootIdByNode,
+            selectedNodeIds,
+        ],
     );
 
     const focusNode = useCallback((nodeId: string) => {
@@ -542,36 +606,14 @@ export function GraphCanvas() {
         }
 
         setActiveNode(targetNode.id);
-        const nextZoom = reactFlowInstance.getZoom() > 1.1
-            ? 0.92
-            : reactFlowInstance.getZoom();
+        const currentZoom = reactFlowInstance.getZoom();
+        const nextZoom = Math.min(Math.max(currentZoom, 1.16), 1.3);
         reactFlowInstance.setCenter(
             targetNode.position.x + 170,
             targetNode.position.y + 90,
-            { duration: 240, zoom: nextZoom },
+            { duration: 320, zoom: nextZoom },
         );
     }, [emphasizedDisplayNodes, reactFlowInstance, setActiveNode]);
-
-    const hoverFocusNode = useCallback((nodeId: string) => {
-        pendingHoverFocusNodeIdRef.current = nodeId;
-
-        if (hoverFocusRafRef.current !== null) {
-            return;
-        }
-
-        hoverFocusRafRef.current = window.requestAnimationFrame(() => {
-            hoverFocusRafRef.current = null;
-            const nextNodeId = pendingHoverFocusNodeIdRef.current;
-            pendingHoverFocusNodeIdRef.current = null;
-
-            if (!nextNodeId || nextNodeId === lastHoverFocusedNodeIdRef.current) {
-                return;
-            }
-
-            lastHoverFocusedNodeIdRef.current = nextNodeId;
-            focusNode(nextNodeId);
-        });
-    }, [focusNode]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         const target = event.target;
@@ -624,6 +666,20 @@ export function GraphCanvas() {
             window.clearTimeout(timeoutId);
         };
     }, [emphasizedDisplayNodes.length, reactFlowInstance, viewSignature]);
+
+    useEffect(() => {
+        const pendingNodeId = pendingRadialFocusNodeIdRef.current;
+        if (!pendingNodeId) {
+            return;
+        }
+
+        if (!emphasizedDisplayNodes.some((node) => node.id === pendingNodeId)) {
+            return;
+        }
+
+        pendingRadialFocusNodeIdRef.current = null;
+        focusNode(pendingNodeId);
+    }, [emphasizedDisplayNodes, focusNode]);
 
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
         if (selectedNodeIds.length === 0 || editingNodeId) {
@@ -678,11 +734,43 @@ export function GraphCanvas() {
 
     const activateRadialNode = useCallback((nodeId: string) => {
         setSelectedNodes([nodeId]);
-        setActiveNode(nodeId);
-        if (!isRadialLayout) {
-            focusNode(nodeId);
+        commands.openDetails(nodeId);
+
+        const radialNode = radialOverviewNodeById.get(nodeId);
+        const hasChildNodes = radialNode?.data?.hasChildNodes === true;
+        const branchExpanded = radialNode?.data?.branchExpanded === true;
+
+        const ancestorIds: string[] = [];
+        let currentId = persistedParentById.get(nodeId);
+        while (currentId) {
+            ancestorIds.unshift(currentId);
+            currentId = persistedParentById.get(currentId);
         }
-    }, [focusNode, isRadialLayout, setActiveNode, setSelectedNodes]);
+
+        ancestorIds.forEach((ancestorId) => {
+            commands.expandBranch(ancestorId);
+        });
+
+        if (hasChildNodes && !branchExpanded) {
+            commands.expandBranch(nodeId);
+        }
+
+        if (!isRadialLayout) {
+            pendingRadialFocusNodeIdRef.current = nodeId;
+            if (ancestorIds.length === 0 && (!hasChildNodes || !branchExpanded)) {
+                focusNode(nodeId);
+                pendingRadialFocusNodeIdRef.current = null;
+            }
+        }
+    }, [
+        commands,
+        expandedBranchNodeIds,
+        focusNode,
+        isRadialLayout,
+        persistedParentById,
+        radialOverviewNodeById,
+        setSelectedNodes,
+    ]);
 
     const setLayoutMode = useCallback((nextLayout: 'force' | 'radial') => {
         const nextParams = new URLSearchParams(searchParams.toString());
@@ -729,7 +817,6 @@ export function GraphCanvas() {
                     selectedNodeIds={selectedNodeIds}
                     onActivateNode={activateRadialNode}
                     onToggleBranch={commands.toggleBranch}
-                    onHoverNode={hoverFocusNode}
                 />
             </div>
         );
@@ -760,8 +847,8 @@ export function GraphCanvas() {
                         selectedNodeIds={selectedNodeIds}
                         onActivateNode={activateRadialNode}
                         onToggleBranch={commands.toggleBranch}
-                        onHoverNode={hoverFocusNode}
                         zoomBias={1.35}
+                        compactMode
                     />
                 </div>
             </div>

@@ -13,6 +13,7 @@ type RadialOverviewProps = {
     onToggleBranch: (nodeId: string) => void;
     onHoverNode?: (nodeId: string) => void;
     zoomBias?: number;
+    compactMode?: boolean;
 };
 
 type Segment = {
@@ -44,19 +45,13 @@ export function RadialOverview({
     onToggleBranch,
     onHoverNode,
     zoomBias = 1,
+    compactMode = false,
 }: RadialOverviewProps) {
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [zoom, setZoom] = useState(1);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const viewportAnimationRef = useRef<number | null>(null);
     const viewportTargetRef = useRef<{ left: number; top: number } | null>(null);
-    const dragStateRef = useRef<{
-        pointerId: number;
-        startX: number;
-        startY: number;
-        scrollLeft: number;
-        scrollTop: number;
-    } | null>(null);
 
     const persistedNodes = useMemo(
         () => nodes.filter((node) => node.data?.nodeSource === 'persisted'),
@@ -159,23 +154,24 @@ export function RadialOverview({
 
     const visibleNodeIds = useMemo(() => {
         const ids = new Set<string>();
+        const depthLimit = compactMode ? 2 : DEFAULT_VISIBLE_DEPTH;
 
         persistedNodes.forEach((node) => {
             const depth = depthById.get(node.id) ?? 0;
             if (hoveredNodeId === null) {
-                if (depth <= DEFAULT_VISIBLE_DEPTH) {
+                if (depth <= depthLimit) {
                     ids.add(node.id);
                 }
                 return;
             }
 
-            if (depth <= DEFAULT_VISIBLE_DEPTH || ancestorSet.has(node.id) || descendantSet.has(node.id)) {
+            if (depth <= depthLimit || ancestorSet.has(node.id) || descendantSet.has(node.id)) {
                 ids.add(node.id);
             }
         });
 
         return ids;
-    }, [ancestorSet, depthById, descendantSet, hoveredNodeId, persistedNodes]);
+    }, [ancestorSet, compactMode, depthById, descendantSet, hoveredNodeId, persistedNodes]);
 
     const visibleChildrenByParent = useMemo(() => {
         const filtered = new Map<string | undefined, string[]>();
@@ -282,47 +278,6 @@ export function RadialOverview({
         viewport.scrollTop = Math.max((scaledCanvasHeight - viewport.clientHeight) / 2, 0);
     }, [scaledCanvasHeight, scaledCanvasWidth]);
 
-    const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-        const viewport = viewportRef.current;
-        if (!viewport) {
-            return;
-        }
-
-        dragStateRef.current = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startY: event.clientY,
-            scrollLeft: viewport.scrollLeft,
-            scrollTop: viewport.scrollTop,
-        };
-
-        viewport.setPointerCapture(event.pointerId);
-    };
-
-    const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-        const viewport = viewportRef.current;
-        const dragState = dragStateRef.current;
-        if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
-            return;
-        }
-
-        const deltaX = event.clientX - dragState.startX;
-        const deltaY = event.clientY - dragState.startY;
-        viewport.scrollLeft = dragState.scrollLeft - deltaX;
-        viewport.scrollTop = dragState.scrollTop - deltaY;
-    };
-
-    const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-        const viewport = viewportRef.current;
-        const dragState = dragStateRef.current;
-        if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
-            return;
-        }
-
-        viewport.releasePointerCapture(event.pointerId);
-        dragStateRef.current = null;
-    };
-
     const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
         const viewport = viewportRef.current;
         if (!viewport) {
@@ -394,12 +349,8 @@ export function RadialOverview({
     return (
         <div
             ref={viewportRef}
-            className="relative h-full w-full overflow-auto rounded-[28px] bg-slate-50 cursor-grab active:cursor-grabbing"
+            className="relative h-full w-full overflow-auto rounded-[28px] bg-slate-50"
             onMouseLeave={() => setHoveredNodeId(null)}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
             onWheel={handleWheel}
         >
             <div
@@ -418,6 +369,10 @@ export function RadialOverview({
                         scaledCenterY,
                         effectiveZoom,
                     );
+
+                    if (compactMode && !isFocused && segment.depth >= 3) {
+                        return null;
+                    }
 
                     return (
                         <g key={`segment-${segment.node.id}`}>
@@ -443,18 +398,20 @@ export function RadialOverview({
                                 }}
                                 onClick={() => onActivateNode(segment.node.id)}
                             />
-                            <path
-                                d={describeRadialGuide(
-                                    scaledCenterX,
-                                    scaledCenterY,
-                                    segment.innerRadius * effectiveZoom,
-                                    segment.outerRadius * effectiveZoom,
-                                    getSegmentMidAngle(segment),
-                                )}
-                                stroke={isMuted ? 'rgba(148,163,184,0.08)' : 'rgba(71,85,105,0.16)'}
-                                strokeWidth={isFocused ? 1.6 : 1}
-                                strokeLinecap="round"
-                            />
+                            {(!compactMode || isFocused || segment.depth <= 1) ? (
+                                <path
+                                    d={describeRadialGuide(
+                                        scaledCenterX,
+                                        scaledCenterY,
+                                        segment.innerRadius * effectiveZoom,
+                                        segment.outerRadius * effectiveZoom,
+                                        getSegmentMidAngle(segment),
+                                    )}
+                                    stroke={isMuted ? 'rgba(148,163,184,0.08)' : 'rgba(71,85,105,0.16)'}
+                                    strokeWidth={isFocused ? 1.6 : 1}
+                                    strokeLinecap="round"
+                                />
+                            ) : null}
                         </g>
                     );
                 })}
@@ -476,6 +433,11 @@ export function RadialOverview({
                     ? (depth === 0 ? 11.5 : (depth === 1 ? 10 : 8.5))
                     : (depth === 0 ? 8.5 : (depth === 1 ? 7.5 : 6.5));
                 const fontSize = baseFontSize * Math.max(scale, 0.85);
+                const shouldRenderNode = !compactMode || hoveredNodeId !== null || depth <= 2 || isSelected;
+
+                if (!shouldRenderNode) {
+                    return null;
+                }
 
                 return (
                     <button

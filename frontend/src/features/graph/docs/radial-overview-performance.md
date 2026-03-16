@@ -68,6 +68,18 @@ This keeps the same behavior from the user's point of view:
 
 but removes redundant camera updates.
 
+### 5. Inset overview renders less by default
+
+The force-screen inset overview does not need to render the same amount of detail as the full radial view.
+
+The current implementation enables `compactMode` for the inset:
+
+- normal state renders only shallower node buttons
+- deeper nodes appear when hover/focus gives them context
+- non-focused deeper segment guides are skipped
+
+This preserves the navigator role of the inset while reducing DOM and SVG churn.
+
 ## What Has Not Changed
 
 These optimizations are intended to preserve behavior:

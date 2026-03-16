@@ -27,6 +27,7 @@ interface GraphState {
     toggleExpandedNode: (id: string) => void;
     expandNode: (id: string) => void;
     toggleExpandedBranchNode: (id: string) => void;
+    expandBranchNode: (id: string) => void;
     setEditingNode: (id: string | null) => void;
     setStreamRunning: (value: boolean) => void;
     addStreamingNode: (nodeId: string) => void;
@@ -148,6 +149,11 @@ export const useGraphStore = create<GraphState>((set) => ({
             ? state.expandedBranchNodeIds.filter((expandedId) => expandedId !== id)
             : [...state.expandedBranchNodeIds, id],
     })),
+    expandBranchNode: (id: string) => set((state) => (
+        state.expandedBranchNodeIds.includes(id)
+            ? state
+            : { expandedBranchNodeIds: [...state.expandedBranchNodeIds, id] }
+    )),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
     setStreamRunning: (value: boolean) => set({ isStreaming: value }),
     addStreamingNode: (nodeId: string) => set((state) => (
