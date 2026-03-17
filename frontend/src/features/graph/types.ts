@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react';
 
 import type { EvidenceRef } from '@/services/organize/port';
+import type { SelectedNodeContext, SourceRef } from '@/services/act/port';
 
 export type GraphNodeAction = {
     label: string;
@@ -24,6 +25,10 @@ export type BaseNodeData = {
     contextSummary?: string;
     detailHtml?: string;
     evidenceRefs?: EvidenceRef[];
+    usedContextNodeIds?: string[];
+    usedSelectedNodeContexts?: SelectedNodeContext[];
+    usedTools?: string[];
+    usedSources?: SourceRef[];
     parentId?: string;
     referencedNodeIds?: string[];
     isManualPosition?: boolean;

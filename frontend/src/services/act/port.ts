@@ -12,6 +12,10 @@ export interface PatchOp {
         referencedNodeIds: string[];
         createdBy: 'user' | 'agent';
         actions: { label: string, execute: string }[];
+        usedContextNodeIds: string[];
+        usedSelectedNodeContexts: SelectedNodeContext[];
+        usedTools: string[];
+        usedSources: SourceRef[];
     }>;
 }
 
@@ -27,6 +31,13 @@ export interface SelectedNodeContext {
     contentMd?: string;
     thoughtMd?: string;
     detailHtml?: string;
+}
+
+export interface SourceRef {
+    id: string;
+    kind?: string;
+    label?: string;
+    uri?: string;
 }
 
 export interface StreamActOptions {

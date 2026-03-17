@@ -12,6 +12,7 @@ from app.domain.models import (
     RunActEvent,
     RunActInput,
     ErrorInfo,
+    SourceRef,
 )
 from app.domain.ports import AssemblyPort, LLMPort
 
@@ -142,5 +143,26 @@ class RunActUsecase:
             )
             return
 
-        # 4. Terminal done
-        yield RunActEvent(type="terminal", done=True)
+        # 4. Terminal done with trace metadata for frontend visibility.
+        used_tools = ["assembly", "llm.generate"]
+        used_sources: list[SourceRef] = []
+        for node_id in input.context_node_ids:
+            used_sources.append(SourceRef(id=node_id, kind="context_node", label=node_id))
+        for node in input.selected_node_contexts:
+            used_sources.append(
+                SourceRef(
+                    id=node.node_id,
+                    kind=node.kind or "selected_node",
+                    label=node.label or node.node_id,
+                    uri="",
+                )
+            )
+
+        yield RunActEvent(
+            type="terminal",
+            done=True,
+            used_context_node_ids=input.context_node_ids,
+            used_selected_node_contexts=input.selected_node_contexts,
+            used_tools=used_tools,
+            used_sources=used_sources,
+        )

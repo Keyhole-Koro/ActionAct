@@ -58,7 +58,7 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
   }
 
   if (op.op === "append_md") {
-    const hasSeq = op.seq > 0n;
+    const hasSeq = typeof op.seq === "bigint" && op.seq > BigInt(0);
     return {
       type: "append_md",
       nodeId: op.nodeId,
@@ -137,6 +137,36 @@ function handleEvent(
       return { reachedTerminal: true };
     }
     if (terminal.done) {
+      const hasTraceMetadata =
+        terminal.usedContextNodeIds.length > 0
+        || terminal.usedSelectedNodeContexts.length > 0
+        || terminal.usedTools.length > 0
+        || terminal.usedSources.length > 0;
+      if (hasTraceMetadata) {
+        onPatch({
+          type: "upsert",
+          nodeId: "root",
+          data: {
+            usedContextNodeIds: terminal.usedContextNodeIds,
+            usedSelectedNodeContexts: terminal.usedSelectedNodeContexts.map((ctx) => ({
+              nodeId: ctx.nodeId,
+              label: ctx.label || undefined,
+              kind: ctx.kind || undefined,
+              contextSummary: ctx.contextSummary || undefined,
+              contentMd: ctx.contentMd || undefined,
+              thoughtMd: ctx.thoughtMd || undefined,
+              detailHtml: ctx.detailHtml || undefined,
+            })),
+            usedTools: terminal.usedTools,
+            usedSources: terminal.usedSources.map((source) => ({
+              id: source.id,
+              kind: source.kind || undefined,
+              label: source.label || undefined,
+              uri: source.uri || undefined,
+            })),
+          },
+        });
+      }
       onDone();
       return { reachedTerminal: true };
     }

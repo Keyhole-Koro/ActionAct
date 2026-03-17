@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Play,
+    RotateCcw,
     ChevronRight,
     ChevronDown,
     Bot,
@@ -74,6 +75,12 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const hasBodyText = Boolean(data.contextSummary || data.contentMd || hasThoughtText);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
     const hasReferences = referencedNodes.length > 0;
+    const usedContextNodeIds = Array.isArray(data.usedContextNodeIds) ? data.usedContextNodeIds : [];
+    const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
+    const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
+    const hasRunTrace = usedContextNodeIds.length > 0 || usedTools.length > 0 || usedSources.length > 0;
+    const retryQuery = typeof data.label === 'string' ? data.label.trim() : '';
+    const canRetry = isActNode && retryQuery.length > 0 && typeof data.onRunAction === 'function' && !isNodeStreaming;
     const actStageLabel = actStage === 'thinking'
         ? 'Thinking'
         : actStage === 'ready'
@@ -362,6 +369,20 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                 )}
                             </div>
                         )}
+                        {isExpanded && isActNode && hasRunTrace && (
+                            <div className="mt-2 rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">Run Trace</p>
+                                {usedTools.length > 0 && (
+                                    <p className="mt-1 text-[11px] text-slate-700">tools: {usedTools.join(', ')}</p>
+                                )}
+                                {usedContextNodeIds.length > 0 && (
+                                    <p className="mt-1 text-[11px] text-slate-700">nodes: {usedContextNodeIds.join(', ')}</p>
+                                )}
+                                {usedSources.length > 0 && (
+                                    <p className="mt-1 text-[11px] text-slate-700">sources: {usedSources.map((source) => source.label || source.id).join(', ')}</p>
+                                )}
+                            </div>
+                        )}
                         {isExpanded && hasChildNodes && !branchExpanded && hiddenChildCount > 0 && (
                             <div className="mt-2">
                                 <span className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground">
@@ -488,6 +509,30 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                             <FileUp className="w-3.5 h-3.5 mr-1.5" />
                                         )}
                                         Add Media
+                                    </Button>
+                                </div>
+                            )}
+                            {isActNode && (
+                                <div className={`flex flex-wrap gap-2 ${isDraftAct && !hasActionButtons && !hasBodyText ? 'mt-0 pt-0' : `border-t border-border/20 ${isActNode ? 'mt-3 pt-2.5' : 'mt-4 pt-3'}`}`}>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className={[
+                                            `${isActNode ? 'h-7 text-[11px] px-2.5 rounded-md' : 'h-8 text-xs px-3 rounded-lg'} font-semibold shadow-sm border border-border/50`,
+                                            'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
+                                            'transition-all duration-300 group/btn',
+                                            canRetry ? '' : 'opacity-50 pointer-events-none',
+                                        ].join(' ')}
+                                        onClick={(e: React.MouseEvent) => {
+                                            e.stopPropagation();
+                                            if (!canRetry) {
+                                                return;
+                                            }
+                                            data.onRunAction?.(retryQuery);
+                                        }}
+                                    >
+                                        <RotateCcw className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
+                                        Retry
                                     </Button>
                                 </div>
                             )}

@@ -31,7 +31,7 @@ func NewADKWorkerExecutor(workerURL string, recorder domain.ActRunRecorder, idem
 	return &ADKWorkerExecutor{
 		workerURL: workerURL,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Minute, // generous timeout for streaming
+			Timeout: 5 * time.Minute,
 		},
 		recorder: recorder,
 		idem:     idem,
@@ -75,14 +75,35 @@ type workerLLMConfig struct {
 	EnableThinking  bool   `json:"enable_thinking,omitempty"`
 }
 
+type workerSourceRef struct {
+	ID    string `json:"id"`
+	Kind  string `json:"kind,omitempty"`
+	Label string `json:"label,omitempty"`
+	URI   string `json:"uri,omitempty"`
+}
+
+type workerUsedSelectedNodeContext struct {
+	NodeID         string `json:"node_id"`
+	Label          string `json:"label,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	ContextSummary string `json:"context_summary,omitempty"`
+	ContentMD      string `json:"content_md,omitempty"`
+	ThoughtMD      string `json:"thought_md,omitempty"`
+	DetailHTML     string `json:"detail_html,omitempty"`
+}
+
 // workerEvent is a single ndjson line from the ADK Worker response.
 type workerEvent struct {
-	Type      string        `json:"type"`
-	Ops       []workerPatch `json:"ops,omitempty"`
-	Text      *string       `json:"text,omitempty"`
-	IsThought *bool         `json:"is_thought,omitempty"`
-	Done      *bool         `json:"done,omitempty"`
-	Error     *workerError  `json:"error,omitempty"`
+	Type                     string                          `json:"type"`
+	Ops                      []workerPatch                   `json:"ops,omitempty"`
+	Text                     *string                         `json:"text,omitempty"`
+	IsThought                *bool                           `json:"is_thought,omitempty"`
+	Done                     *bool                           `json:"done,omitempty"`
+	Error                    *workerError                    `json:"error,omitempty"`
+	UsedContextNodeIDs       []string                        `json:"used_context_node_ids,omitempty"`
+	UsedSelectedNodeContexts []workerUsedSelectedNodeContext `json:"used_selected_node_contexts,omitempty"`
+	UsedTools                []string                        `json:"used_tools,omitempty"`
+	UsedSources              []workerSourceRef               `json:"used_sources,omitempty"`
 }
 
 type workerPatch struct {
@@ -130,7 +151,6 @@ func (e *ADKWorkerExecutor) Execute(
 		})
 	}
 
-	// Build request body
 	reqBody := workerRequest{
 		TraceID:              input.TraceID,
 		UID:                  input.UID,
@@ -150,7 +170,6 @@ func (e *ADKWorkerExecutor) Execute(
 		return fmt.Errorf("marshal worker request: %w", err)
 	}
 
-	// POST to ADK Worker
 	url := e.workerURL + "/run_act"
 	log.Info("forwarding to ADK Worker", "url", url)
 
@@ -171,22 +190,12 @@ func (e *ADKWorkerExecutor) Execute(
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		log.Error("ADK Worker returned error", "status", resp.StatusCode, "body", string(body))
-		e.finishWithWorkerError(
-			ctx,
-			input,
-			"UNAVAILABLE",
-			fmt.Sprintf("ADK Worker returned %d: %s", resp.StatusCode, string(body)),
-			true,
-			"GENERATE_WITH_MODEL",
-		)
-		return sendWorkerError(stream, "UNAVAILABLE",
-			fmt.Sprintf("ADK Worker returned %d: %s", resp.StatusCode, string(body)),
-			true, "GENERATE_WITH_MODEL", input.TraceID)
+		e.finishWithWorkerError(ctx, input, "UNAVAILABLE", fmt.Sprintf("ADK Worker returned %d: %s", resp.StatusCode, string(body)), true, "GENERATE_WITH_MODEL")
+		return sendWorkerError(stream, "UNAVAILABLE", fmt.Sprintf("ADK Worker returned %d: %s", resp.StatusCode, string(body)), true, "GENERATE_WITH_MODEL", input.TraceID)
 	}
 
-	// Stream ndjson line by line
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1MB lines
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	seq := 0
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -225,12 +234,7 @@ func (e *ADKWorkerExecutor) Execute(
 		return sendWorkerError(stream, "UNAVAILABLE", "stream read error: "+err.Error(), true, "EMIT_STREAM", input.TraceID)
 	}
 
-	// Stream ended without terminal event — send done
-	doneEvt := &actv1.RunActEvent{
-		Event: &actv1.RunActEvent_Terminal{
-			Terminal: &actv1.Terminal{Done: true},
-		},
-	}
+	doneEvt := &actv1.RunActEvent{Event: &actv1.RunActEvent_Terminal{Terminal: &actv1.Terminal{Done: true}}}
 	if err := stream.Send(doneEvt); err != nil {
 		e.finishWithWorkerError(ctx, input, "INTERNAL", "send to client: "+err.Error(), false, "EMIT_STREAM")
 		return err
@@ -242,25 +246,14 @@ func (e *ADKWorkerExecutor) Execute(
 }
 
 // toProtoEvent converts a worker ndjson event to a proto RunActEvent.
-// Returns the event, whether it's a terminal event, and any error.
 func toProtoEvent(evt workerEvent) (*actv1.RunActEvent, bool, error) {
 	switch evt.Type {
 	case "patch_ops":
 		ops := make([]*actv1.PatchOp, len(evt.Ops))
 		for i, op := range evt.Ops {
-			ops[i] = &actv1.PatchOp{
-				Op:             op.Op,
-				NodeId:         op.NodeID,
-				Content:        op.Content,
-				Seq:            op.Seq,
-				ExpectedOffset: op.ExpectedOffset,
-			}
+			ops[i] = &actv1.PatchOp{Op: op.Op, NodeId: op.NodeID, Content: op.Content, Seq: op.Seq, ExpectedOffset: op.ExpectedOffset}
 		}
-		return &actv1.RunActEvent{
-			Event: &actv1.RunActEvent_PatchOps{
-				PatchOps: &actv1.PatchOps{Ops: ops},
-			},
-		}, false, nil
+		return &actv1.RunActEvent{Event: &actv1.RunActEvent_PatchOps{PatchOps: &actv1.PatchOps{Ops: ops}}}, false, nil
 
 	case "text_delta":
 		text := ""
@@ -271,12 +264,7 @@ func toProtoEvent(evt workerEvent) (*actv1.RunActEvent, bool, error) {
 		if evt.IsThought != nil {
 			isThought = *evt.IsThought
 		}
-		return &actv1.RunActEvent{
-			Event: &actv1.RunActEvent_TextDelta{
-				TextDelta: &actv1.TextDelta{Text: text},
-			},
-			IsThought: isThought,
-		}, false, nil
+		return &actv1.RunActEvent{Event: &actv1.RunActEvent_TextDelta{TextDelta: &actv1.TextDelta{Text: text}}, IsThought: isThought}, false, nil
 
 	case "terminal":
 		t := &actv1.Terminal{}
@@ -284,41 +272,37 @@ func toProtoEvent(evt workerEvent) (*actv1.RunActEvent, bool, error) {
 			t.Done = true
 		}
 		if evt.Error != nil {
-			t.Error = &actv1.ErrorInfo{
-				Code:         evt.Error.Code,
-				Message:      evt.Error.Message,
-				Retryable:    evt.Error.Retryable,
-				Stage:        evt.Error.Stage,
-				TraceId:      evt.Error.TraceID,
-				RetryAfterMs: evt.Error.RetryAfterMs,
-			}
+			t.Error = &actv1.ErrorInfo{Code: evt.Error.Code, Message: evt.Error.Message, Retryable: evt.Error.Retryable, Stage: evt.Error.Stage, TraceId: evt.Error.TraceID, RetryAfterMs: evt.Error.RetryAfterMs}
 		}
-		return &actv1.RunActEvent{
-			Event: &actv1.RunActEvent_Terminal{Terminal: t},
-		}, true, nil
+		if len(evt.UsedContextNodeIDs) > 0 {
+			t.UsedContextNodeIds = evt.UsedContextNodeIDs
+		}
+		if len(evt.UsedSelectedNodeContexts) > 0 {
+			mapped := make([]*actv1.SelectedNodeContext, 0, len(evt.UsedSelectedNodeContexts))
+			for _, ctx := range evt.UsedSelectedNodeContexts {
+				mapped = append(mapped, &actv1.SelectedNodeContext{NodeId: ctx.NodeID, Label: ctx.Label, Kind: ctx.Kind, ContextSummary: ctx.ContextSummary, ContentMd: ctx.ContentMD, ThoughtMd: ctx.ThoughtMD, DetailHtml: ctx.DetailHTML})
+			}
+			t.UsedSelectedNodeContexts = mapped
+		}
+		if len(evt.UsedTools) > 0 {
+			t.UsedTools = evt.UsedTools
+		}
+		if len(evt.UsedSources) > 0 {
+			mapped := make([]*actv1.SourceRef, 0, len(evt.UsedSources))
+			for _, source := range evt.UsedSources {
+				mapped = append(mapped, &actv1.SourceRef{Id: source.ID, Kind: source.Kind, Label: source.Label, Uri: source.URI})
+			}
+			t.UsedSources = mapped
+		}
+		return &actv1.RunActEvent{Event: &actv1.RunActEvent_Terminal{Terminal: t}}, true, nil
 
 	default:
 		return nil, false, fmt.Errorf("unknown event type: %q", evt.Type)
 	}
 }
 
-func sendWorkerError(
-	stream *connect.ServerStream[actv1.RunActEvent],
-	code, msg string, retryable bool, stage, traceID string,
-) error {
-	_ = stream.Send(&actv1.RunActEvent{
-		Event: &actv1.RunActEvent_Terminal{
-			Terminal: &actv1.Terminal{
-				Error: &actv1.ErrorInfo{
-					Code:      code,
-					Message:   msg,
-					Retryable: retryable,
-					Stage:     stage,
-					TraceId:   traceID,
-				},
-			},
-		},
-	})
+func sendWorkerError(stream *connect.ServerStream[actv1.RunActEvent], code, msg string, retryable bool, stage, traceID string) error {
+	_ = stream.Send(&actv1.RunActEvent{Event: &actv1.RunActEvent_Terminal{Terminal: &actv1.Terminal{Error: &actv1.ErrorInfo{Code: code, Message: msg, Retryable: retryable, Stage: stage, TraceId: traceID}}}})
 	return fmt.Errorf("%s: %s", stage, msg)
 }
 
@@ -349,21 +333,6 @@ func (e *ADKWorkerExecutor) finishFromTerminal(ctx context.Context, input domain
 	}
 }
 
-func (e *ADKWorkerExecutor) finishWithWorkerError(
-	ctx context.Context,
-	input domain.RunActInput,
-	code string,
-	msg string,
-	retryable bool,
-	stage string,
-) {
-	e.finishFromTerminal(ctx, input, &actv1.Terminal{
-		Error: &actv1.ErrorInfo{
-			Code:      code,
-			Message:   msg,
-			Retryable: retryable,
-			Stage:     stage,
-			TraceId:   input.TraceID,
-		},
-	})
+func (e *ADKWorkerExecutor) finishWithWorkerError(ctx context.Context, input domain.RunActInput, code string, msg string, retryable bool, stage string) {
+	e.finishFromTerminal(ctx, input, &actv1.Terminal{Error: &actv1.ErrorInfo{Code: code, Message: msg, Retryable: retryable, Stage: stage, TraceId: input.TraceID}})
 }

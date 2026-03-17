@@ -33,7 +33,24 @@ interface GraphState {
     addStreamingNode: (nodeId: string) => void;
     clearStreamingNodes: (nodeIds?: string[]) => void;
 
-    addOrUpdateActNode: (nodeId: string, payload: { label?: string; kind?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent' }) => void;
+    addOrUpdateActNode: (nodeId: string, payload: {
+        label?: string;
+        kind?: string;
+        referencedNodeIds?: string[];
+        createdBy?: 'user' | 'agent';
+        usedContextNodeIds?: string[];
+        usedSelectedNodeContexts?: Array<{
+            nodeId: string;
+            label?: string;
+            kind?: string;
+            contextSummary?: string;
+            contentMd?: string;
+            thoughtMd?: string;
+            detailHtml?: string;
+        }>;
+        usedTools?: string[];
+        usedSources?: Array<{ id: string; kind?: string; label?: string; uri?: string }>;
+    }) => void;
     addEmptyActNode: (position: { x: number; y: number }) => string;
     addQueryActNode: (position: { x: number; y: number }, initialLabel: string) => string;
     resetActNode: (nodeId: string, payload?: { label?: string; referencedNodeIds?: string[] }) => void;
@@ -233,6 +250,10 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                                 ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
+                                ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
+                                ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
+                                ...(payload.usedTools !== undefined ? { usedTools: payload.usedTools } : {}),
+                                ...(payload.usedSources !== undefined ? { usedSources: payload.usedSources } : {}),
                             },
                         }
                         : n
@@ -252,6 +273,10 @@ export const useGraphStore = create<GraphState>((set) => ({
                 kind: payload.kind ?? 'act',
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',
+                ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
+                ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
+                ...(payload.usedTools !== undefined ? { usedTools: payload.usedTools } : {}),
+                ...(payload.usedSources !== undefined ? { usedSources: payload.usedSources } : {}),
             }
         };
 

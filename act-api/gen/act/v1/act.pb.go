@@ -689,17 +689,89 @@ func (x *PatchOp) GetExpectedOffset() uint32 {
 	return 0
 }
 
-type Terminal struct {
+type SourceRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Done          bool                   `protobuf:"varint,1,opt,name=done,proto3" json:"done,omitempty"`
-	Error         *ErrorInfo             `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	Uri           string                 `protobuf:"bytes,4,opt,name=uri,proto3" json:"uri,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *SourceRef) Reset() {
+	*x = SourceRef{}
+	mi := &file_act_v1_act_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SourceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SourceRef) ProtoMessage() {}
+
+func (x *SourceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_act_v1_act_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SourceRef.ProtoReflect.Descriptor instead.
+func (*SourceRef) Descriptor() ([]byte, []int) {
+	return file_act_v1_act_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SourceRef) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SourceRef) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *SourceRef) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *SourceRef) GetUri() string {
+	if x != nil {
+		return x.Uri
+	}
+	return ""
+}
+
+type Terminal struct {
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	Done                     bool                   `protobuf:"varint,1,opt,name=done,proto3" json:"done,omitempty"`
+	Error                    *ErrorInfo             `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	UsedContextNodeIds       []string               `protobuf:"bytes,3,rep,name=used_context_node_ids,json=usedContextNodeIds,proto3" json:"used_context_node_ids,omitempty"`
+	UsedSelectedNodeContexts []*SelectedNodeContext `protobuf:"bytes,4,rep,name=used_selected_node_contexts,json=usedSelectedNodeContexts,proto3" json:"used_selected_node_contexts,omitempty"`
+	UsedTools                []string               `protobuf:"bytes,5,rep,name=used_tools,json=usedTools,proto3" json:"used_tools,omitempty"`
+	UsedSources              []*SourceRef           `protobuf:"bytes,6,rep,name=used_sources,json=usedSources,proto3" json:"used_sources,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
 func (x *Terminal) Reset() {
 	*x = Terminal{}
-	mi := &file_act_v1_act_proto_msgTypes[8]
+	mi := &file_act_v1_act_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -711,7 +783,7 @@ func (x *Terminal) String() string {
 func (*Terminal) ProtoMessage() {}
 
 func (x *Terminal) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[8]
+	mi := &file_act_v1_act_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -724,7 +796,7 @@ func (x *Terminal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Terminal.ProtoReflect.Descriptor instead.
 func (*Terminal) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{8}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Terminal) GetDone() bool {
@@ -737,6 +809,34 @@ func (x *Terminal) GetDone() bool {
 func (x *Terminal) GetError() *ErrorInfo {
 	if x != nil {
 		return x.Error
+	}
+	return nil
+}
+
+func (x *Terminal) GetUsedContextNodeIds() []string {
+	if x != nil {
+		return x.UsedContextNodeIds
+	}
+	return nil
+}
+
+func (x *Terminal) GetUsedSelectedNodeContexts() []*SelectedNodeContext {
+	if x != nil {
+		return x.UsedSelectedNodeContexts
+	}
+	return nil
+}
+
+func (x *Terminal) GetUsedTools() []string {
+	if x != nil {
+		return x.UsedTools
+	}
+	return nil
+}
+
+func (x *Terminal) GetUsedSources() []*SourceRef {
+	if x != nil {
+		return x.UsedSources
 	}
 	return nil
 }
@@ -755,7 +855,7 @@ type ErrorInfo struct {
 
 func (x *ErrorInfo) Reset() {
 	*x = ErrorInfo{}
-	mi := &file_act_v1_act_proto_msgTypes[9]
+	mi := &file_act_v1_act_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -767,7 +867,7 @@ func (x *ErrorInfo) String() string {
 func (*ErrorInfo) ProtoMessage() {}
 
 func (x *ErrorInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[9]
+	mi := &file_act_v1_act_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -780,7 +880,7 @@ func (x *ErrorInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorInfo.ProtoReflect.Descriptor instead.
 func (*ErrorInfo) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{9}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ErrorInfo) GetCode() string {
@@ -881,10 +981,20 @@ const file_act_v1_act_proto_rawDesc = "" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12\x10\n" +
 	"\x03seq\x18\x04 \x01(\x04R\x03seq\x12'\n" +
-	"\x0fexpected_offset\x18\x05 \x01(\rR\x0eexpectedOffset\"G\n" +
+	"\x0fexpected_offset\x18\x05 \x01(\rR\x0eexpectedOffset\"W\n" +
+	"\tSourceRef\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12\x10\n" +
+	"\x03uri\x18\x04 \x01(\tR\x03uri\"\xab\x02\n" +
 	"\bTerminal\x12\x12\n" +
 	"\x04done\x18\x01 \x01(\bR\x04done\x12'\n" +
-	"\x05error\x18\x02 \x01(\v2\x11.act.v1.ErrorInfoR\x05error\"\xae\x01\n" +
+	"\x05error\x18\x02 \x01(\v2\x11.act.v1.ErrorInfoR\x05error\x121\n" +
+	"\x15used_context_node_ids\x18\x03 \x03(\tR\x12usedContextNodeIds\x12Z\n" +
+	"\x1bused_selected_node_contexts\x18\x04 \x03(\v2\x1b.act.v1.SelectedNodeContextR\x18usedSelectedNodeContexts\x12\x1d\n" +
+	"\n" +
+	"used_tools\x18\x05 \x03(\tR\tusedTools\x124\n" +
+	"\fused_sources\x18\x06 \x03(\v2\x11.act.v1.SourceRefR\vusedSources\"\xae\x01\n" +
 	"\tErrorInfo\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1c\n" +
@@ -914,7 +1024,7 @@ func file_act_v1_act_proto_rawDescGZIP() []byte {
 }
 
 var file_act_v1_act_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_act_v1_act_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_act_v1_act_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_act_v1_act_proto_goTypes = []any{
 	(ActType)(0),                // 0: act.v1.ActType
 	(*RunActRequest)(nil),       // 1: act.v1.RunActRequest
@@ -925,8 +1035,9 @@ var file_act_v1_act_proto_goTypes = []any{
 	(*TextDelta)(nil),           // 6: act.v1.TextDelta
 	(*PatchOps)(nil),            // 7: act.v1.PatchOps
 	(*PatchOp)(nil),             // 8: act.v1.PatchOp
-	(*Terminal)(nil),            // 9: act.v1.Terminal
-	(*ErrorInfo)(nil),           // 10: act.v1.ErrorInfo
+	(*SourceRef)(nil),           // 9: act.v1.SourceRef
+	(*Terminal)(nil),            // 10: act.v1.Terminal
+	(*ErrorInfo)(nil),           // 11: act.v1.ErrorInfo
 }
 var file_act_v1_act_proto_depIdxs = []int32{
 	0,  // 0: act.v1.RunActRequest.act_type:type_name -> act.v1.ActType
@@ -935,16 +1046,18 @@ var file_act_v1_act_proto_depIdxs = []int32{
 	2,  // 3: act.v1.RunActRequest.selected_node_contexts:type_name -> act.v1.SelectedNodeContext
 	6,  // 4: act.v1.RunActEvent.text_delta:type_name -> act.v1.TextDelta
 	7,  // 5: act.v1.RunActEvent.patch_ops:type_name -> act.v1.PatchOps
-	9,  // 6: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal
+	10, // 6: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal
 	8,  // 7: act.v1.PatchOps.ops:type_name -> act.v1.PatchOp
-	10, // 8: act.v1.Terminal.error:type_name -> act.v1.ErrorInfo
-	1,  // 9: act.v1.ActService.RunAct:input_type -> act.v1.RunActRequest
-	5,  // 10: act.v1.ActService.RunAct:output_type -> act.v1.RunActEvent
-	10, // [10:11] is the sub-list for method output_type
-	9,  // [9:10] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	11, // 8: act.v1.Terminal.error:type_name -> act.v1.ErrorInfo
+	2,  // 9: act.v1.Terminal.used_selected_node_contexts:type_name -> act.v1.SelectedNodeContext
+	9,  // 10: act.v1.Terminal.used_sources:type_name -> act.v1.SourceRef
+	1,  // 11: act.v1.ActService.RunAct:input_type -> act.v1.RunActRequest
+	5,  // 12: act.v1.ActService.RunAct:output_type -> act.v1.RunActEvent
+	12, // [12:13] is the sub-list for method output_type
+	11, // [11:12] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_act_v1_act_proto_init() }
@@ -963,7 +1076,7 @@ func file_act_v1_act_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_act_v1_act_proto_rawDesc), len(file_act_v1_act_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -25,6 +25,7 @@ type ActClarificationState = {
   clarification: ActRunClarification | null;
   pendingRun: PendingActRun | null;
   setPendingClarification: (payload: { clarification: ActRunClarification; pendingRun: PendingActRun }) => Promise<void>;
+  waitForSelectionAndRetry: (selectionGroupId: string) => Promise<void>;
   clearClarification: () => void;
   continueWithoutContext: () => void;
   retryWithSelection: () => Promise<void>;
@@ -53,6 +54,34 @@ function isLikelyJapanese(text: string) {
 export const useActClarificationStore = create<ActClarificationState>((set, get) => ({
   clarification: null,
   pendingRun: null,
+  waitForSelectionAndRetry: async (selectionGroupId) => {
+    const pendingRun = get().pendingRun;
+    if (!pendingRun || pendingRun.selectionGroupId !== selectionGroupId || useGraphStore.getState().isStreaming) {
+      return;
+    }
+
+    const result = await frontendToolClient.invokeTool("get_selection_group_result", {
+      selection_group_id: selectionGroupId,
+      wait_for_user: true,
+      timeout_ms: 120000,
+    });
+    if (!result.ok) {
+      return;
+    }
+
+    const output = result.output as Record<string, unknown>;
+    const status = typeof output.status === "string" ? output.status : "pending";
+    if (status !== "selected") {
+      return;
+    }
+
+    const latestPending = get().pendingRun;
+    if (!latestPending || latestPending.selectionGroupId !== selectionGroupId || useGraphStore.getState().isStreaming) {
+      return;
+    }
+
+    await get().retryWithSelection();
+  },
   setPendingClarification: async ({ clarification, pendingRun }) => {
     const previousGroupId = get().pendingRun?.selectionGroupId;
     if (previousGroupId) {
@@ -80,6 +109,10 @@ export const useActClarificationStore = create<ActClarificationState>((set, get)
         selectionOptions: clarification.candidate_options,
       },
     });
+
+    if (selectionGroupId) {
+      void get().waitForSelectionAndRetry(selectionGroupId);
+    }
   },
   clearClarification: () => {
     const previousGroupId = get().pendingRun?.selectionGroupId;

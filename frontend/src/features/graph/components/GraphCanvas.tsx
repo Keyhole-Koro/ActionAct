@@ -98,17 +98,19 @@ function isRenderableCoordinate(value: number | undefined) {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
 }
 
-function getDisplayNodeDimensions(node: GraphNodeRender) {
-    if (node.data?.layoutMode === 'radial' && node.data?.nodeSource === 'persisted') {
-        const radialDepth = typeof node.data.radialDepth === 'number' ? node.data.radialDepth : 0;
+function getDisplayNodeDimensions(node: Node<Record<string, unknown>>) {
+    const data = (node.data ?? {}) as Partial<GraphNodeRender['data']>;
+
+    if (data.layoutMode === 'radial' && data.nodeSource === 'persisted') {
+        const radialDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
         const size = radialDepth === 0 ? 132 : (radialDepth === 1 ? 120 : (radialDepth === 2 ? 110 : 96));
         return { width: size, height: size };
     }
 
-    const nodeKind = typeof node.data?.kind === 'string' ? node.data.kind : undefined;
-    const label = typeof node.data?.label === 'string' ? node.data.label : undefined;
-    const isExpanded = node.data?.isExpanded === true;
-    const hasChildNodes = node.data?.hasChildNodes === true;
+    const nodeKind = typeof data.kind === 'string' ? data.kind : undefined;
+    const label = typeof data.label === 'string' ? data.label : undefined;
+    const isExpanded = data.isExpanded === true;
+    const hasChildNodes = data.hasChildNodes === true;
     const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
 
     return {
@@ -121,7 +123,7 @@ function getDisplayNodeDimensions(node: GraphNodeRender) {
     };
 }
 
-function overlapsWithMargin(left: GraphNodeRender, right: GraphNodeRender, margin = 28) {
+function overlapsWithMargin(left: Node<Record<string, unknown>>, right: Node<Record<string, unknown>>, margin = 28) {
     const leftDimensions = getDisplayNodeDimensions(left);
     const rightDimensions = getDisplayNodeDimensions(right);
 
@@ -592,7 +594,15 @@ export function GraphCanvas() {
     }, [layoutAwareDisplayNodes]);
 
     const emphasizedDisplayNodes = useMemo(() => {
-        const expandedNodes = normalizedDisplayNodes.filter((node) => node.data?.isExpanded === true);
+        const isExpandedNode = (node: (typeof normalizedDisplayNodes)[number]) => (
+            node.type === 'customTask'
+            && typeof node.data === 'object'
+            && node.data !== null
+            && 'isExpanded' in node.data
+            && node.data.isExpanded === true
+        );
+
+        const expandedNodes = normalizedDisplayNodes.filter((node) => isExpandedNode(node));
         if (expandedNodes.length === 0) {
             return normalizedDisplayNodes;
         }
@@ -601,7 +611,7 @@ export function GraphCanvas() {
             if (node.type !== 'customTask') {
                 return node;
             }
-            const isExpanded = node.data?.isExpanded === true;
+            const isExpanded = isExpandedNode(node);
             const isSelected = selectedNodeIds.includes(node.id);
             const overlapsExpanded = !isExpanded && expandedNodes.some((expandedNode) => (
                 expandedNode.id !== node.id && overlapsWithMargin(node, expandedNode)
@@ -900,7 +910,10 @@ export function GraphCanvas() {
 
         const draftActNodes = emphasizedDisplayNodes
             .filter((node) => node.type === 'customTask')
-            .filter((node) => node.data?.kind === 'act' && node.data?.actStage === 'draft')
+            .filter((node) => {
+                const data = node.data as Partial<GraphNodeRender['data']> | undefined;
+                return data?.kind === 'act' && data?.actStage === 'draft';
+            })
             .sort((left, right) => {
                 if (left.position.y !== right.position.y) {
                     return left.position.y - right.position.y;

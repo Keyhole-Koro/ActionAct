@@ -61,10 +61,11 @@ function buildSelectedNodeContexts(
     return [];
   }
 
-  const nodeById = new Map<string, { id: string; data?: Record<string, unknown> }>([
-    ...persistedNodes.map((node) => [node.id, node]),
-    ...actNodes.map((node) => [node.id, node]),
-  ]);
+  const nodeEntries: Array<[string, { id: string; data?: Record<string, unknown> }]> = [
+    ...persistedNodes.map((node): [string, { id: string; data?: Record<string, unknown> }] => [node.id, node]),
+    ...actNodes.map((node): [string, { id: string; data?: Record<string, unknown> }] => [node.id, node]),
+  ];
+  const nodeById = new Map<string, { id: string; data?: Record<string, unknown> }>(nodeEntries);
 
   return nodeIds.map((nodeId) => {
     const node = nodeById.get(nodeId);
@@ -198,6 +199,10 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
             (existingNode
               ? undefined
               : referencedNodeIds),
+          usedContextNodeIds: patch.data.usedContextNodeIds,
+          usedSelectedNodeContexts: patch.data.usedSelectedNodeContexts,
+          usedTools: patch.data.usedTools,
+          usedSources: patch.data.usedSources,
         });
         return;
       }

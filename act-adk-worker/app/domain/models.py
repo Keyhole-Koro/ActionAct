@@ -124,6 +124,13 @@ class ErrorInfo(BaseModel):
     retry_after_ms: int = 0
 
 
+class SourceRef(BaseModel):
+    id: str
+    kind: str = ""
+    label: str = ""
+    uri: str = ""
+
+
 class CandidateNode(BaseModel):
     node_id: str
     label: str
@@ -161,3 +168,7 @@ class RunActEvent(BaseModel):
     # terminal
     done: Optional[bool] = None
     error: Optional[ErrorInfo] = None
+    used_context_node_ids: list[str] = Field(default_factory=list)
+    used_selected_node_contexts: list[SelectedNodeContext] = Field(default_factory=list)
+    used_tools: list[str] = Field(default_factory=list)
+    used_sources: list[SourceRef] = Field(default_factory=list)
