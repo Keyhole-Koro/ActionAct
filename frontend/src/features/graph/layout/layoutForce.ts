@@ -31,7 +31,7 @@ type ForceNode = {
     order: number;
 };
 
-const HORIZONTAL_GAP = 440;
+const HORIZONTAL_GAP = 560;
 const VERTICAL_GAP = 240;
 const ITERATIONS = 90;
 const DAMPING = 0.76;
@@ -88,6 +88,8 @@ export function layoutPersistedForce({
         applyAxisConstraints(forceNodes, rootIds.length);
         integrate(forceNodes);
     }
+
+    resolveColumnOverlaps(forceNodes);
 
     const positioned = nodes.map((node) => {
         const state = forceNodes.get(node.id)!;
@@ -231,6 +233,31 @@ function integrate(nodes: Map<string, ForceNode>) {
         node.vy *= DAMPING;
         node.x += node.vx;
         node.y += node.vy;
+    }
+}
+
+function resolveColumnOverlaps(nodes: Map<string, ForceNode>): void {
+    const MIN_VERTICAL_GAP = 24;
+
+    // 列（depth）ごとにグループ化
+    const byDepth = new Map<number, ForceNode[]>();
+    for (const node of nodes.values()) {
+        const col = byDepth.get(node.depth) ?? [];
+        col.push(node);
+        byDepth.set(node.depth, col);
+    }
+
+    // 各列をY位置でソートし、上から順に重なりを下方向に解消
+    for (const col of byDepth.values()) {
+        col.sort((a, b) => a.y - b.y);
+        for (let i = 1; i < col.length; i++) {
+            const above = col[i - 1];
+            const current = col[i];
+            const minY = above.y + above.height + MIN_VERTICAL_GAP;
+            if (current.y < minY) {
+                current.y = minY;
+            }
+        }
     }
 }
 

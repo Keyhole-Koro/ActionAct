@@ -2,12 +2,8 @@
 
 import React from 'react';
 
+import { truncate } from '@/lib/string';
 import { useGraphStore } from '@/features/graph/store';
-
-function truncate(text: string, max: number): string {
-    if (text.length <= max) return text;
-    return text.slice(0, max).trimEnd() + '…';
-}
 
 function kindLabel(kind: string): string {
     if (kind === 'act') return 'act';

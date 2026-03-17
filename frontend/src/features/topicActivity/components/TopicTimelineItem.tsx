@@ -1,19 +1,8 @@
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 import { RoutingDecisionBadge } from './RoutingDecisionBadge';
+import { formatDateTime } from '@/lib/string';
 import type { TopicActivityItem } from '@/services/organize/port';
-
-function formatDateTime(value?: number | null) {
-    if (!value) {
-        return 'Pending timestamp';
-    }
-    return new Intl.DateTimeFormat(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(value);
-}
 
 function StatusIcon({ status }: { status: TopicActivityItem['status'] }) {
     if (status === 'completed') {

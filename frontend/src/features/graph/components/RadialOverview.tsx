@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { GraphNodeRender } from '@/features/graph/types';
+import { easing, interpolate } from '@/services/camera/easing';
+import { CAMERA_CONFIG } from '@/services/camera/cameraService';
 
 type RadialOverviewProps = {
     nodes: GraphNodeRender[];
@@ -52,6 +54,7 @@ export function RadialOverview({
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const viewportAnimationRef = useRef<number | null>(null);
     const viewportTargetRef = useRef<{ left: number; top: number } | null>(null);
+    const animationStartTimeRef = useRef<number | null>(null);
 
     const persistedNodes = useMemo(
         () => nodes.filter((node) => node.data?.nodeSource === 'persisted'),
@@ -318,29 +321,48 @@ export function RadialOverview({
             return;
         }
 
-        const step = () => {
+        animationStartTimeRef.current = null;
+        const animationDuration = 400; // milliseconds
+
+        const step = (currentTime: number) => {
+            if (animationStartTimeRef.current === null) {
+                animationStartTimeRef.current = currentTime;
+            }
+
             const currentViewport = viewportRef.current;
             const currentTarget = viewportTargetRef.current;
 
             if (!currentViewport || !currentTarget) {
                 viewportAnimationRef.current = null;
+                animationStartTimeRef.current = null;
                 return;
             }
 
-            const deltaLeft = currentTarget.left - currentViewport.scrollLeft;
-            const deltaTop = currentTarget.top - currentViewport.scrollTop;
+            const elapsed = currentTime - animationStartTimeRef.current;
+            const progress = Math.min(elapsed / animationDuration, 1);
 
-            currentViewport.scrollLeft += deltaLeft * 0.12;
-            currentViewport.scrollTop += deltaTop * 0.12;
+            // Interpolate using easing function for smooth animation
+            currentViewport.scrollLeft = interpolate(
+                currentViewport.scrollLeft,
+                currentTarget.left,
+                progress,
+                easing.easeInOutCubic,
+            );
+            currentViewport.scrollTop = interpolate(
+                currentViewport.scrollTop,
+                currentTarget.top,
+                progress,
+                easing.easeInOutCubic,
+            );
 
-            if (Math.abs(deltaLeft) < 0.6 && Math.abs(deltaTop) < 0.6) {
+            if (progress < 1) {
+                viewportAnimationRef.current = window.requestAnimationFrame(step);
+            } else {
                 currentViewport.scrollLeft = currentTarget.left;
                 currentViewport.scrollTop = currentTarget.top;
                 viewportAnimationRef.current = null;
-                return;
+                animationStartTimeRef.current = null;
             }
-
-            viewportAnimationRef.current = window.requestAnimationFrame(step);
         };
 
         viewportAnimationRef.current = window.requestAnimationFrame(step);

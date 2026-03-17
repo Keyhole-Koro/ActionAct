@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
+import { readLocalStorage, writeLocalStorage } from '@/lib/storage';
 
 /**
  * Graph store — manages act-generated nodes, user-created nodes, edges, and selection.
@@ -69,28 +70,14 @@ interface GraphState {
 const SELECTED_NODE_IDS_STORAGE_KEY = 'action.graph.selectedNodeIds';
 
 function readStoredSelectedNodeIds(): string[] {
-    if (typeof window === 'undefined') {
-        return [];
-    }
-    const raw = window.localStorage.getItem(SELECTED_NODE_IDS_STORAGE_KEY);
-    if (!raw) {
-        return [];
-    }
-    try {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed)
-            ? parsed.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-            : [];
-    } catch {
-        return [];
-    }
+    const parsed = readLocalStorage<unknown>(SELECTED_NODE_IDS_STORAGE_KEY, []);
+    return Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : [];
 }
 
 function writeStoredSelectedNodeIds(ids: string[]) {
-    if (typeof window === 'undefined') {
-        return;
-    }
-    window.localStorage.setItem(SELECTED_NODE_IDS_STORAGE_KEY, JSON.stringify(uniqueIds(ids).sort()));
+    writeLocalStorage(SELECTED_NODE_IDS_STORAGE_KEY, uniqueIds(ids).sort());
 }
 
 function sameIds(left: string[], right: string[]) {

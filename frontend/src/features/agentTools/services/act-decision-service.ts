@@ -18,9 +18,8 @@ export type ActDecisionCandidate = {
 };
 
 export type ActDecision = {
-  action: "run" | "clarify" | "choose_candidate";
+  action: "run" | "choose_candidate";
   message?: string | null;
-  suggested_action?: "select_node" | "retry_without_context" | "none" | null;
   context_node_ids?: string[];
   candidates?: ActDecisionCandidate[];
   debug_prompt?: {

@@ -23,6 +23,12 @@ import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-pr
 import { projectSelectionGroups } from '@/features/agentInteraction/selectors/projectSelectionGroups';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
+import {
+    CAMERA_CONFIG,
+    createSingleNodeFocusOptions,
+    createFitViewOptions,
+    getBoundingBoxForNodes,
+} from '@/services/camera/cameraService';
 
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
@@ -38,8 +44,10 @@ import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
+import { truncate } from '@/lib/string';
 
 const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
+const RECENT_CLICKED_NODE_LIMIT = 8;
 
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
@@ -217,7 +225,9 @@ export function GraphCanvas() {
         expandedNodeIds,
         expandedBranchNodeIds,
         streamingNodeIds,
+        isStreaming,
         collapseUnusedNodes,
+        recordNodeUsed,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
@@ -233,13 +243,17 @@ export function GraphCanvas() {
     const setPersistedGraphRef = useRef(setPersistedGraph);
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
+    const needsPostStreamFitRef = useRef(false);
+    const activeNodeIdRef = useRef(activeNodeId);
     const pendingRadialFocusNodeIdRef = useRef<string | null>(null);
     const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
     const isShiftMarqueeSelectionRef = useRef(false);
     const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
     const selectionComposerNodeIdRef = useRef<string | null>(null);
+    const [recentClickedNodeIds, setRecentClickedNodeIds] = React.useState<string[]>([]);
     useLayoutEffect(() => {
         selectedNodeIdsRef.current = selectedNodeIds;
+        activeNodeIdRef.current = activeNodeId;
     });
     const usePersistedGraphMock = useMemo(() => {
         return searchParams.get('graphMock') === '1';
@@ -413,6 +427,22 @@ export function GraphCanvas() {
         () => [...persistedGraph.positionedNodes, ...positionedActNodes],
         [persistedGraph.positionedNodes, positionedActNodes],
     );
+
+    const referenceableNodeById = useMemo(
+        () => new Map(allReferenceableNodes.map((node) => [node.id, node])),
+        [allReferenceableNodes],
+    );
+
+    const recordRecentClickedNode = useCallback((nodeId: string) => {
+        setRecentClickedNodeIds((previous) => [
+            nodeId,
+            ...previous.filter((id) => id !== nodeId),
+        ].slice(0, RECENT_CLICKED_NODE_LIMIT));
+    }, []);
+
+    useEffect(() => {
+        setRecentClickedNodeIds((previous) => previous.filter((id) => referenceableNodeById.has(id)));
+    }, [referenceableNodeById]);
 
     const displayNodes = useMemo(
         () => buildDisplayNodes({
@@ -808,11 +838,11 @@ export function GraphCanvas() {
 
         setActiveNode(targetNode.id);
         const currentZoom = reactFlowInstance.getZoom();
-        const nextZoom = Math.min(Math.max(currentZoom, 1.16), 1.3);
+        const animationOptions = createSingleNodeFocusOptions(currentZoom);
         reactFlowInstance.setCenter(
-            targetNode.position.x + 170,
-            targetNode.position.y + 90,
-            { duration: 320, zoom: nextZoom },
+            targetNode.position.x + CAMERA_CONFIG.nodeOffsetX,
+            targetNode.position.y + CAMERA_CONFIG.nodeOffsetY,
+            { duration: animationOptions.duration, zoom: animationOptions.zoom },
         );
     }, [emphasizedDisplayNodes, reactFlowInstance, setActiveNode]);
 
@@ -854,19 +884,42 @@ export function GraphCanvas() {
         }
         previousViewSignatureRef.current = viewSignature;
 
+        if (isStreaming) {
+            needsPostStreamFitRef.current = true;
+            return;
+        }
+
+        needsPostStreamFitRef.current = false;
         const timeoutId = window.setTimeout(() => {
             reactFlowInstance.fitView({
-                duration: 180,
-                padding: 0.14,
-                minZoom: 0.2,
-                maxZoom: 1.2,
+                duration: CAMERA_CONFIG.fitViewDuration,
+                padding: CAMERA_CONFIG.fitViewPadding,
+                minZoom: CAMERA_CONFIG.fitViewZoomMin,
+                maxZoom: CAMERA_CONFIG.fitViewZoomMax,
             });
         }, 50);
 
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [emphasizedDisplayNodes.length, reactFlowInstance, viewSignature]);
+    }, [emphasizedDisplayNodes.length, isStreaming, reactFlowInstance, viewSignature]);
+
+    // ストリーミング終了後に一度だけ fitView を実行
+    useEffect(() => {
+        if (isStreaming || !needsPostStreamFitRef.current) {
+            return;
+        }
+        needsPostStreamFitRef.current = false;
+        const timeoutId = window.setTimeout(() => {
+            reactFlowInstance.fitView({
+                duration: CAMERA_CONFIG.fitViewDuration,
+                padding: CAMERA_CONFIG.fitViewPadding,
+                minZoom: CAMERA_CONFIG.fitViewZoomMin,
+                maxZoom: CAMERA_CONFIG.fitViewZoomMax,
+            });
+        }, 100);
+        return () => window.clearTimeout(timeoutId);
+    }, [isStreaming, reactFlowInstance]);
 
     useEffect(() => {
         const pendingNodeId = pendingRadialFocusNodeIdRef.current;
@@ -1006,14 +1059,19 @@ export function GraphCanvas() {
     }, [handleDraftNodeFocusNavigation]);
 
     useEffect(() => {
-        const COLLAPSE_THRESHOLD_MS = 90_000;
+        const COLLAPSE_THRESHOLD_MS = 300_000; // 5分
         const id = window.setInterval(() => {
+            const currentActiveNodeId = activeNodeIdRef.current;
+            if (currentActiveNodeId) {
+                recordNodeUsed(currentActiveNodeId);
+            }
             collapseUnusedNodes(Date.now(), COLLAPSE_THRESHOLD_MS);
         }, 5_000);
         return () => window.clearInterval(id);
-    }, [collapseUnusedNodes]);
+    }, [collapseUnusedNodes, recordNodeUsed]);
 
     const activateRadialNode = useCallback((nodeId: string) => {
+        recordRecentClickedNode(nodeId);
         setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);
         commands.openDetails(nodeId);
 
@@ -1050,8 +1108,50 @@ export function GraphCanvas() {
         isRadialLayout,
         persistedParentById,
         radialOverviewNodeById,
+        recordRecentClickedNode,
         setSelectedNodes,
     ]);
+
+    const handleSelectRecentNode = useCallback((nodeId: string) => {
+        setSelectedNodes([nodeId]);
+        setActiveNode(nodeId);
+        recordNodeUsed(nodeId);
+        if (!isRadialLayout) {
+            focusNode(nodeId);
+        }
+    }, [focusNode, isRadialLayout, recordNodeUsed, setActiveNode, setSelectedNodes]);
+
+    const recentClickedSelector = recentClickedNodeIds.length > 0 ? (
+        <div className="absolute left-1/2 top-4 z-20 flex max-w-[min(920px,calc(100%-168px))] -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/92 px-2 py-1.5 shadow-sm backdrop-blur-sm">
+            {recentClickedNodeIds.map((nodeId, index) => {
+                const node = referenceableNodeById.get(nodeId);
+                const data = node?.data as Record<string, unknown> | undefined;
+                const label = typeof data?.label === 'string' && data.label.trim().length > 0
+                    ? data.label.trim()
+                    : nodeId;
+                const isActive = activeNodeId === nodeId;
+
+                return (
+                    <React.Fragment key={nodeId}>
+                        {index > 0 && <span className="text-[11px] font-semibold text-slate-400">&lt;&lt;</span>}
+                        <button
+                            type="button"
+                            className={[
+                                'max-w-[140px] rounded-xl border px-3 py-1.5 text-left text-xs font-medium transition-colors',
+                                isActive
+                                    ? 'border-slate-900 bg-slate-900 text-white'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100',
+                            ].join(' ')}
+                            title={label}
+                            onClick={() => handleSelectRecentNode(nodeId)}
+                        >
+                            <span className="block truncate">{truncate(label, 18)}</span>
+                        </button>
+                    </React.Fragment>
+                );
+            })}
+        </div>
+    ) : null;
 
     const setLayoutMode = useCallback((nextLayout: 'force' | 'radial') => {
         const nextParams = new URLSearchParams(searchParams.toString());
@@ -1104,6 +1204,7 @@ export function GraphCanvas() {
         return (
             <div className="relative h-full w-full">
                 {layoutToggle}
+                {recentClickedSelector}
                 <RadialOverview
                     nodes={radialOverviewNodes as GraphNodeRender[]}
                     rootIds={radialOverviewGraph.rootIds}
@@ -1119,6 +1220,7 @@ export function GraphCanvas() {
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             {layoutToggle}
+            {recentClickedSelector}
             <SelectedNodePanel />
             <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
                 <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">
@@ -1168,6 +1270,8 @@ export function GraphCanvas() {
                         return;
                     }
 
+                    recordRecentClickedNode(node.id);
+
                     if (event.shiftKey) {
                         const currentIds = selectedNodeIdsRef.current;
                         const alreadySelected = currentIds.includes(node.id);
@@ -1183,13 +1287,17 @@ export function GraphCanvas() {
                     }
 
                     toggleExpandedNode(node.id);
-                    focusNode(node.id);
+                    if (activeNodeId !== node.id) {
+                        focusNode(node.id);
+                    }
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
+                    const currentZoom = reactFlowInstance.getZoom();
+                    const nextZoom = Math.max(currentZoom, CAMERA_CONFIG.doubleClickZoomMin);
                     reactFlowInstance.setCenter(
-                        node.position.x + 170,
-                        node.position.y + 90,
-                        { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
+                        node.position.x + CAMERA_CONFIG.nodeOffsetX,
+                        node.position.y + CAMERA_CONFIG.nodeOffsetY,
+                        { duration: CAMERA_CONFIG.doubleClickDuration, zoom: nextZoom },
                     );
                 }}
                 onSelectionChange={handleSelectionChange}

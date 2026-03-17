@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { readLocalStorage, writeLocalStorage } from '@/lib/storage';
 import { organizeService } from '@/services/organize';
 import type { InputProgress, InputProgressStatus } from '@/services/organize/port';
 
@@ -14,18 +15,11 @@ interface PendingEntry {
 }
 
 function loadPending(): PendingEntry[] {
-    if (typeof window === 'undefined') return [];
-    try {
-        const raw = window.localStorage.getItem(PENDING_KEY);
-        return raw ? (JSON.parse(raw) as PendingEntry[]) : [];
-    } catch {
-        return [];
-    }
+    return readLocalStorage<PendingEntry[]>(PENDING_KEY, []);
 }
 
 function savePending(entries: PendingEntry[]): void {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
+    writeLocalStorage(PENDING_KEY, entries);
 }
 
 // Keep Firestore unsubscribers outside of state to avoid triggering re-renders.
