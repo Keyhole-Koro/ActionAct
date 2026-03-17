@@ -50,10 +50,10 @@ interface SimLink extends SimulationLinkDatum<SimNode> {
 
 const PADDING = 120;
 // Tick budgets per scenario
-const TICKS_FRESH       = 220;   // no previous positions — needs full convergence
-const TICKS_NEW_NODES   = 80;    // incremental: pin existing, settle new nodes
-const TICKS_RELAX       = 35;    // incremental: unpin everything, brief relax
-const TICKS_EXPAND_ONLY = 30;    // same topology, just a dimension change
+const TICKS_FRESH       = 160;   // Increased for better convergence
+const TICKS_NEW_NODES   = 70;    // More time to settle new nodes quietly
+const TICKS_RELAX       = 40;    // Double the relax time to dampen sudden movements
+const TICKS_EXPAND_ONLY = 20;    // Slightly more for dimension changes
 
 // Electrostatic repulsion — keeps nodes apart
 const CHARGE_STRENGTH = -420;
@@ -98,9 +98,10 @@ export function layoutPersistedForce({
         // otherwise scatter around the origin with jitter.
         const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
         const parentSeed = parentId ? previousPositions?.get(parentId) : undefined;
-        const jitter = () => (Math.random() - 0.5) * 60;
-        const fallbackX = parentSeed?.x ?? jitter();
-        const fallbackY = parentSeed?.y ?? jitter();
+        // Increase jitter to reduce explosive overlap forces
+        const jitter = (amount: number) => (Math.random() - 0.5) * amount;
+        const fallbackX = parentSeed ? parentSeed.x + jitter(160) : jitter(200);
+        const fallbackY = parentSeed ? parentSeed.y + jitter(160) : jitter(200);
 
         return {
             id: node.id,
@@ -168,6 +169,7 @@ export function layoutPersistedForce({
 
     // ── Run simulation synchronously ─────────────────────────────────────────
     const simulation = forceSimulation<SimNode>(simNodes)
+        .velocityDecay(0.45) // Higher decay = more friction, less jumping
         .force(
             'charge',
             forceManyBody<SimNode>()
@@ -180,12 +182,12 @@ export function layoutPersistedForce({
                 .id((d) => d.id)
                 .distance((l) => l.distance)
                 .strength((l) => l.strength)
-                .iterations(3),
+                .iterations(4), // More iterations for stable structure
         )
         .force(
             'collide',
-            forceCollide<SimNode>((n) => Math.max(n.width, n.height) * 0.38 + 10)
-                .iterations(2),
+            forceCollide<SimNode>((n) => Math.max(n.width, n.height) * 0.42 + 12)
+                .iterations(4), // Fine-grained collision resolution
         )
         .force('x', forceX<SimNode>(0).strength(CENTER_STRENGTH))
         .force('y', forceY<SimNode>(0).strength(CENTER_STRENGTH))

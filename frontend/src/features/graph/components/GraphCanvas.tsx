@@ -4,14 +4,15 @@ import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMe
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
     Background,
-    Controls,
     Edge,
     MarkerType,
     MiniMap,
     Node,
+    Panel,
     ReactFlow,
     SelectionMode,
     useReactFlow,
+    useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -95,6 +96,171 @@ function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeC
         <GraphNodeRenderBoundary nodeId={props.id} label={label}>
             <GraphNodeCard {...props} />
         </GraphNodeRenderBoundary>
+    );
+}
+
+const ZOOM_LEVELS = [0.4, 0.65, 1.0, 1.5] as const;
+
+type NavControlProps = {
+    actNodeIds: string[];
+    activeNodeId: string | null;
+    onFocusActNode: (nodeId: string) => void;
+};
+
+function NavControl({ actNodeIds, activeNodeId, onFocusActNode }: NavControlProps) {
+    const { zoomTo, fitView } = useReactFlow();
+    const { zoom } = useViewport();
+
+    // ── Zoom ─────────────────────────────────────────────────────────────────
+    const zoomIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
+        Math.abs(level - zoom) < Math.abs(ZOOM_LEVELS[best] - zoom) ? idx : best, 0);
+
+    const zoomStep = (delta: 1 | -1) => {
+        const next = Math.min(Math.max(zoomIdx + delta, 0), ZOOM_LEVELS.length - 1);
+        zoomTo(ZOOM_LEVELS[next], { duration: 220 });
+    };
+
+    // ── Act node navigation ───────────────────────────────────────────────────
+    const actIdx = actNodeIds.indexOf(activeNodeId ?? '');
+    const hasAct = actNodeIds.length > 0;
+
+    const focusAct = (delta: 1 | -1) => {
+        if (!hasAct) return;
+        const base = actIdx < 0 ? (delta === 1 ? -1 : actNodeIds.length) : actIdx;
+        const next = (base + delta + actNodeIds.length) % actNodeIds.length;
+        onFocusActNode(actNodeIds[next]);
+    };
+
+    const iconBtn = 'flex h-7 w-7 items-center justify-center rounded-md transition-colors';
+    const activeBtn = `${iconBtn} text-slate-600 hover:bg-slate-100`;
+    const disabledBtn = `${iconBtn} text-slate-300 cursor-default`;
+
+    return (
+        <Panel position="bottom-left" className="!m-3">
+            <div className="flex flex-col items-center gap-0.5 rounded-lg border border-border/40 bg-white shadow-sm p-1 select-none">
+
+                {/* Zoom in */}
+                <button type="button" onClick={() => zoomStep(1)} disabled={zoomIdx >= ZOOM_LEVELS.length - 1}
+                    className={zoomIdx >= ZOOM_LEVELS.length - 1 ? disabledBtn : activeBtn} title="Zoom in">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/>
+                    </svg>
+                </button>
+
+                {/* Zoom level dots */}
+                <div className="flex flex-col items-center gap-0.5 py-0.5">
+                    {ZOOM_LEVELS.map((level, idx) => (
+                        <button key={level} type="button" onClick={() => zoomTo(level, { duration: 220 })}
+                            className={`h-1.5 w-1.5 rounded-full transition-all ${idx === zoomIdx ? 'bg-primary scale-125' : 'bg-slate-300 hover:bg-slate-400'}`}
+                            title={`${Math.round(level * 100)}%`} />
+                    ))}
+                </div>
+
+                {/* Zoom out */}
+                <button type="button" onClick={() => zoomStep(-1)} disabled={zoomIdx <= 0}
+                    className={zoomIdx <= 0 ? disabledBtn : activeBtn} title="Zoom out">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="1" y1="6" x2="11" y2="6"/>
+                    </svg>
+                </button>
+
+                <div className="my-0.5 w-6 border-t border-border/40" />
+
+                {/* Act node navigation — left / counter / right */}
+                <div className="flex items-center gap-0.5">
+                    <button type="button" onClick={() => focusAct(-1)} disabled={!hasAct}
+                        className={!hasAct ? disabledBtn : activeBtn} title="Previous act node">
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="7,1 3,5 7,9"/>
+                        </svg>
+                    </button>
+                    <span className="w-6 text-center text-[10px] font-medium text-slate-400 tabular-nums">
+                        {hasAct ? `${actIdx >= 0 ? actIdx + 1 : '–'}/${actNodeIds.length}` : '–'}
+                    </span>
+                    <button type="button" onClick={() => focusAct(1)} disabled={!hasAct}
+                        className={!hasAct ? disabledBtn : activeBtn} title="Next act node">
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3,1 7,5 3,9"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div className="my-0.5 w-6 border-t border-border/40" />
+
+                {/* Fit view */}
+                <button type="button" onClick={() => fitView({ duration: 300, padding: 0.12 })}
+                    className={activeBtn} title="Fit view">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M1 5V2h3M15 5V2h-3M1 11v3h3M15 11v3h-3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </Panel>
+    );
+}
+
+const SHORTCUTS = [
+    { keys: ['↑', '↓'],           desc: 'ズームイン / アウト' },
+    { keys: ['←', '→'],           desc: 'Act ノード切り替え' },
+    { keys: ['文字入力'],          desc: 'ノード選択中 → Act 作成' },
+    { keys: ['クリック'],          desc: 'ノード展開 / フォーカス' },
+    { keys: ['⌘', 'クリック'],    desc: '複数選択' },
+    { keys: ['ダブルクリック'],    desc: 'ズームイン' },
+    { keys: ['スクロール'],        desc: 'ズーム' },
+    { keys: ['Space', 'ドラッグ'], desc: 'パン' },
+] as const;
+
+function KeyboardShortcutsHint() {
+    return (
+        <Panel position="bottom-right" className="!m-3">
+            <div className="group relative flex flex-col items-end">
+                {/* Expanded panel — visible on hover */}
+                <div className="
+                    mb-2 w-56 origin-bottom-right scale-95 rounded-xl border border-border/40
+                    bg-white/95 backdrop-blur-sm shadow-lg
+                    opacity-0 pointer-events-none
+                    transition-all duration-200
+                    group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto
+                ">
+                    <div className="px-3 pt-2.5 pb-1 border-b border-border/30">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                            Keyboard shortcuts
+                        </p>
+                    </div>
+                    <ul className="px-3 py-2 flex flex-col gap-1.5">
+                        {SHORTCUTS.map(({ keys, desc }, i) => (
+                            <li key={i} className="flex items-center justify-between gap-3">
+                                <span className="text-[11px] text-slate-500">{desc}</span>
+                                <span className="flex items-center gap-0.5 shrink-0">
+                                    {keys.map((k) => (
+                                        <kbd key={k} className="
+                                            inline-flex items-center justify-center rounded
+                                            border border-slate-200 bg-slate-50
+                                            px-1.5 py-0.5 text-[10px] font-medium
+                                            text-slate-600 shadow-[0_1px_0_rgba(0,0,0,0.12)]
+                                            leading-none whitespace-nowrap
+                                        ">{k}</kbd>
+                                    ))}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+
+                {/* Trigger button */}
+                <button
+                    type="button"
+                    className="
+                        flex h-7 w-7 items-center justify-center rounded-full
+                        border border-border/40 bg-white shadow-sm
+                        text-[12px] font-semibold text-slate-400
+                        hover:border-primary/30 hover:text-primary
+                        transition-colors select-none
+                    "
+                    title="Keyboard shortcuts"
+                >?</button>
+            </div>
+        </Panel>
     );
 }
 
@@ -367,21 +533,37 @@ export function GraphCanvas() {
     }, [setActGraph, topicId, workspaceId]);
 
     const effectiveExpandedBranchNodeIds = useMemo(() => {
-        const allPersistedIds = new Set((persistedNodes as GraphNodeBase[]).map((node) => node.id));
-        const rootIds = (persistedNodes as GraphNodeBase[])
-            .filter((node) => {
-                const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
-                return !parentId || !allPersistedIds.has(parentId);
-            })
-            .map((node) => node.id);
-
-        return [...new Set([...rootIds, ...expandedBranchNodeIds])];
-    }, [expandedBranchNodeIds, persistedNodes]);
+        // We no longer force root nodes to be expanded by default.
+        // Only nodes explicitly toggled by the user (expandedBranchNodeIds) will be open.
+        return expandedBranchNodeIds;
+    }, [expandedBranchNodeIds]);
 
     // Defer layout-heavy inputs so user interactions (expand/collapse clicks)
     // are rendered immediately while the force simulation runs in a background pass.
     const deferredExpandedBranchNodeIds = useDeferredValue(effectiveExpandedBranchNodeIds);
     const deferredExpandedNodeIds = useDeferredValue(expandedNodeIds);
+
+    // Strip act nodes down to layout-relevant fields only (position + refs + label).
+    // This prevents streaming content updates (contentMd, contextSummary, etc.) from
+    // triggering an expensive force layout recomputation on every streaming tick.
+    const actNodesLayoutKey = (actNodes as GraphNodeBase[]).map((n) =>
+        `${n.id}:${n.position.x.toFixed(0)},${n.position.y.toFixed(0)}:${n.data?.label ?? ''}:${(n.data?.referencedNodeIds as string[] | undefined)?.join(',') ?? ''}`
+    ).join('|');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({
+        ...n,
+        data: {
+            kind: n.data?.kind,
+            nodeSource: n.data?.nodeSource,
+            label: n.data?.label,
+            referencedNodeIds: n.data?.referencedNodeIds,
+            parentId: n.data?.parentId,
+            isManualPosition: n.data?.isManualPosition,
+        },
+    } as GraphNodeBase)), [actNodesLayoutKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const deferredActNodes = useDeferredValue(actNodesForLayout);
+    const deferredActEdges = useDeferredValue(actEdges);
 
     const persistedGraph = useMemo(
         () => projectPersistedGraph(
@@ -390,10 +572,10 @@ export function GraphCanvas() {
             deferredExpandedBranchNodeIds,
             deferredExpandedNodeIds,
             persistedLayoutMode,
-            actNodes as GraphNodeBase[],
-            actEdges,
+            deferredActNodes,
+            deferredActEdges,
         ),
-        [actEdges, actNodes, deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [deferredActEdges, deferredActNodes, deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
     const isSphereLayout = persistedLayoutMode === 'sphere';
@@ -488,24 +670,29 @@ export function GraphCanvas() {
         [displayNodes, selectionProjection.nodes],
     );
 
-    const layoutAwareDisplayNodes = useMemo(() => {
-        // Build parent map for root traversal (to compute rootHue per node)
+    // Computed early so both layoutAwareDisplayNodes and displayEdges can share it.
+    const persistedRootIdByNode = useMemo(() => {
+        const resolved = new Map<string, string>();
         const parentById = new Map(
             persistedGraph.positionedNodes.map((node) => [
                 node.id,
                 typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
             ]),
         );
-        const getRootId = (id: string): string => {
-            let cur: string | undefined = id;
+        persistedGraph.positionedNodes.forEach((node) => {
+            let cur: string | undefined = node.id;
+            let root = node.id;
             while (cur) {
                 const p = parentById.get(cur);
-                if (!p) return cur;
+                if (!p) { root = cur; break; }
                 cur = p;
             }
-            return id;
-        };
+            resolved.set(node.id, root);
+        });
+        return resolved;
+    }, [persistedGraph.positionedNodes]);
 
+    const layoutAwareDisplayNodes = useMemo(() => {
         return canvasNodes.map((node) => {
             const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
                 ? 'radial'
@@ -513,7 +700,8 @@ export function GraphCanvas() {
 
             let rootHue = 210;
             if (node.data?.nodeSource === 'persisted') {
-                const rootIndex = persistedGraph.rootIds.indexOf(getRootId(node.id));
+                const rootId = persistedRootIdByNode.get(node.id);
+                const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
                 rootHue = rootIndex >= 0 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length] : 210;
             }
 
@@ -527,7 +715,7 @@ export function GraphCanvas() {
                 },
             };
         });
-    }, [canvasNodes, isRadialLayout, persistedGraph.depthById, persistedGraph.positionedNodes, persistedGraph.rootIds]);
+    }, [canvasNodes, isRadialLayout, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -722,33 +910,6 @@ export function GraphCanvas() {
         });
     }, [normalizedDisplayNodes, selectedNodeIds]);
 
-    const persistedRootIdByNode = useMemo(() => {
-        const resolved = new Map<string, string>();
-        const parentById = new Map(
-            persistedGraph.positionedNodes.map((node) => [
-                node.id,
-                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
-            ]),
-        );
-
-        persistedGraph.positionedNodes.forEach((node) => {
-            let currentId: string | undefined = node.id;
-            let currentRoot = node.id;
-
-            while (currentId) {
-                const parentId = parentById.get(currentId);
-                if (!parentId) {
-                    currentRoot = currentId;
-                    break;
-                }
-                currentId = parentId;
-            }
-
-            resolved.set(node.id, currentRoot);
-        });
-
-        return resolved;
-    }, [persistedGraph.positionedNodes]);
 
     const persistedParentById = useMemo(
         () => new Map(
@@ -877,7 +1038,8 @@ export function GraphCanvas() {
     );
 
     const focusNode = useCallback((nodeId: string) => {
-        const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId);
+        const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId)
+            ?? (actNodes as GraphNodeBase[]).find((node) => node.id === nodeId);
         if (!targetNode) {
             return;
         }
@@ -890,7 +1052,12 @@ export function GraphCanvas() {
             targetNode.position.y + CAMERA_CONFIG.nodeOffsetY,
             { duration: animationOptions.duration, zoom: animationOptions.zoom },
         );
-    }, [emphasizedDisplayNodes, reactFlowInstance, setActiveNode]);
+    }, [emphasizedDisplayNodes, actNodes, reactFlowInstance, setActiveNode]);
+
+    const focusActNode = useCallback((nodeId: string) => {
+        setSelectedNodes([nodeId]);
+        focusNode(nodeId);
+    }, [focusNode, setSelectedNodes]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
         const target = event.target;
@@ -1030,57 +1197,44 @@ export function GraphCanvas() {
         event.preventDefault();
     }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
 
-    const handleDraftNodeFocusNavigation = useCallback((event: KeyboardEvent) => {
-        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
-            return;
-        }
-        if (event.metaKey || event.ctrlKey || event.altKey) {
-            return;
-        }
+    const handleKeyNavigation = useCallback((event: KeyboardEvent) => {
+        const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key);
+        if (!isArrow) return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
 
         const target = event.target;
         if (
             target instanceof HTMLElement
-            && (
-                target.tagName === 'INPUT'
-                || target.tagName === 'TEXTAREA'
-                || target.isContentEditable
-            )
+            && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
         ) {
             return;
         }
 
-        const draftActNodes = emphasizedDisplayNodes
-            .filter((node) => node.type === 'customTask')
-            .filter((node) => {
-                const data = node.data as Partial<GraphNodeRender['data']> | undefined;
-                return data?.kind === 'act' && data?.actStage === 'draft';
-            })
-            .sort((left, right) => {
-                if (left.position.y !== right.position.y) {
-                    return left.position.y - right.position.y;
-                }
-                return left.position.x - right.position.x;
-            });
-
-        if (draftActNodes.length === 0) {
+        // ↑ / ↓ — zoom in / out through preset levels
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            const currentZoom = reactFlowInstance.getZoom();
+            const nearestIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
+                Math.abs(level - currentZoom) < Math.abs(ZOOM_LEVELS[best] - currentZoom) ? idx : best, 0);
+            const delta = event.key === 'ArrowUp' ? 1 : -1;
+            const nextIdx = Math.min(Math.max(nearestIdx + delta, 0), ZOOM_LEVELS.length - 1);
+            if (nextIdx !== nearestIdx) {
+                reactFlowInstance.zoomTo(ZOOM_LEVELS[nextIdx], { duration: 220 });
+            }
+            event.preventDefault();
             return;
         }
 
-        const currentIndex = draftActNodes.findIndex((node) => node.id === activeNodeId);
-        const movingDown = event.key === 'ArrowDown';
-        const fallbackIndex = movingDown ? -1 : 0;
-        const baseIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
-        const direction = movingDown ? 1 : -1;
-        const nextIndex = (baseIndex + direction + draftActNodes.length) % draftActNodes.length;
+        // ← / → — cycle through act nodes (use store directly, not deferred display nodes)
+        const storeActNodes = actNodes as GraphNodeBase[];
+        if (storeActNodes.length === 0) return;
 
-        const nextNodeId = draftActNodes[nextIndex].id;
-        if (event.shiftKey) {
-            setSelectedNodes([nextNodeId]);
-        }
-        focusNode(nextNodeId);
+        const currentIndex = storeActNodes.findIndex((node) => node.id === activeNodeId);
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const base = currentIndex < 0 ? (direction === 1 ? -1 : storeActNodes.length) : currentIndex;
+        const nextIndex = (base + direction + storeActNodes.length) % storeActNodes.length;
+        focusActNode(storeActNodes[nextIndex].id);
         event.preventDefault();
-    }, [activeNodeId, emphasizedDisplayNodes, focusNode, setSelectedNodes]);
+    }, [activeNodeId, actNodes, focusActNode, reactFlowInstance]);
 
     useEffect(() => {
         const handleFocusNode = (event: Event) => {
@@ -1100,9 +1254,9 @@ export function GraphCanvas() {
     }, [handleSelectionTyping]);
 
     useEffect(() => {
-        window.addEventListener('keydown', handleDraftNodeFocusNavigation);
-        return () => window.removeEventListener('keydown', handleDraftNodeFocusNavigation);
-    }, [handleDraftNodeFocusNavigation]);
+        window.addEventListener('keydown', handleKeyNavigation);
+        return () => window.removeEventListener('keydown', handleKeyNavigation);
+    }, [handleKeyNavigation]);
 
     useEffect(() => {
         const COLLAPSE_THRESHOLD_MS = 300_000; // 5分
@@ -1343,7 +1497,10 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    toggleExpandedNode(node.id);
+                    // Click to explore: expand detail panel AND branch
+                    expandNode(node.id);
+                    expandBranchNode(node.id);
+
                     if (activeNodeId !== node.id) {
                         focusNode(node.id);
                     }
@@ -1412,6 +1569,7 @@ export function GraphCanvas() {
                 edgeTypes={edgeTypes}
                 nodesDraggable={false}
                 panOnScroll
+                panOnScrollSpeed={0.5}
                 selectionOnDrag
                 panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}
@@ -1419,7 +1577,12 @@ export function GraphCanvas() {
                 fitView
             >
                 <Background color="var(--border)" gap={24} size={1} />
-                <Controls className="!rounded-md !border-border/40 !bg-white !shadow-sm" />
+                <KeyboardShortcutsHint />
+                <NavControl
+                    actNodeIds={(actNodes as GraphNodeBase[]).map((n) => n.id)}
+                    activeNodeId={activeNodeId}
+                    onFocusActNode={focusActNode}
+                />
                 <MiniMap
                     className="!rounded-md !border-border/40 !bg-white !shadow-sm"
                     maskColor="rgba(0,0,0,0.05)"

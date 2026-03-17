@@ -208,16 +208,37 @@ export const useGraphStore = create<GraphState>((set) => ({
             ? state
             : { expandedNodeIds: [...state.expandedNodeIds, id] }
     )),
-    toggleExpandedBranchNode: (id: string) => set((state) => ({
-        expandedBranchNodeIds: state.expandedBranchNodeIds.includes(id)
-            ? state.expandedBranchNodeIds.filter((expandedId) => expandedId !== id)
-            : [...state.expandedBranchNodeIds, id],
-    })),
-    expandBranchNode: (id: string) => set((state) => (
-        state.expandedBranchNodeIds.includes(id)
-            ? state
-            : { expandedBranchNodeIds: [...state.expandedBranchNodeIds, id] }
-    )),
+    toggleExpandedBranchNode: (id: string) => set((state) => {
+        const isExpanding = !state.expandedBranchNodeIds.includes(id);
+        if (!isExpanding) {
+            return {
+                expandedBranchNodeIds: state.expandedBranchNodeIds.filter((expandedId) => expandedId !== id),
+            };
+        }
+
+        // Recursive expansion: find immediate children and expand them too
+        const childIds = [...state.persistedNodes, ...state.actNodes]
+            .filter((n) => n.data?.parentId === id)
+            .map((n) => n.id);
+
+        return {
+            expandedBranchNodeIds: [...new Set([...state.expandedBranchNodeIds, id, ...childIds])],
+        };
+    }),
+    expandBranchNode: (id: string) => set((state) => {
+        if (state.expandedBranchNodeIds.includes(id)) {
+            return state;
+        }
+
+        // Recursive expansion: find immediate children and expand them too
+        const childIds = [...state.persistedNodes, ...state.actNodes]
+            .filter((n) => n.data?.parentId === id)
+            .map((n) => n.id);
+
+        return {
+            expandedBranchNodeIds: [...new Set([...state.expandedBranchNodeIds, id, ...childIds])],
+        };
+    }),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
     setStreamRunning: (value: boolean) => set({ isStreaming: value }),
     addStreamingNode: (nodeId: string) => set((state) => (
@@ -262,18 +283,8 @@ export const useGraphStore = create<GraphState>((set) => ({
             }
         }
 
-        // Determine root nodes (no parent within persistedNodes)
-        const persistedNodeIds = new Set(state.persistedNodes.map((n) => n.id));
-        const rootNodeIds = new Set(
-            state.persistedNodes
-                .filter((n) => {
-                    const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : undefined;
-                    return !parentId || !persistedNodeIds.has(parentId);
-                })
-                .map((n) => n.id),
-        );
-
         // Build parent→children map to check if a node has a protected descendant
+        const persistedNodeIds = new Set(state.persistedNodes.map((n) => n.id));
         const childrenById = new Map<string, string[]>();
         for (const node of state.persistedNodes) {
             const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
@@ -313,9 +324,8 @@ export const useGraphStore = create<GraphState>((set) => ({
             return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
         });
 
-        // Collapse non-root branch expansions for unused nodes
+        // Collapse branch expansions for unused nodes
         const nextExpandedBranchNodeIds = state.expandedBranchNodeIds.filter((nodeId) => {
-            if (rootNodeIds.has(nodeId)) return true;  // roots always stay open
             if (isProtected(nodeId)) return true;
             const lastUsed = state.nodeLastUsedAt[nodeId];
             return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;

@@ -13,6 +13,8 @@ import {
     UserRound,
     FileUp,
     Loader2,
+    Code,
+    FileText,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
@@ -25,6 +27,7 @@ import {
     NODE_COLLAPSED_BASE_WIDTH,
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
+    getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
 
 const typeConfig: Record<string, { gradient: string; accent: string; glow: string }> = {
@@ -72,6 +75,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
         : (isExpanded ? expandedTitleWidth : collapsedTitleWidth);
     const cardMaxWidth = isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH;
     const expandedMaxHeight = isActNode ? GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT : GRAPH_NODE_EXPANDED_MAX_HEIGHT;
+    const { height: cardHeight } = getLayoutDimensionsForNodeType(data.type, isExpanded, data.kind);
     const inputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
@@ -273,6 +277,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
             <div
                 style={{
                     width: cardWidth,
+                    height: (nodeKind === 'topic' && !isExpanded) ? cardHeight : undefined,
                     minWidth: isActNode
                         ? ACT_NODE_COMPACT_WIDTH
                         : NODE_COLLAPSED_BASE_WIDTH,
@@ -351,6 +356,15 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                     >
                                         {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
                                         {createdBy === 'agent' ? 'AI' : 'You'}
+                                    </span>
+                                )}
+                                {(data.detailHtml || data.contentMd) && (
+                                    <span className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/50 ${isActNode ? 'px-1 py-0.5' : 'px-1.5 py-0.5'} text-slate-500`}>
+                                        {data.detailHtml ? (
+                                            <Code className="h-3 w-3" title="Contains HTML/CSS" />
+                                        ) : (
+                                            <FileText className="h-3 w-3" title="Contains Markdown" />
+                                        )}
                                     </span>
                                 )}
                             </div>

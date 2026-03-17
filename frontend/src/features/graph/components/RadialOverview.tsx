@@ -3,8 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { GraphNodeRender } from '@/features/graph/types';
-import { easing, interpolate } from '@/services/camera/easing';
-import { CAMERA_CONFIG } from '@/services/camera/cameraService';
 
 type RadialOverviewProps = {
     nodes: GraphNodeRender[];
@@ -54,7 +52,6 @@ export function RadialOverview({
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const viewportAnimationRef = useRef<number | null>(null);
     const viewportTargetRef = useRef<{ left: number; top: number } | null>(null);
-    const animationStartTimeRef = useRef<number | null>(null);
 
     const persistedNodes = useMemo(
         () => nodes.filter((node) => node.data?.nodeSource === 'persisted'),
@@ -65,6 +62,9 @@ export function RadialOverview({
         () => new Map(persistedNodes.map((node) => [node.id, node])),
         [persistedNodes],
     );
+
+    // Use a Set for O(1) lookup instead of O(n) Array.includes per segment per render.
+    const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
 
     const parentById = useMemo(
         () => new Map(
@@ -120,40 +120,28 @@ export function RadialOverview({
 
     const ancestorSet = useMemo(() => new Set(ancestorPath), [ancestorPath]);
 
-    const descendantSetById = useMemo(() => {
-        const memo = new Map<string, Set<string>>();
-
-        const buildDescendants = (nodeId: string): Set<string> => {
-            const cached = memo.get(nodeId);
-            if (cached) {
-                return cached;
-            }
-
-            const descendants = new Set<string>([nodeId]);
-            const childIds = childrenByParent.get(nodeId) ?? [];
-
-            childIds.forEach((childId) => {
-                buildDescendants(childId).forEach((descendantId) => descendants.add(descendantId));
-            });
-
-            memo.set(nodeId, descendants);
-            return descendants;
-        };
-
-        persistedNodes.forEach((node) => {
-            buildDescendants(node.id);
-        });
-
-        return memo;
-    }, [childrenByParent, persistedNodes]);
-
+    // Compute descendants lazily for the hovered node only (BFS, O(subtree_size)).
+    // Previously: descendantSetById built full sets for all nodes upfront — O(n²) due
+    // to copying each child's set into the parent. Now we only traverse when a hover
+    // actually occurs, and only the subtree that matters.
     const descendantSet = useMemo(() => {
         if (!hoveredNodeId) {
             return new Set<string>();
         }
 
-        return descendantSetById.get(hoveredNodeId) ?? new Set<string>([hoveredNodeId]);
-    }, [descendantSetById, hoveredNodeId]);
+        const result = new Set<string>([hoveredNodeId]);
+        const queue: string[] = [hoveredNodeId];
+        while (queue.length > 0) {
+            const current = queue.pop()!;
+            for (const childId of childrenByParent.get(current) ?? []) {
+                if (!result.has(childId)) {
+                    result.add(childId);
+                    queue.push(childId);
+                }
+            }
+        }
+        return result;
+    }, [hoveredNodeId, childrenByParent]);
 
     const visibleNodeIds = useMemo(() => {
         const ids = new Set<string>();
@@ -296,8 +284,9 @@ export function RadialOverview({
             return;
         }
 
-        viewport.scrollLeft += event.deltaX;
-        viewport.scrollTop += event.deltaY;
+        const SCROLL_SPEED = 0.05;
+        viewport.scrollLeft += event.deltaX * SCROLL_SPEED;
+        viewport.scrollTop += event.deltaY * SCROLL_SPEED;
     };
 
     const focusViewportOnPoint = (x: number, y: number) => {
@@ -321,47 +310,31 @@ export function RadialOverview({
             return;
         }
 
-        animationStartTimeRef.current = null;
-        const animationDuration = 400; // milliseconds
+        // Lerp-based following: each frame moves a fixed fraction of remaining distance.
+        // Lower LERP_FACTOR = slower, more gradual following.
+        const LERP_FACTOR = 0.04;
 
-        const step = (currentTime: number) => {
-            if (animationStartTimeRef.current === null) {
-                animationStartTimeRef.current = currentTime;
-            }
-
+        const step = () => {
             const currentViewport = viewportRef.current;
             const currentTarget = viewportTargetRef.current;
 
             if (!currentViewport || !currentTarget) {
                 viewportAnimationRef.current = null;
-                animationStartTimeRef.current = null;
                 return;
             }
 
-            const elapsed = currentTime - animationStartTimeRef.current;
-            const progress = Math.min(elapsed / animationDuration, 1);
+            const dx = currentTarget.left - currentViewport.scrollLeft;
+            const dy = currentTarget.top - currentViewport.scrollTop;
 
-            // Interpolate using easing function for smooth animation
-            currentViewport.scrollLeft = interpolate(
-                currentViewport.scrollLeft,
-                currentTarget.left,
-                progress,
-                easing.easeInOutCubic,
-            );
-            currentViewport.scrollTop = interpolate(
-                currentViewport.scrollTop,
-                currentTarget.top,
-                progress,
-                easing.easeInOutCubic,
-            );
+            currentViewport.scrollLeft += dx * LERP_FACTOR;
+            currentViewport.scrollTop += dy * LERP_FACTOR;
 
-            if (progress < 1) {
+            if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
                 viewportAnimationRef.current = window.requestAnimationFrame(step);
             } else {
                 currentViewport.scrollLeft = currentTarget.left;
                 currentViewport.scrollTop = currentTarget.top;
                 viewportAnimationRef.current = null;
-                animationStartTimeRef.current = null;
             }
         };
 
@@ -441,7 +414,7 @@ export function RadialOverview({
 
             {segments.map((segment) => {
                 const point = getSegmentCenterPoint(segment, scaledCenterX, scaledCenterY, effectiveZoom);
-                const isSelected = selectedNodeIds.includes(segment.node.id);
+                const isSelected = selectedNodeIdSet.has(segment.node.id);
                 const isFocused = hoveredNodeId !== null
                     && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
                 const isMuted = hoveredNodeId !== null && !isFocused;
@@ -601,7 +574,8 @@ function assignSegments({
     const totalWeight = weightedChildren.reduce((sum, child) => sum + child.weight, 0);
     let cursor = startAngle;
 
-    weightedChildren.forEach(({ nodeId, weight }) => {
+    // Use the forEach index directly — avoids O(n) indexOf inside the loop.
+    weightedChildren.forEach(({ nodeId, weight }, siblingIndex) => {
         const node = nodeById.get(nodeId);
         if (!node) {
             return;
@@ -613,11 +587,10 @@ function assignSegments({
         const resolvedRootId = rootId ?? nodeId;
         const innerRadius = getRingInnerRadius(depth);
         const outerRadius = getRingOuterRadius(depth);
-        const siblingIds = availableIds;
-        const siblingIndex = siblingIds.indexOf(nodeId);
-        const normalizedOffset = siblingIds.length <= 1
+        const siblingCount = availableIds.length;
+        const normalizedOffset = siblingCount <= 1
             ? 0
-            : ((siblingIndex / (siblingIds.length - 1)) - 0.5);
+            : ((siblingIndex / (siblingCount - 1)) - 0.5);
         const rootHue = branchHue ?? ROOT_HUES[siblingIndex % ROOT_HUES.length];
         const childHue = normalizeHue(rootHue + (normalizedOffset * Math.max(28 - (depth * 5), 8)));
 
