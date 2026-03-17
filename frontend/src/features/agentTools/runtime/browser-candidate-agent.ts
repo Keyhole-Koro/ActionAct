@@ -9,11 +9,6 @@ type TitledNodeCandidate = {
   title: string;
 };
 
-type ScoredNodeCandidate = TitledNodeCandidate & {
-  score: number;
-  reason: string;
-};
-
 type CreateSelectionGroupParams = {
   instruction: string;
   query: string;
@@ -40,68 +35,8 @@ function uniqueNodeIds(nodeIds: string[]) {
   return ordered;
 }
 
-function tokenizeQuery(query: string): string[] {
-  return uniqueNodeIds(
-    query
-      .toLowerCase()
-      .split(/[\s\u3000、。,.!?()[\]{}:"'`/\\|+-]+/u)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2),
-  );
-}
-
 function isLikelyJapanese(text: string): boolean {
   return /[\u3040-\u30ff\u3400-\u9fff]/u.test(text);
-}
-
-function scoreCandidate(
-  candidate: TitledNodeCandidate,
-  queryTokens: string[],
-  activeNodeId: string | null,
-  selectedNodeIds: string[],
-): number {
-  const lowerTitle = candidate.title.toLowerCase();
-  let score = 0;
-
-  if (candidate.nodeId === activeNodeId) {
-    score += 100;
-  }
-  if (selectedNodeIds.includes(candidate.nodeId)) {
-    score += 80;
-  }
-
-  queryTokens.forEach((token) => {
-    if (lowerTitle === token) {
-      score += 60;
-    } else if (lowerTitle.startsWith(token)) {
-      score += 35;
-    } else if (lowerTitle.includes(token)) {
-      score += 20;
-    }
-  });
-
-  score += Math.max(0, 24 - candidate.title.length / 2);
-  return score;
-}
-
-function buildCandidateReason(
-  candidate: TitledNodeCandidate,
-  queryTokens: string[],
-  activeNodeId: string | null,
-  selectedNodeIds: string[],
-): string {
-  const lowerTitle = candidate.title.toLowerCase();
-  if (candidate.nodeId === activeNodeId) {
-    return "現在見ているノードに近い候補です。";
-  }
-  if (selectedNodeIds.includes(candidate.nodeId)) {
-    return "選択中のノードとして参照されています。";
-  }
-  const matchedToken = queryTokens.find((token) => lowerTitle.includes(token));
-  if (matchedToken) {
-    return `「${matchedToken}」に近いタイトルです。`;
-  }
-  return "画面内で近い候補として見つかりました。";
 }
 
 function chooseSelectionGroupCopy(query: string, instruction: string) {
@@ -209,24 +144,6 @@ function extractVisibleGraphNodes(output: Record<string, unknown>) {
     } => node !== null);
 }
 
-function rankCandidates(
-  candidates: TitledNodeCandidate[],
-  query: string,
-  activeNodeId: string | null,
-  selectedNodeIds: string[],
-  maxCandidates: number,
-): ScoredNodeCandidate[] {
-  const queryTokens = tokenizeQuery(query);
-  return candidates
-    .map((candidate) => ({
-      ...candidate,
-      score: scoreCandidate(candidate, queryTokens, activeNodeId, selectedNodeIds),
-      reason: buildCandidateReason(candidate, queryTokens, activeNodeId, selectedNodeIds),
-    }))
-    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
-    .slice(0, maxCandidates);
-}
-
 export async function createClarificationSelectionGroup(
   client: FrontendToolClient,
   params: CreateSelectionGroupParams,
@@ -242,47 +159,34 @@ export async function createClarificationSelectionGroup(
   const output = visibleGraph.output as Record<string, unknown>;
   const visibleGraphNodes = extractVisibleGraphNodes(output);
   const { titledNodeIds, selectedNodeIds, activeNodeId } = extractVisibleCandidates(output);
-  let candidates: ScoredNodeCandidate[] = [];
+  const runContext = useRunContextStore.getState();
+  const resolved = await resolveNodeCandidates({
+    workspaceId: runContext.workspaceId,
+    topicId: runContext.topicId,
+    userMessage: params.query,
+    nodes: visibleGraphNodes,
+    activeNodeId,
+    selectedNodeIds,
+    maxCandidates: params.maxCandidates ?? 4,
+  });
 
-  try {
-    const runContext = useRunContextStore.getState();
-    const resolved = await resolveNodeCandidates({
-      workspaceId: runContext.workspaceId,
-      topicId: runContext.topicId,
-      userMessage: params.query,
-      nodes: visibleGraphNodes,
-      activeNodeId,
-      selectedNodeIds,
-      maxCandidates: params.maxCandidates ?? 4,
-    });
-
-    const byId = new Map(
-      titledNodeIds.map((node) => [node.nodeId, node]),
-    );
-    candidates = resolved
-      .map((candidate) => {
-        const matched = byId.get(candidate.node_id);
-        if (!matched) {
-          return null;
-        }
-        return {
-          ...matched,
-          score: 1000,
-          reason: typeof candidate.reason === "string" && candidate.reason.trim()
-            ? candidate.reason.trim()
-            : buildCandidateReason(matched, tokenizeQuery(params.query), activeNodeId, selectedNodeIds),
-        };
-      })
-      .filter((candidate): candidate is ScoredNodeCandidate => candidate !== null);
-  } catch {
-    candidates = rankCandidates(
-      titledNodeIds,
-      params.query,
-      activeNodeId,
-      selectedNodeIds,
-      params.maxCandidates ?? 4,
-    );
-  }
+  const byId = new Map(
+    titledNodeIds.map((node) => [node.nodeId, node]),
+  );
+  const candidates = resolved
+    .map((candidate) => {
+      const matched = byId.get(candidate.node_id);
+      if (!matched) {
+        return null;
+      }
+      return {
+        ...matched,
+        reason: typeof candidate.reason === "string" && candidate.reason.trim()
+          ? candidate.reason.trim()
+          : null,
+      };
+    })
+    .filter((candidate): candidate is TitledNodeCandidate & { reason: string | null } => candidate !== null);
 
   return createSelectionGroup(client, {
     instruction: params.instruction,

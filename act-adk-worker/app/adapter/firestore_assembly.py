@@ -50,23 +50,16 @@ class FirestoreAssembly:
         user_message: str,
         user_media: list[WorkerMedia] = [],
     ) -> PromptBundle:
-        try:
-            return await asyncio.to_thread(
-                self._assemble_sync,
-                topic_id,
-                workspace_id,
-                anchor_node_id,
-                context_node_ids,
-                selected_node_contexts,
-                user_message,
-                user_media,
-            )
-        except Exception:
-            logger.exception(
-                "Firestore context assembly failed; degrading to minimal bundle",
-                extra={"workspace_id": workspace_id, "topic_id": topic_id},
-            )
-            return self._minimal_bundle(user_message, user_media)
+        return await asyncio.to_thread(
+            self._assemble_sync,
+            topic_id,
+            workspace_id,
+            anchor_node_id,
+            context_node_ids,
+            selected_node_contexts,
+            user_message,
+            user_media,
+        )
 
     def _assemble_sync(
         self,
@@ -81,7 +74,7 @@ class FirestoreAssembly:
         topic_path = f"workspaces/{workspace_id}/topics/{topic_id}"
         topic_doc = self._read_doc(topic_path)
         if not topic_doc:
-            return self._minimal_bundle(user_message, user_media)
+            raise RuntimeError(f"Missing topic document: {topic_path}")
 
         selected_node_ids = self._dedupe_ids(context_node_ids, anchor_node_id)[:30]
         all_nodes = self._read_nodes(topic_path)
@@ -115,14 +108,6 @@ class FirestoreAssembly:
             user_prompt=user_message,
             user_media=user_media,
             context_blocks=context_blocks,
-        )
-
-    def _minimal_bundle(self, user_message: str, user_media: list[WorkerMedia]) -> PromptBundle:
-        return PromptBundle(
-            system_instruction=build_act_system_instruction(user_message),
-            user_prompt=user_message,
-            user_media=user_media,
-            context_blocks=[],
         )
 
     def _read_doc(self, path: str) -> dict[str, Any] | None:

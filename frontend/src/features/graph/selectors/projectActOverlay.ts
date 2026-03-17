@@ -17,6 +17,10 @@ const GENERAL_LANE_OFFSET_X = 320;
 const GENERAL_LANE_START_Y = 140;
 const GENERAL_LANE_GAP_Y = 36;
 
+function hasStablePosition(node: GraphNodeBase) {
+    return Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y);
+}
+
 export function projectActOverlay({
     actNodes,
     persistedNodes,
@@ -34,12 +38,13 @@ export function projectActOverlay({
     }, 0);
 
     const referencedBuckets = new Map<string, GraphNodeBase[]>();
-    const manualNodes: GraphNodeBase[] = [];
+    const fixedNodes: GraphNodeBase[] = [];
     const generalLaneNodes: GraphNodeBase[] = [];
 
     for (const node of actNodes) {
-        if (node.data?.isManualPosition === true) {
-            manualNodes.push(node);
+        // Preserve existing coordinates to avoid jitter while streaming/thinking updates arrive.
+        if (node.data?.isManualPosition === true || hasStablePosition(node)) {
+            fixedNodes.push(node);
             continue;
         }
 
@@ -103,7 +108,7 @@ export function projectActOverlay({
         return positionedNode;
     });
 
-    return [...positionedReferenced, ...positionedGeneralLane, ...manualNodes];
+    return [...positionedReferenced, ...positionedGeneralLane, ...fixedNodes];
 }
 
 function getNodeDimensions(node: GraphNodeBase, isExpanded: boolean) {

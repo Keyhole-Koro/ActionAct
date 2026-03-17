@@ -889,15 +889,11 @@ export function GraphCanvas() {
             .filter((n) => n.type === 'customTask' || n.type == null)
             .map((n) => n.id)
             .sort();
-        if (ids.length === 0) {
-            return;
-        }
         const current = [...selectedNodeIdsRef.current].sort();
-        const nextIds = [...new Set([...current, ...ids])].sort();
-        if (nextIds.length === current.length && nextIds.every((id, i) => id === current[i])) {
+        if (ids.length === current.length && ids.every((id, i) => id === current[i])) {
             return;
         }
-        setSelectedNodes(nextIds);
+        setSelectedNodes(ids);
     }, [setSelectedNodes]);
 
     const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
