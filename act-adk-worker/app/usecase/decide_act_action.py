@@ -55,9 +55,8 @@ def _build_prompt(input: ActDecisionInput) -> PromptBundle:
         "Return JSON only.\n"
         "Schema:\n"
         '{'
-        '"action":"run|clarify|choose_candidate",'
+        '"action":"run|choose_candidate",'
         '"message":"string|null",'
-        '"suggested_action":"select_node|retry_without_context|none|null",'
         '"context_node_ids":["string"],'
         '"candidates":[{"node_id":"string","label":"string","reason":"string"}]'
         '}\n'
@@ -66,7 +65,6 @@ def _build_prompt(input: ActDecisionInput) -> PromptBundle:
         "- If the query does not need UI context, return action=run with context_node_ids=[].\n"
         "- If selected or active nodes plausibly satisfy the reference, return action=run with those node ids.\n"
         "- Return action=choose_candidate only when disambiguation is truly needed before proceeding.\n"
-        "- Return action=clarify only when a blocking missing detail prevents a useful answer.\n"
         "- Use only node_id values that appear in the provided visible graph.\n"
         "- Return at most 4 candidates.\n"
         "- Keep messages short and action-oriented.\n"

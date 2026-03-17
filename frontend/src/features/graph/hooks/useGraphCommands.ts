@@ -26,6 +26,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         expandBranchNode,
         updateActNodeLabel,
         expandNode,
+        recordNodeUsed,
     } = useGraphStore();
     const setPendingClarification = useActClarificationStore((state) => state.setPendingClarification);
 
@@ -34,7 +35,8 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
     const openDetails = useCallback((nodeId: string) => {
         setActiveNode(nodeId);
         expandNode(nodeId);
-    }, [expandNode, setActiveNode]);
+        recordNodeUsed(nodeId);
+    }, [expandNode, recordNodeUsed, setActiveNode]);
 
     const openReferencedNode = useCallback((nodeId: string) => {
         openDetails(nodeId);
@@ -42,6 +44,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
 
     const runActFromNode = useCallback(async (nodeId: string, query: string) => {
         setSelectedNodes([nodeId]);
+        recordNodeUsed(nodeId);
         const prepared = await prepareAnchoredActRun(frontendToolClient, {
             anchorNodeId: nodeId,
             userMessage: query,
@@ -59,7 +62,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
             return;
         }
         startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
-    }, [frontendToolClient, setPendingClarification, setSelectedNodes]);
+    }, [frontendToolClient, recordNodeUsed, setPendingClarification, setSelectedNodes]);
 
     const commitActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
         const trimmed = rawLabel.trim();

@@ -17,6 +17,8 @@ interface GraphState {
     editingNodeId: string | null;
     isStreaming: boolean;
     streamingNodeIds: string[];
+    nodeLastUsedAt: Record<string, number>;
+    pinnedExpandedNodeIds: string[];
 
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
@@ -32,6 +34,10 @@ interface GraphState {
     setStreamRunning: (value: boolean) => void;
     addStreamingNode: (nodeId: string) => void;
     clearStreamingNodes: (nodeIds?: string[]) => void;
+    recordNodeUsed: (nodeId: string) => void;
+    pinExpandedNode: (nodeId: string) => void;
+    unpinExpandedNode: (nodeId: string) => void;
+    collapseUnusedNodes: (nowMs: number, thresholdMs: number) => void;
 
     addOrUpdateActNode: (nodeId: string, payload: {
         label?: string;
@@ -146,6 +152,8 @@ export const useGraphStore = create<GraphState>((set) => ({
     editingNodeId: null,
     isStreaming: false,
     streamingNodeIds: [],
+    nodeLastUsedAt: {},
+    pinnedExpandedNodeIds: [],
 
     setSelectedNodes: (ids) => set((state) => {
         const nextIds = uniqueIds(ids).sort();
@@ -176,11 +184,16 @@ export const useGraphStore = create<GraphState>((set) => ({
             writeStoredSelectedNodeIds(nextSelectedNodeIds);
         }
 
+        const nextNodeLastUsedAt = Object.fromEntries(
+            Object.entries(state.nodeLastUsedAt).filter(([id]) => !actNodeIds.has(id)),
+        );
         return {
             actNodes: [],
             actEdges: [],
             selectedNodeIds: nextSelectedNodeIds,
             expandedNodeIds: state.expandedNodeIds.filter((id) => !actNodeIds.has(id)),
+            pinnedExpandedNodeIds: state.pinnedExpandedNodeIds.filter((id) => !actNodeIds.has(id)),
+            nodeLastUsedAt: nextNodeLastUsedAt,
             activeNodeId,
             editingNodeId,
             streamingNodeIds: state.streamingNodeIds.filter((id) => !actNodeIds.has(id)),
@@ -229,6 +242,45 @@ export const useGraphStore = create<GraphState>((set) => ({
         return {
             streamingNodeIds: state.streamingNodeIds.filter((nodeId) => !toClear.has(nodeId)),
         };
+    }),
+    recordNodeUsed: (nodeId) => set((state) => ({
+        nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: Date.now() },
+    })),
+    pinExpandedNode: (nodeId) => set((state) => (
+        state.pinnedExpandedNodeIds.includes(nodeId)
+            ? state
+            : { pinnedExpandedNodeIds: [...state.pinnedExpandedNodeIds, nodeId] }
+    )),
+    unpinExpandedNode: (nodeId) => set((state) => ({
+        pinnedExpandedNodeIds: state.pinnedExpandedNodeIds.filter((id) => id !== nodeId),
+    })),
+    collapseUnusedNodes: (nowMs, thresholdMs) => set((state) => {
+        const pinnedSet = new Set(state.pinnedExpandedNodeIds);
+        const streamingSet = new Set(state.streamingNodeIds);
+        const selectedSet = new Set(state.selectedNodeIds);
+        const referencedSet = new Set<string>();
+        for (const node of [...state.actNodes, ...state.persistedNodes]) {
+            const isActive =
+                streamingSet.has(node.id) ||
+                selectedSet.has(node.id) ||
+                node.id === state.activeNodeId;
+            if (isActive && Array.isArray(node.data?.referencedNodeIds)) {
+                for (const refId of node.data.referencedNodeIds as unknown[]) {
+                    if (typeof refId === 'string') referencedSet.add(refId);
+                }
+            }
+        }
+        const nextExpandedNodeIds = state.expandedNodeIds.filter((nodeId) => {
+            if (pinnedSet.has(nodeId)) return true;
+            if (streamingSet.has(nodeId)) return true;
+            if (selectedSet.has(nodeId)) return true;
+            if (nodeId === state.activeNodeId) return true;
+            if (referencedSet.has(nodeId)) return true;
+            const lastUsed = state.nodeLastUsedAt[nodeId];
+            return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
+        });
+        if (nextExpandedNodeIds.length === state.expandedNodeIds.length) return state;
+        return { expandedNodeIds: nextExpandedNodeIds };
     }),
 
     addOrUpdateActNode: (nodeId, payload) => set((state) => {
@@ -398,10 +450,13 @@ export const useGraphStore = create<GraphState>((set) => ({
         if (!sameIds(state.selectedNodeIds, nextSelectedNodeIds)) {
             writeStoredSelectedNodeIds(nextSelectedNodeIds);
         }
+        const { [nodeId]: _removed, ...nextNodeLastUsedAt } = state.nodeLastUsedAt;
         return {
             actNodes: state.actNodes.filter(n => n.id !== nodeId),
             actEdges: state.actEdges.filter(e => e.source !== nodeId && e.target !== nodeId),
             expandedNodeIds: state.expandedNodeIds.filter((id) => id !== nodeId),
+            pinnedExpandedNodeIds: state.pinnedExpandedNodeIds.filter((id) => id !== nodeId),
+            nodeLastUsedAt: nextNodeLastUsedAt,
             selectedNodeIds: nextSelectedNodeIds,
             streamingNodeIds: state.streamingNodeIds.filter((id) => id !== nodeId),
             activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,

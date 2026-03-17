@@ -367,31 +367,6 @@ async function resolveContextNodeIds(
     );
   }
 
-  if (decision.action === "clarify") {
-    const baseMessage = typeof decision.message === "string" && decision.message.trim() !== ""
-      ? decision.message
-      : "どのノードを見ればよいか分かるように、対象のノードを選んでからもう一度実行してください。";
-    const isRetryWithoutContext = decision.suggested_action === "retry_without_context";
-    const md = buildClarificationMessageMd({
-      userMessage,
-      message: baseMessage,
-      visibleNodeCount: visibleGraph.nodes.length,
-      selectedNodeCount: visibleGraph.selectedNodeIds.length,
-      activeNodeId: visibleGraph.activeNodeId,
-      followupMode: isRetryWithoutContext ? "detail" : "node",
-    });
-    return clarification(
-      "MISSING_UI_CONTEXT",
-      baseMessage,
-      isRetryWithoutContext ? "retry_without_context" : "select_node",
-      undefined,
-      {
-        message_md: md.messageMd,
-        followup_prompt: md.followupPrompt,
-      },
-    );
-  }
-
   return { status: "ready", contextNodeIds: [] };
 }
 

@@ -217,6 +217,7 @@ export function GraphCanvas() {
         expandedNodeIds,
         expandedBranchNodeIds,
         streamingNodeIds,
+        collapseUnusedNodes,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
@@ -1003,6 +1004,14 @@ export function GraphCanvas() {
         window.addEventListener('keydown', handleDraftNodeFocusNavigation);
         return () => window.removeEventListener('keydown', handleDraftNodeFocusNavigation);
     }, [handleDraftNodeFocusNavigation]);
+
+    useEffect(() => {
+        const COLLAPSE_THRESHOLD_MS = 90_000;
+        const id = window.setInterval(() => {
+            collapseUnusedNodes(Date.now(), COLLAPSE_THRESHOLD_MS);
+        }, 5_000);
+        return () => window.clearInterval(id);
+    }, [collapseUnusedNodes]);
 
     const activateRadialNode = useCallback((nodeId: string) => {
         setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);
