@@ -32,6 +32,7 @@ export type BaseNodeData = {
     parentId?: string;
     referencedNodeIds?: string[];
     isManualPosition?: boolean;
+    overlayPositioned?: boolean;
 };
 
 export type PersistedNodeData = BaseNodeData & {

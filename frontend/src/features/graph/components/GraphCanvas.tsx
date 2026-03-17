@@ -1122,7 +1122,7 @@ export function GraphCanvas() {
     }, [focusNode, isRadialLayout, recordNodeUsed, setActiveNode, setSelectedNodes]);
 
     const recentClickedSelector = recentClickedNodeIds.length > 0 ? (
-        <div className="absolute left-1/2 top-4 z-20 flex max-w-[min(920px,calc(100%-168px))] -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/92 px-2 py-1.5 shadow-sm backdrop-blur-sm">
+        <div className="pointer-events-none absolute left-4 top-16 z-20 flex w-[calc(100%-2rem)] items-center justify-center gap-1.5 md:top-4 md:w-[calc(100%-22rem)] md:justify-start">
             {recentClickedNodeIds.map((nodeId, index) => {
                 const node = referenceableNodeById.get(nodeId);
                 const data = node?.data as Record<string, unknown> | undefined;
@@ -1137,10 +1137,10 @@ export function GraphCanvas() {
                         <button
                             type="button"
                             className={[
-                                'max-w-[140px] rounded-xl border px-3 py-1.5 text-left text-xs font-medium transition-colors',
+                                'pointer-events-auto max-w-[140px] rounded-xl border px-3 py-1.5 text-left text-xs font-medium transition-colors',
                                 isActive
-                                    ? 'border-slate-900 bg-slate-900 text-white'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100',
+                                    ? 'border-slate-900/70 bg-slate-900/70 text-white'
+                                    : 'border-slate-200/70 bg-white/60 text-slate-700 hover:border-slate-300/80 hover:bg-white/75',
                             ].join(' ')}
                             title={label}
                             onClick={() => handleSelectRecentNode(nodeId)}
@@ -1262,6 +1262,10 @@ export function GraphCanvas() {
                     if (node.type === 'selectionHeader' || node.type === 'selectionNode') {
                         return;
                     }
+
+                    // Keep recent-click history visible even when the click lands on inner controls.
+                    recordRecentClickedNode(node.id);
+
                     const target = event.target;
                     if (
                         target instanceof HTMLElement
@@ -1269,8 +1273,6 @@ export function GraphCanvas() {
                     ) {
                         return;
                     }
-
-                    recordRecentClickedNode(node.id);
 
                     if (event.shiftKey) {
                         const currentIds = selectedNodeIdsRef.current;

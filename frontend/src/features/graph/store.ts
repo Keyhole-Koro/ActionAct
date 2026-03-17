@@ -97,6 +97,10 @@ function preserveNodePositions(previousNodes: Node[], nextNodes: Node[]) {
         return {
             ...node,
             position: previous.position,
+            // overlay が一度正しく配置したフラグを引き継ぐ（subscription 再発火でリセットされるのを防ぐ）
+            data: previous.data?.overlayPositioned
+                ? { ...node.data, overlayPositioned: true }
+                : node.data,
         };
     });
 }

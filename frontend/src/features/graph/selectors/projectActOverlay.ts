@@ -13,16 +13,11 @@ type ProjectActOverlayParams = {
 
 const SIDECAR_OFFSET_X = 220;
 const SIDECAR_STACK_GAP_Y = 28;
-const GENERAL_LANE_OFFSET_X = 320;
 const GENERAL_LANE_START_Y = 140;
 const GENERAL_LANE_GAP_Y = 36;
 const COLLISION_GAP = 12;
 
 type Rect = { x: number; y: number; width: number; height: number };
-
-function hasStablePosition(node: GraphNodeBase) {
-    return Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y);
-}
 
 /**
  * Returns the first Y >= preferredY at which a rect of (x, width, height) does not
@@ -75,8 +70,8 @@ export function projectActOverlay({
     const generalLaneNodes: GraphNodeBase[] = [];
 
     for (const node of actNodes) {
-        // Preserve existing coordinates to avoid jitter while streaming/thinking updates arrive.
-        if (node.data?.isManualPosition === true || hasStablePosition(node)) {
+        // 手動配置済み、またはoverlay が一度正しく配置した位置を保持してジッターを防ぐ
+        if (node.data?.isManualPosition === true || node.data?.overlayPositioned === true) {
             fixedNodes.push(node);
             continue;
         }
@@ -109,14 +104,25 @@ export function projectActOverlay({
         }),
     ];
 
-    const positionedReferenced = [...referencedBuckets.entries()].flatMap(([anchorId, nodes]) => {
+    // 全Actノードを Persisted 列の右端の単一レーンに配置する。
+    // アンカーを参照しているノードはアンカーのY中心に揃え、参照なしのノードは後続に積む。
+    // これにより Act サイドカーが Persisted 列と重なるのを防ぐ。
+    const actLaneX = maxPersistedRight + SIDECAR_OFFSET_X;
+
+    // アンカーのY位置順に処理することで、上のアンカーに対応する Act が上に並ぶ
+    const sortedBuckets = [...referencedBuckets.entries()].sort(([aId], [bId]) => {
+        const a = persistedById.get(aId);
+        const b = persistedById.get(bId);
+        return (a?.position.y ?? 0) - (b?.position.y ?? 0);
+    });
+
+    const positionedReferenced = sortedBuckets.flatMap(([anchorId, nodes]) => {
         const anchor = persistedById.get(anchorId);
         if (!anchor) {
             return nodes;
         }
 
         const anchorDimensions = getNodeDimensions(anchor, expandedSet.has(anchor.id));
-        const baseX = anchor.position.x + anchorDimensions.width + SIDECAR_OFFSET_X;
         const anchorCenterY = anchor.position.y + (anchorDimensions.height / 2);
 
         const totalHeight = nodes.reduce((sum, node, index) => {
@@ -126,28 +132,32 @@ export function projectActOverlay({
 
         const groupWidth = Math.max(...nodes.map((n) => getNodeDimensions(n, expandedSet.has(n.id)).width));
         const desiredStartY = anchorCenterY - totalHeight / 2;
-        let currentY = findFreeY(baseX, groupWidth, totalHeight, occupiedRects, desiredStartY, COLLISION_GAP);
+        let currentY = findFreeY(actLaneX, groupWidth, totalHeight, occupiedRects, desiredStartY, COLLISION_GAP);
 
         return nodes.map((node) => {
             const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
             const positionedNode: GraphNodeBase = {
                 ...node,
-                position: { x: baseX, y: currentY },
+                position: { x: actLaneX, y: currentY },
+                data: { ...node.data, overlayPositioned: true },
             };
-            occupiedRects.push({ x: baseX, y: currentY, width: dimensions.width, height: dimensions.height });
+            occupiedRects.push({ x: actLaneX, y: currentY, width: dimensions.width, height: dimensions.height });
             currentY += dimensions.height + SIDECAR_STACK_GAP_Y;
             return positionedNode;
         });
     });
 
-    const generalLaneX = maxPersistedRight + GENERAL_LANE_OFFSET_X;
     let nextGeneralLaneY = GENERAL_LANE_START_Y;
     const positionedGeneralLane = generalLaneNodes.map((node) => {
         const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-        const y = findFreeY(generalLaneX, dimensions.width, dimensions.height, occupiedRects, nextGeneralLaneY, COLLISION_GAP);
+        const y = findFreeY(actLaneX, dimensions.width, dimensions.height, occupiedRects, nextGeneralLaneY, COLLISION_GAP);
         nextGeneralLaneY = y + dimensions.height + GENERAL_LANE_GAP_Y;
-        const positionedNode: GraphNodeBase = { ...node, position: { x: generalLaneX, y } };
-        occupiedRects.push({ x: generalLaneX, y, width: dimensions.width, height: dimensions.height });
+        const positionedNode: GraphNodeBase = {
+            ...node,
+            position: { x: actLaneX, y },
+            data: { ...node.data, overlayPositioned: true },
+        };
+        occupiedRects.push({ x: actLaneX, y, width: dimensions.width, height: dimensions.height });
         return positionedNode;
     });
 
