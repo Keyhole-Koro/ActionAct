@@ -261,17 +261,75 @@ export const useGraphStore = create<GraphState>((set) => ({
                 }
             }
         }
+
+        // Determine root nodes (no parent within persistedNodes)
+        const persistedNodeIds = new Set(state.persistedNodes.map((n) => n.id));
+        const rootNodeIds = new Set(
+            state.persistedNodes
+                .filter((n) => {
+                    const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : undefined;
+                    return !parentId || !persistedNodeIds.has(parentId);
+                })
+                .map((n) => n.id),
+        );
+
+        // Build parent→children map to check if a node has a protected descendant
+        const childrenById = new Map<string, string[]>();
+        for (const node of state.persistedNodes) {
+            const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
+            if (parentId && persistedNodeIds.has(parentId)) {
+                const arr = childrenById.get(parentId) ?? [];
+                arr.push(node.id);
+                childrenById.set(parentId, arr);
+            }
+        }
+
+        // Returns true if any descendant is currently active/selected/streaming/referenced
+        function hasProtectedDescendant(nodeId: string): boolean {
+            for (const childId of childrenById.get(nodeId) ?? []) {
+                if (
+                    selectedSet.has(childId) ||
+                    streamingSet.has(childId) ||
+                    childId === state.activeNodeId ||
+                    referencedSet.has(childId)
+                ) return true;
+                if (hasProtectedDescendant(childId)) return true;
+            }
+            return false;
+        }
+
+        const isProtected = (nodeId: string): boolean =>
+            pinnedSet.has(nodeId) ||
+            streamingSet.has(nodeId) ||
+            selectedSet.has(nodeId) ||
+            nodeId === state.activeNodeId ||
+            referencedSet.has(nodeId) ||
+            hasProtectedDescendant(nodeId);
+
+        // Collapse expanded node content for unused nodes
         const nextExpandedNodeIds = state.expandedNodeIds.filter((nodeId) => {
-            if (pinnedSet.has(nodeId)) return true;
-            if (streamingSet.has(nodeId)) return true;
-            if (selectedSet.has(nodeId)) return true;
-            if (nodeId === state.activeNodeId) return true;
-            if (referencedSet.has(nodeId)) return true;
+            if (isProtected(nodeId)) return true;
             const lastUsed = state.nodeLastUsedAt[nodeId];
             return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
         });
-        if (nextExpandedNodeIds.length === state.expandedNodeIds.length) return state;
-        return { expandedNodeIds: nextExpandedNodeIds };
+
+        // Collapse non-root branch expansions for unused nodes
+        const nextExpandedBranchNodeIds = state.expandedBranchNodeIds.filter((nodeId) => {
+            if (rootNodeIds.has(nodeId)) return true;  // roots always stay open
+            if (isProtected(nodeId)) return true;
+            const lastUsed = state.nodeLastUsedAt[nodeId];
+            return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
+        });
+
+        if (
+            nextExpandedNodeIds.length === state.expandedNodeIds.length &&
+            nextExpandedBranchNodeIds.length === state.expandedBranchNodeIds.length
+        ) return state;
+
+        return {
+            expandedNodeIds: nextExpandedNodeIds,
+            expandedBranchNodeIds: nextExpandedBranchNodeIds,
+        };
     }),
 
     addOrUpdateActNode: (nodeId, payload) => set((state) => {

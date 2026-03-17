@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
     Background,
@@ -32,6 +32,7 @@ import {
 
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
+import { SphereViewer } from './SphereViewer';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import { SelectedNodePanel } from './SelectedNodePanel';
 import {
@@ -259,9 +260,10 @@ export function GraphCanvas() {
         return searchParams.get('graphMock') === '1';
     }, [searchParams]);
     const persistedLayoutMode = useMemo(() => {
-        return searchParams.get('layout') === 'radial'
-            ? 'radial' as const
-            : 'force' as const;
+        const layout = searchParams.get('layout');
+        if (layout === 'radial') return 'radial' as const;
+        if (layout === 'sphere') return 'sphere' as const;
+        return 'force' as const;
     }, [searchParams]);
 
     useEffect(() => {
@@ -372,17 +374,23 @@ export function GraphCanvas() {
         return [...new Set([...rootIds, ...expandedBranchNodeIds])];
     }, [expandedBranchNodeIds, persistedNodes]);
 
+    // Defer layout-heavy inputs so user interactions (expand/collapse clicks)
+    // are rendered immediately while the force simulation runs in a background pass.
+    const deferredExpandedBranchNodeIds = useDeferredValue(effectiveExpandedBranchNodeIds);
+    const deferredExpandedNodeIds = useDeferredValue(expandedNodeIds);
+
     const persistedGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
             persistedEdges,
-            effectiveExpandedBranchNodeIds,
-            expandedNodeIds,
+            deferredExpandedBranchNodeIds,
+            deferredExpandedNodeIds,
             persistedLayoutMode,
         ),
-        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
+    const isSphereLayout = persistedLayoutMode === 'sphere';
     const radialOverviewGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
@@ -1122,7 +1130,7 @@ export function GraphCanvas() {
     }, [focusNode, isRadialLayout, recordNodeUsed, setActiveNode, setSelectedNodes]);
 
     const recentClickedSelector = recentClickedNodeIds.length > 0 ? (
-        <div className="pointer-events-none absolute left-4 top-16 z-20 flex w-[calc(100%-2rem)] items-center justify-center gap-1.5 md:top-4 md:w-[calc(100%-22rem)] md:justify-start">
+        <div className="pointer-events-none absolute left-1/2 top-6 z-20 flex w-[min(820px,calc(100%-2rem))] -translate-x-1/2 items-center justify-center gap-1.5">
             {recentClickedNodeIds.map((nodeId, index) => {
                 const node = referenceableNodeById.get(nodeId);
                 const data = node?.data as Record<string, unknown> | undefined;
@@ -1153,7 +1161,7 @@ export function GraphCanvas() {
         </div>
     ) : null;
 
-    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial') => {
+    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial' | 'sphere') => {
         const nextParams = new URLSearchParams(searchParams.toString());
         if (nextLayout === 'force') {
             nextParams.delete('layout');
@@ -1166,7 +1174,7 @@ export function GraphCanvas() {
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
-            {(['force', 'radial'] as const).map((mode) => {
+            {(['force', 'radial', 'sphere'] as const).map((mode) => {
                 const active = persistedLayoutMode === mode;
                 return (
                     <button
@@ -1180,7 +1188,7 @@ export function GraphCanvas() {
                         ].join(' ')}
                         onClick={() => setLayoutMode(mode)}
                     >
-                        {mode === 'force' ? 'Force' : 'Radial'}
+                        {mode === 'force' ? 'Force' : mode === 'radial' ? 'Radial' : 'Sphere'}
                     </button>
                 );
             })}
@@ -1199,6 +1207,15 @@ export function GraphCanvas() {
             </button>
         </div>
     );
+
+    if (isSphereLayout) {
+        return (
+            <div className="relative h-full w-full">
+                {layoutToggle}
+                <SphereViewer className="h-full w-full" />
+            </div>
+        );
+    }
 
     if (isRadialLayout) {
         return (

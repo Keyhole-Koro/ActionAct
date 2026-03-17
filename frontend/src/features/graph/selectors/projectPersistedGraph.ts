@@ -5,7 +5,7 @@ import { buildVisibleHierarchy, type GraphEdgeLike } from '@/features/graph/mode
 import { partitionVisibleEdges } from '@/features/graph/model/relations';
 
 export type PersistedGraphProjection = ReturnType<typeof projectPersistedGraph>;
-export type PersistedGraphLayoutMode = 'force' | 'radial';
+export type PersistedGraphLayoutMode = 'force' | 'radial' | 'sphere';
 
 export function projectPersistedGraph(
     persistedNodes: GraphNodeBase[],
