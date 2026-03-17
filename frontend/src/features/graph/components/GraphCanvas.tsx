@@ -30,6 +30,7 @@ import {
     getBoundingBoxForNodes,
 } from '@/services/camera/cameraService';
 
+import { BundledEdge } from './BundledEdge';
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
 import { SphereViewer } from './SphereViewer';
@@ -41,7 +42,6 @@ import {
     getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
-import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
@@ -97,6 +97,10 @@ function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeC
         </GraphNodeRenderBoundary>
     );
 }
+
+const edgeTypes = {
+    bundled: BundledEdge,
+};
 
 const nodeTypes = {
     customTask: GraphNodeCardWithBoundary,
@@ -386,8 +390,10 @@ export function GraphCanvas() {
             deferredExpandedBranchNodeIds,
             deferredExpandedNodeIds,
             persistedLayoutMode,
+            actNodes as GraphNodeBase[],
+            actEdges,
         ),
-        [deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [actEdges, actNodes, deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
     const isSphereLayout = persistedLayoutMode === 'sphere';
@@ -402,18 +408,9 @@ export function GraphCanvas() {
         [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
     );
 
-    const positionedActNodes = useMemo(
-        () => projectActOverlay({
-            actNodes: actNodes as GraphNodeBase[],
-            persistedNodes: persistedGraph.positionedNodes,
-            expandedNodeIds,
-        }),
-        [actNodes, expandedNodeIds, persistedGraph.positionedNodes],
-    );
-
     const regularGraphNodes = useMemo(
-        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
-        [persistedGraph.positionedNodes, positionedActNodes],
+        () => persistedGraph.positionedNodes,
+        [persistedGraph.positionedNodes],
     );
 
     const selectionProjection = useMemo(
@@ -432,8 +429,8 @@ export function GraphCanvas() {
     );
 
     const allReferenceableNodes = useMemo(
-        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
-        [persistedGraph.positionedNodes, positionedActNodes],
+        () => persistedGraph.positionedNodes,
+        [persistedGraph.positionedNodes],
     );
 
     const referenceableNodeById = useMemo(
@@ -771,6 +768,23 @@ export function GraphCanvas() {
 
             const nodeById = new Map(emphasizedDisplayNodes.map((node) => [node.id, node]));
 
+            // Precompute per-cluster centroids for edge bundling
+            const clusterPoints = new Map<string, { x: number; y: number }[]>();
+            for (const [nodeId, rootId] of persistedRootIdByNode) {
+                const node = nodeById.get(nodeId);
+                if (!node) continue;
+                const pts = clusterPoints.get(rootId) ?? [];
+                pts.push(node.position);
+                clusterPoints.set(rootId, pts);
+            }
+            const clusterCentroids = new Map<string, { x: number; y: number }>();
+            for (const [rootId, pts] of clusterPoints) {
+                clusterCentroids.set(rootId, {
+                    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+                    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+                });
+            }
+
             return buildDisplayEdges(
                 [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
                 [...actEdges, ...selectionProjection.edges],
@@ -797,11 +811,22 @@ export function GraphCanvas() {
                 ? resolveNearestSides(sourceNode as Node<Record<string, unknown>>, targetNode as Node<Record<string, unknown>>)
                 : null;
 
+            // Bundle point for cross-cluster relation edges
+            const isCrossCluster = isRelation && sourceRootId && targetRootId && sourceRootId !== targetRootId;
+            const bundlePoint = isCrossCluster
+                ? (() => {
+                    const sc = clusterCentroids.get(sourceRootId!);
+                    const tc = clusterCentroids.get(targetRootId!);
+                    if (!sc || !tc) return undefined;
+                    return { x: (sc.x + tc.x) / 2, y: (sc.y + tc.y) / 2 };
+                })()
+                : undefined;
+
             return {
                 ...edge,
                 sourceHandle: nearestSides ? `source-${nearestSides.sourceSide}` : (edge as Edge).sourceHandle,
                 targetHandle: nearestSides ? `target-${nearestSides.targetSide}` : (edge as Edge).targetHandle,
-                type: isActContext ? 'simplebezier' : (isRelation ? 'smoothstep' : 'default'),
+                type: isActContext ? 'simplebezier' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
                 zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
                 interactionWidth: isActContext ? 32 : 24,
                 markerEnd: isActContext
@@ -813,21 +838,11 @@ export function GraphCanvas() {
                     }
                     : undefined,
                 label: isActContextFocused ? 'context' : undefined,
-                labelStyle: isActContextFocused
-                    ? {
-                        fill: '#0f766e',
-                        fontSize: 11,
-                        fontWeight: 600,
-                    }
-                    : undefined,
-                labelBgStyle: isActContextFocused
-                    ? {
-                        fill: 'rgba(248, 250, 252, 0.92)',
-                        fillOpacity: 1,
-                    }
-                    : undefined,
+                labelStyle: isActContextFocused ? { fill: '#0f766e', fontSize: 11, fontWeight: 600 } : undefined,
+                labelBgStyle: isActContextFocused ? { fill: 'rgba(248, 250, 252, 0.92)', fillOpacity: 1 } : undefined,
                 labelBgPadding: isActContextFocused ? [6, 3] as [number, number] : undefined,
                 labelBgBorderRadius: isActContextFocused ? 6 : undefined,
+                data: bundlePoint ? { bundlePoint } : undefined,
                 style: {
                     stroke: isActContext
                         ? (isActContextFocused ? '#0f766e' : '#64748b')
@@ -1394,6 +1409,7 @@ export function GraphCanvas() {
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
                 nodesDraggable={false}
                 panOnScroll
                 selectionOnDrag

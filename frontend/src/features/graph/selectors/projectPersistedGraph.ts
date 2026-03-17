@@ -13,6 +13,8 @@ export function projectPersistedGraph(
     expandedBranchNodeIds: string[],
     expandedNodeIds: string[],
     layoutMode: PersistedGraphLayoutMode = 'force',
+    actNodes?: GraphNodeBase[],
+    actEdges?: GraphEdgeLike[],
 ) {
     const hierarchy = buildVisibleHierarchy(
         persistedNodes,
@@ -34,15 +36,14 @@ export function projectPersistedGraph(
             rootIds: hierarchy.rootIds,
             expandedNodeIds: new Set(expandedNodeIds),
             previousPositions: new Map(
-                hierarchy.visibleNodes.map((node) => [
+                [...hierarchy.visibleNodes, ...(actNodes ?? [])].map((node) => [
                     node.id,
-                    {
-                        x: node.position.x,
-                        y: node.position.y,
-                    },
+                    { x: node.position.x, y: node.position.y },
                 ]),
             ),
             childrenByParent: hierarchy.childrenByParent,
+            actNodes: actNodes ?? [],
+            actEdges: actEdges ?? [],
         });
 
     return {

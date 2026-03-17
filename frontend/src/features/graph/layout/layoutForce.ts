@@ -29,6 +29,8 @@ type ForceLayoutParams = {
     expandedNodeIds: Set<string>;
     previousPositions?: Map<string, { x: number; y: number }>;
     childrenByParent: Map<string, string[]>;
+    actNodes?: GraphNodeBase[];
+    actEdges?: { id: string; source: string; target: string }[];
 };
 
 // ── Internal simulation types ─────────────────────────────────────────────────
@@ -67,6 +69,8 @@ const RELATION_DISTANCE   = 300;   // cross-node relation (looser)
 const RELATION_STRENGTH   = 0.04;
 const TOPIC_CHAIN_DISTANCE = 460;  // topic ↔ topic spine edge
 const TOPIC_CHAIN_STRENGTH = 0.015;
+const ACT_CONTEXT_DISTANCE = 220;  // act → referenced persisted node
+const ACT_CONTEXT_STRENGTH = 0.22;
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
@@ -76,13 +80,17 @@ export function layoutPersistedForce({
     expandedNodeIds,
     previousPositions,
     childrenByParent,
+    actNodes = [],
+    actEdges = [],
 }: ForceLayoutParams): PositionedPersistedNode[] {
-    if (nodes.length === 0) return [];
+    const allNodes = [...nodes, ...actNodes];
+    if (allNodes.length === 0) return [];
 
-    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const actNodeIds = new Set(actNodes.map((n) => n.id));
+    const nodeById = new Map(allNodes.map((n) => [n.id, n]));
 
     // ── Build simulation nodes ────────────────────────────────────────────────
-    const simNodes: SimNode[] = nodes.map((node) => {
+    const simNodes: SimNode[] = allNodes.map((node) => {
         const { width, height } = getNodeDimensions(node, expandedNodeIds.has(node.id));
         const seed = previousPositions?.get(node.id);
 
@@ -132,12 +140,20 @@ export function layoutPersistedForce({
         }
     }
 
+    // Act context edges — pull each act node toward its referenced persisted nodes
+    for (const edge of actEdges) {
+        if (simNodeById.has(edge.source) && simNodeById.has(edge.target)) {
+            simLinks.push({ source: edge.source, target: edge.target, distance: ACT_CONTEXT_DISTANCE, strength: ACT_CONTEXT_STRENGTH });
+        }
+    }
+
     // Connect topic root nodes in a chain so multiple topics stay in the same
     // viewport and are visually positioned relative to each other.
+    // Exclude act nodes from the chain.
     const topicRoots = nodes.filter((n) => {
         const kind = (n.data as Record<string, unknown>)?.kind;
         const parentId = (n.data as Record<string, unknown>)?.parentId;
-        return kind === 'topic' || (!parentId && !childrenByParent.has(n.id));
+        return !actNodeIds.has(n.id) && (kind === 'topic' || (!parentId && !childrenByParent.has(n.id)));
     });
     if (topicRoots.length > 1) {
         for (let i = 0; i < topicRoots.length - 1; i++) {
@@ -207,7 +223,7 @@ export function layoutPersistedForce({
     }
 
     // ── Map back to graph nodes ───────────────────────────────────────────────
-    const positioned = nodes.map((node) => {
+    const positioned = allNodes.map((node) => {
         const sim = simNodeById.get(node.id)!;
         return { ...node, position: { x: sim.x ?? 0, y: sim.y ?? 0 } };
     });

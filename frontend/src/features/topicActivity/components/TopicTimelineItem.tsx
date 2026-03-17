@@ -60,13 +60,26 @@ export function TopicTimelineItem({ item }: { item: TopicActivityItem & { title?
             </div>
 
             {item.status === 'failed' && (
-                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                    {item.errorMessage ?? item.errorCode ?? 'This input failed, but the backend did not surface a detailed reason.'}
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                    <div className="flex items-start gap-2">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div className="space-y-1">
+                            {item.errorCode && (
+                                <div className="font-bold uppercase tracking-tight text-[10px] opacity-80">
+                                    Error Code: {item.errorCode}
+                                </div>
+                            )}
+                            <div className="leading-relaxed">
+                                {item.errorMessage ?? 'This input failed, but the backend did not surface a detailed reason.'}
+                            </div>
+                            {item.traceId && (
+                                <div className="mt-2 font-mono text-[9px] opacity-60">
+                                    Trace ID: {item.traceId}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
-            )}
-
-            {item.traceId && (
-                <div className="mt-3 text-[11px] text-slate-500">traceId: {item.traceId}</div>
             )}
         </article>
     );
