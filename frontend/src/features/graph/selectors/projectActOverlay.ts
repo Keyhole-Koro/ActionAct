@@ -11,171 +11,139 @@ type ProjectActOverlayParams = {
     expandedNodeIds: string[];
 };
 
-const SIDECAR_OFFSET_X = 220;
-const SIDECAR_STACK_GAP_Y = 28;
-const GENERAL_LANE_START_Y = 140;
-const GENERAL_LANE_GAP_Y = 36;
-const COLLISION_GAP = 12;
+// How far to the right of the anchor node Act nodes float
+const ANCHOR_OFFSET_X = 180;
+// Fallback X when there's no anchor (right of the whole persisted layout)
+const GENERAL_OFFSET_X = 260;
 
-type Rect = { x: number; y: number; width: number; height: number };
+// Mini force simulation parameters
+const SPRING_K    = 0.15;   // attraction toward target
+const REPULSION   = 12000;  // act ↔ act repulsion
+const DAMPING     = 0.60;
+const ITERATIONS  = 80;
 
-/**
- * Returns the first Y >= preferredY at which a rect of (x, width, height) does not
- * overlap any rectangle in `occupied` (with an additional gap on all sides).
- * Only scans downward to avoid unbounded search.
- */
-function findFreeY(
-    x: number,
-    width: number,
-    height: number,
-    occupied: Rect[],
-    preferredY: number,
-    gap: number,
-): number {
-    let candidateY = preferredY;
-    for (let iter = 0; iter < 200; iter++) {
-        const blocking = occupied.find(
-            (o) =>
-                x < o.x + o.width + gap &&
-                x + width + gap > o.x &&
-                candidateY < o.y + o.height + gap &&
-                candidateY + height + gap > o.y,
-        );
-        if (!blocking) {
-            return candidateY;
-        }
-        candidateY = blocking.y + blocking.height + gap;
-    }
-    return candidateY;
-}
+type SimNode = {
+    id: string;
+    x: number; y: number;
+    vx: number; vy: number;
+    w: number; h: number;
+    tx: number; ty: number;   // target position
+};
 
 export function projectActOverlay({
     actNodes,
     persistedNodes,
     expandedNodeIds,
 }: ProjectActOverlayParams): GraphNodeBase[] {
-    if (actNodes.length === 0) {
-        return [];
-    }
+    if (actNodes.length === 0) return [];
 
-    const persistedById = new Map(persistedNodes.map((node) => [node.id, node]));
-    const expandedSet = new Set(expandedNodeIds);
-    const maxPersistedRight = persistedNodes.reduce((max, node) => {
-        const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-        return Math.max(max, node.position.x + dimensions.width);
+    const persistedById = new Map(persistedNodes.map((n) => [n.id, n]));
+    const expandedSet   = new Set(expandedNodeIds);
+
+    const maxPersistedRight = persistedNodes.reduce((max, n) => {
+        const d = getNodeDimensions(n, expandedSet.has(n.id));
+        return Math.max(max, n.position.x + d.width);
     }, 0);
 
-    const referencedBuckets = new Map<string, GraphNodeBase[]>();
-    const fixedNodes: GraphNodeBase[] = [];
-    const generalLaneNodes: GraphNodeBase[] = [];
+    // Separate manually/previously positioned nodes from those that need placement
+    const fixedNodes: GraphNodeBase[]   = [];
+    const floatNodes: GraphNodeBase[]   = [];
 
     for (const node of actNodes) {
-        // 手動配置済み、またはoverlay が一度正しく配置した位置を保持してジッターを防ぐ
-        if (node.data?.isManualPosition === true || node.data?.overlayPositioned === true) {
+        if (node.data?.isManualPosition === true) {
             fixedNodes.push(node);
-            continue;
+        } else {
+            floatNodes.push(node);
         }
-
-        const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
-            ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
-            : [];
-        const anchorId = referencedNodeIds.find((nodeId) => persistedById.has(nodeId));
-
-        if (!anchorId) {
-            generalLaneNodes.push(node);
-            continue;
-        }
-
-        const bucket = referencedBuckets.get(anchorId) ?? [];
-        bucket.push(node);
-        referencedBuckets.set(anchorId, bucket);
     }
 
-    // Build occupied rects from persisted nodes and already-fixed act nodes so that
-    // newly placed nodes can avoid overlapping them.
-    const occupiedRects: Rect[] = [
-        ...persistedNodes.map((node) => {
-            const d = getNodeDimensions(node, expandedSet.has(node.id));
-            return { x: node.position.x, y: node.position.y, width: d.width, height: d.height };
-        }),
-        ...fixedNodes.map((node) => {
-            const d = getNodeDimensions(node, expandedSet.has(node.id));
-            return { x: node.position.x, y: node.position.y, width: d.width, height: d.height };
-        }),
-    ];
+    if (floatNodes.length === 0) return fixedNodes;
 
-    // 全Actノードを Persisted 列の右端の単一レーンに配置する。
-    // アンカーを参照しているノードはアンカーのY中心に揃え、参照なしのノードは後続に積む。
-    // これにより Act サイドカーが Persisted 列と重なるのを防ぐ。
-    const actLaneX = maxPersistedRight + SIDECAR_OFFSET_X;
+    // Build simulation nodes
+    const simNodes: SimNode[] = floatNodes.map((node) => {
+        const { width: w, height: h } = getNodeDimensions(node, expandedSet.has(node.id));
 
-    // アンカーのY位置順に処理することで、上のアンカーに対応する Act が上に並ぶ
-    const sortedBuckets = [...referencedBuckets.entries()].sort(([aId], [bId]) => {
-        const a = persistedById.get(aId);
-        const b = persistedById.get(bId);
-        return (a?.position.y ?? 0) - (b?.position.y ?? 0);
-    });
+        // Compute target based on primary anchor
+        const referencedIds: string[] = Array.isArray(node.data?.referencedNodeIds)
+            ? (node.data.referencedNodeIds as unknown[]).filter((v): v is string => typeof v === 'string')
+            : [];
+        const anchor = referencedIds.map((id) => persistedById.get(id)).find(Boolean);
 
-    const positionedReferenced = sortedBuckets.flatMap(([anchorId, nodes]) => {
-        const anchor = persistedById.get(anchorId);
-        if (!anchor) {
-            return nodes;
+        let tx: number, ty: number;
+        if (anchor) {
+            const ad = getNodeDimensions(anchor, expandedSet.has(anchor.id));
+            tx = anchor.position.x + ad.width + ANCHOR_OFFSET_X;
+            ty = anchor.position.y + ad.height / 2;
+        } else {
+            tx = maxPersistedRight + GENERAL_OFFSET_X;
+            ty = 200 + floatNodes.indexOf(node) * 60;
         }
 
-        const anchorDimensions = getNodeDimensions(anchor, expandedSet.has(anchor.id));
-        const anchorCenterY = anchor.position.y + (anchorDimensions.height / 2);
+        // Seed from previous position if already placed, else start at target
+        const seedX = node.data?.overlayPositioned === true ? node.position.x : tx;
+        const seedY = node.data?.overlayPositioned === true ? node.position.y : ty;
 
-        const totalHeight = nodes.reduce((sum, node, index) => {
-            const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-            return sum + dimensions.height + (index > 0 ? SIDECAR_STACK_GAP_Y : 0);
-        }, 0);
-
-        const groupWidth = Math.max(...nodes.map((n) => getNodeDimensions(n, expandedSet.has(n.id)).width));
-        const desiredStartY = anchorCenterY - totalHeight / 2;
-        let currentY = findFreeY(actLaneX, groupWidth, totalHeight, occupiedRects, desiredStartY, COLLISION_GAP);
-
-        return nodes.map((node) => {
-            const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-            const positionedNode: GraphNodeBase = {
-                ...node,
-                position: { x: actLaneX, y: currentY },
-                data: { ...node.data, overlayPositioned: true },
-            };
-            occupiedRects.push({ x: actLaneX, y: currentY, width: dimensions.width, height: dimensions.height });
-            currentY += dimensions.height + SIDECAR_STACK_GAP_Y;
-            return positionedNode;
-        });
+        return { id: node.id, x: seedX, y: seedY, vx: 0, vy: 0, w, h, tx, ty };
     });
 
-    let nextGeneralLaneY = GENERAL_LANE_START_Y;
-    const positionedGeneralLane = generalLaneNodes.map((node) => {
-        const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-        const y = findFreeY(actLaneX, dimensions.width, dimensions.height, occupiedRects, nextGeneralLaneY, COLLISION_GAP);
-        nextGeneralLaneY = y + dimensions.height + GENERAL_LANE_GAP_Y;
-        const positionedNode: GraphNodeBase = {
+    // ── Mini force simulation ─────────────────────────────────────────────────
+    for (let iter = 0; iter < ITERATIONS; iter++) {
+        // Spring toward target
+        for (const n of simNodes) {
+            n.vx += (n.tx - n.x) * SPRING_K;
+            n.vy += (n.ty - n.y) * SPRING_K;
+        }
+
+        // Repulsion between act nodes
+        for (let i = 0; i < simNodes.length; i++) {
+            for (let j = i + 1; j < simNodes.length; j++) {
+                const a = simNodes[i], b = simNodes[j];
+                const dx = a.x - b.x, dy = a.y - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+                const minDist = (Math.max(a.w, a.h) + Math.max(b.w, b.h)) * 0.55 + 16;
+                // Only repel when overlapping or very close
+                if (dist < minDist * 1.8) {
+                    const mag = REPULSION / (dist * dist);
+                    const nx = dx / dist, ny = dy / dist;
+                    a.vx += nx * mag; a.vy += ny * mag;
+                    b.vx -= nx * mag; b.vy -= ny * mag;
+                }
+            }
+        }
+
+        // Integrate
+        for (const n of simNodes) {
+            n.vx *= DAMPING;
+            n.vy *= DAMPING;
+            n.x  += n.vx;
+            n.y  += n.vy;
+        }
+    }
+
+    // Map back to graph nodes
+    const posById = new Map(simNodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+
+    const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
+        const pos = posById.get(node.id)!;
+        return {
             ...node,
-            position: { x: actLaneX, y },
+            position: pos,
             data: { ...node.data, overlayPositioned: true },
         };
-        occupiedRects.push({ x: actLaneX, y, width: dimensions.width, height: dimensions.height });
-        return positionedNode;
     });
 
-    return [...positionedReferenced, ...positionedGeneralLane, ...fixedNodes];
+    return [...positionedFloat, ...fixedNodes];
 }
 
 function getNodeDimensions(node: GraphNodeBase, isExpanded: boolean) {
-    const nodeData = (node.data ?? {}) as Record<string, unknown>;
-    const nodeKind = typeof nodeData.kind === 'string' ? nodeData.kind : undefined;
-    const label = typeof nodeData.label === 'string' ? nodeData.label : undefined;
-    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
-
+    const data    = (node.data ?? {}) as Record<string, unknown>;
+    const kind    = typeof data.kind  === 'string' ? data.kind  : undefined;
+    const label   = typeof data.label === 'string' ? data.label : undefined;
+    const layout  = getLayoutDimensionsForNodeType(node.type, isExpanded, kind);
     return {
         width: node.type === 'customTask'
-            ? (isExpanded
-                ? getExpandedNodeWidth(label, nodeKind)
-                : getCollapsedNodeWidth(label, nodeKind, false))
-            : layoutDimensions.width,
-        height: layoutDimensions.height,
+            ? (isExpanded ? getExpandedNodeWidth(label, kind) : getCollapsedNodeWidth(label, kind, false))
+            : layout.width,
+        height: layout.height,
     };
 }

@@ -48,6 +48,7 @@ export type GraphNodeBaseData = PersistedNodeData | ActNodeData;
 export type GraphNodeRenderData = GraphNodeBaseData & {
     layoutMode?: 'force' | 'radial';
     radialDepth?: number;
+    rootHue?: number;
     actStage?: 'draft' | 'thinking' | 'ready';
     referencedNodes?: ReferencedNodeView[];
     hasChildNodes?: boolean;

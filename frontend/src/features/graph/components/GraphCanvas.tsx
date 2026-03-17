@@ -491,11 +491,34 @@ export function GraphCanvas() {
         [displayNodes, selectionProjection.nodes],
     );
 
-    const layoutAwareDisplayNodes = useMemo(
-        () => canvasNodes.map((node) => {
+    const layoutAwareDisplayNodes = useMemo(() => {
+        // Build parent map for root traversal (to compute rootHue per node)
+        const parentById = new Map(
+            persistedGraph.positionedNodes.map((node) => [
+                node.id,
+                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
+            ]),
+        );
+        const getRootId = (id: string): string => {
+            let cur: string | undefined = id;
+            while (cur) {
+                const p = parentById.get(cur);
+                if (!p) return cur;
+                cur = p;
+            }
+            return id;
+        };
+
+        return canvasNodes.map((node) => {
             const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
                 ? 'radial'
                 : 'force';
+
+            let rootHue = 210;
+            if (node.data?.nodeSource === 'persisted') {
+                const rootIndex = persistedGraph.rootIds.indexOf(getRootId(node.id));
+                rootHue = rootIndex >= 0 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length] : 210;
+            }
 
             return {
                 ...node,
@@ -503,11 +526,11 @@ export function GraphCanvas() {
                     ...node.data,
                     layoutMode,
                     radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
+                    rootHue,
                 },
             };
-        }),
-        [canvasNodes, isRadialLayout, persistedGraph.depthById],
-    );
+        });
+    }, [canvasNodes, isRadialLayout, persistedGraph.depthById, persistedGraph.positionedNodes, persistedGraph.rootIds]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({

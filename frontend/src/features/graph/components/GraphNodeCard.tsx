@@ -60,6 +60,10 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const isActNode = data.kind === 'act';
     const isDraftAct = isActNode && actStage === 'draft';
+    const nodeDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
+    const rootHue = typeof data.rootHue === 'number' ? data.rootHue : 210;
+    const depthBgColor = isActNode ? undefined
+        : `hsl(${rootHue}, ${Math.max(40 - nodeDepth * 10, 6)}%, ${Math.min(92 + nodeDepth * 2, 98.5)}%)`;
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
@@ -273,6 +277,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                         ? ACT_NODE_COMPACT_WIDTH
                         : NODE_COLLAPSED_BASE_WIDTH,
                     maxWidth: cardMaxWidth,
+                    ...(depthBgColor ? { backgroundColor: depthBgColor } : {}),
                 }}
                 className={`
                 group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
