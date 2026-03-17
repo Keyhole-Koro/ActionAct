@@ -1,11 +1,12 @@
 import type { GraphNodeBase } from '@/features/graph/types';
 import { layoutPersistedForce } from '@/features/graph/layout/layoutForce';
 import { layoutPersistedRadial } from '@/features/graph/layout/layoutRadial';
+import { layoutOrbit } from '@/features/graph/layout/layoutOrbit';
 import { buildVisibleHierarchy, type GraphEdgeLike } from '@/features/graph/model/hierarchy';
 import { partitionVisibleEdges } from '@/features/graph/model/relations';
 
 export type PersistedGraphProjection = ReturnType<typeof projectPersistedGraph>;
-export type PersistedGraphLayoutMode = 'force' | 'radial' | 'sphere';
+export type PersistedGraphLayoutMode = 'force' | 'radial' | 'orbit';
 
 export function projectPersistedGraph(
     persistedNodes: GraphNodeBase[],
@@ -19,17 +20,29 @@ export function projectPersistedGraph(
     const hierarchy = buildVisibleHierarchy(
         persistedNodes,
         persistedEdges,
-        layoutMode === 'radial' ? persistedNodes.map((node) => node.id) : expandedBranchNodeIds,
+        (layoutMode === 'radial' || layoutMode === 'orbit')
+            ? persistedNodes.map((node) => node.id)
+            : expandedBranchNodeIds,
     );
     const relations = partitionVisibleEdges(hierarchy.visibleNodes, hierarchy.visibleEdges);
-    const positionedNodes = layoutMode === 'radial'
-        ? layoutPersistedRadial({
+
+    let positionedNodes: GraphNodeBase[];
+    if (layoutMode === 'radial') {
+        positionedNodes = layoutPersistedRadial({
             nodes: hierarchy.visibleNodes,
             depthById: hierarchy.depthById,
             rootIds: hierarchy.rootIds,
             childrenByParent: hierarchy.childrenByParent,
-        })
-        : layoutPersistedForce({
+        });
+    } else if (layoutMode === 'orbit') {
+        positionedNodes = layoutOrbit({
+            nodes: hierarchy.visibleNodes,
+            rootIds: hierarchy.rootIds,
+            childrenByParent: hierarchy.childrenByParent,
+            actNodes: actNodes ?? [],
+        });
+    } else {
+        positionedNodes = layoutPersistedForce({
             nodes: hierarchy.visibleNodes,
             edges: [...relations.hierarchyEdges, ...relations.relationEdges],
             depthById: hierarchy.depthById,
@@ -45,6 +58,7 @@ export function projectPersistedGraph(
             actNodes: actNodes ?? [],
             actEdges: actEdges ?? [],
         });
+    }
 
     return {
         ...hierarchy,

@@ -34,7 +34,6 @@ import {
 import { BundledEdge } from './BundledEdge';
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
-import { SphereViewer } from './SphereViewer';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import { SelectedNodePanel } from './SelectedNodePanel';
 import {
@@ -384,6 +383,8 @@ export function GraphCanvas() {
         setSelectedNodes,
         setActiveNode,
         toggleExpandedNode,
+        expandNode,
+        expandBranchNode,
         addOrUpdateActNode,
         addQueryActNode,
         addEmptyActNode,
@@ -399,6 +400,8 @@ export function GraphCanvas() {
         isStreaming,
         collapseUnusedNodes,
         recordNodeUsed,
+        nodeLastUsedAt,
+        nodeUseCount,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
@@ -432,7 +435,7 @@ export function GraphCanvas() {
     const persistedLayoutMode = useMemo(() => {
         const layout = searchParams.get('layout');
         if (layout === 'radial') return 'radial' as const;
-        if (layout === 'sphere') return 'sphere' as const;
+        if (layout === 'orbit') return 'orbit' as const;
         return 'force' as const;
     }, [searchParams]);
 
@@ -578,7 +581,6 @@ export function GraphCanvas() {
         [deferredActEdges, deferredActNodes, deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
-    const isSphereLayout = persistedLayoutMode === 'sphere';
     const radialOverviewGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
@@ -693,6 +695,12 @@ export function GraphCanvas() {
     }, [persistedGraph.positionedNodes]);
 
     const layoutAwareDisplayNodes = useMemo(() => {
+        const now = Date.now();
+        // Half-life for recency decay: 20 minutes
+        const RECENCY_HALF_LIFE_MS = 20 * 60 * 1000;
+        // Frequency saturation constant: K uses → 50% frequency score
+        const FREQ_K = 4;
+
         return canvasNodes.map((node) => {
             const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
                 ? 'radial'
@@ -705,6 +713,21 @@ export function GraphCanvas() {
                 rootHue = rootIndex >= 0 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length] : 210;
             }
 
+            // Activity opacity: only applied to act nodes.
+            // New nodes (no usage recorded yet) stay at full opacity.
+            let activityOpacity: number | undefined;
+            if (node.data?.nodeSource === 'act') {
+                const lastUsed = nodeLastUsedAt[node.id];
+                const count = nodeUseCount[node.id] ?? 0;
+                if (lastUsed !== undefined) {
+                    const recencyScore = Math.exp(-(now - lastUsed) / RECENCY_HALF_LIFE_MS);
+                    const freqScore = count / (count + FREQ_K);
+                    const activity = 0.5 * recencyScore + 0.5 * freqScore;
+                    // Map [0, 1] → [0.25, 1.0] so even unused nodes remain visible
+                    activityOpacity = 0.25 + 0.75 * activity;
+                }
+            }
+
             return {
                 ...node,
                 data: {
@@ -712,10 +735,11 @@ export function GraphCanvas() {
                     layoutMode,
                     radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
                     rootHue,
+                    ...(activityOpacity !== undefined ? { activityOpacity } : {}),
                 },
             };
         });
-    }, [canvasNodes, isRadialLayout, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [canvasNodes, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -1086,6 +1110,7 @@ export function GraphCanvas() {
         [displayEdges, emphasizedDisplayNodes],
     );
 
+    /*
     useEffect(() => {
         if (emphasizedDisplayNodes.length === 0) {
             previousViewSignatureRef.current = null;
@@ -1116,7 +1141,9 @@ export function GraphCanvas() {
             window.clearTimeout(timeoutId);
         };
     }, [emphasizedDisplayNodes.length, isStreaming, reactFlowInstance, viewSignature]);
+    */
 
+    /*
     // ストリーミング終了後に一度だけ fitView を実行
     useEffect(() => {
         if (isStreaming || !needsPostStreamFitRef.current) {
@@ -1133,6 +1160,7 @@ export function GraphCanvas() {
         }, 100);
         return () => window.clearTimeout(timeoutId);
     }, [isStreaming, reactFlowInstance]);
+    */
 
     useEffect(() => {
         const pendingNodeId = pendingRadialFocusNodeIdRef.current;
@@ -1353,7 +1381,7 @@ export function GraphCanvas() {
         </div>
     ) : null;
 
-    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial' | 'sphere') => {
+    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial' | 'orbit') => {
         const nextParams = new URLSearchParams(searchParams.toString());
         if (nextLayout === 'force') {
             nextParams.delete('layout');
@@ -1366,7 +1394,7 @@ export function GraphCanvas() {
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
-            {(['force', 'radial', 'sphere'] as const).map((mode) => {
+            {(['force', 'radial', 'orbit'] as const).map((mode) => {
                 const active = persistedLayoutMode === mode;
                 return (
                     <button
@@ -1380,7 +1408,7 @@ export function GraphCanvas() {
                         ].join(' ')}
                         onClick={() => setLayoutMode(mode)}
                     >
-                        {mode === 'force' ? 'Force' : mode === 'radial' ? 'Radial' : 'Sphere'}
+                        {mode === 'force' ? 'Force' : mode === 'radial' ? 'Radial' : 'Orbit'}
                     </button>
                 );
             })}
@@ -1399,15 +1427,6 @@ export function GraphCanvas() {
             </button>
         </div>
     );
-
-    if (isSphereLayout) {
-        return (
-            <div className="relative h-full w-full">
-                {layoutToggle}
-                <SphereViewer className="h-full w-full" />
-            </div>
-        );
-    }
 
     if (isRadialLayout) {
         return (
@@ -1500,6 +1519,7 @@ export function GraphCanvas() {
                     // Click to explore: expand detail panel AND branch
                     expandNode(node.id);
                     expandBranchNode(node.id);
+                    recordNodeUsed(node.id);
 
                     if (activeNodeId !== node.id) {
                         focusNode(node.id);

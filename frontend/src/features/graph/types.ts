@@ -49,6 +49,7 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     layoutMode?: 'force' | 'radial';
     radialDepth?: number;
     rootHue?: number;
+    activityOpacity?: number;
     actStage?: 'draft' | 'thinking' | 'ready';
     referencedNodes?: ReferencedNodeView[];
     hasChildNodes?: boolean;

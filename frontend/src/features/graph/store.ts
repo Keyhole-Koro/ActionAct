@@ -19,6 +19,7 @@ interface GraphState {
     isStreaming: boolean;
     streamingNodeIds: string[];
     nodeLastUsedAt: Record<string, number>;
+    nodeUseCount: Record<string, number>;
     pinnedExpandedNodeIds: string[];
 
     setSelectedNodes: (ids: string[]) => void;
@@ -144,6 +145,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     isStreaming: false,
     streamingNodeIds: [],
     nodeLastUsedAt: {},
+    nodeUseCount: {},
     pinnedExpandedNodeIds: [],
 
     setSelectedNodes: (ids) => set((state) => {
@@ -257,6 +259,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     }),
     recordNodeUsed: (nodeId) => set((state) => ({
         nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: Date.now() },
+        nodeUseCount: { ...state.nodeUseCount, [nodeId]: (state.nodeUseCount[nodeId] ?? 0) + 1 },
     })),
     pinExpandedNode: (nodeId) => set((state) => (
         state.pinnedExpandedNodeIds.includes(nodeId)
