@@ -87,13 +87,16 @@ export const useActClarificationStore = create<ActClarificationState>((set, get)
     if (previousGroupId) {
       useAgentInteractionStore.getState().cancelGroup(previousGroupId);
     }
-    const selectionGroupId = clarification.suggested_action === "select_node"
+    const candidateOptions = Array.isArray(clarification.candidate_options) ? clarification.candidate_options : [];
+    const hasCandidateOptions = candidateOptions.length >= 2;
+    const shouldCreateSelectionGroup = clarification.suggested_action === "select_node" || hasCandidateOptions;
+    const selectionGroupId = shouldCreateSelectionGroup
       ? (
-        Array.isArray(clarification.candidate_options) && clarification.candidate_options.length >= 2
+        hasCandidateOptions
           ? await createClarificationSelectionGroupFromCandidates(frontendToolClient, {
               instruction: clarification.message,
               query: pendingRun.query,
-              candidates: clarification.candidate_options,
+              candidates: candidateOptions,
             })
           : await createClarificationSelectionGroup(frontendToolClient, {
               instruction: clarification.message,

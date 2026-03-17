@@ -19,6 +19,7 @@ import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
+import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import { projectSelectionGroups } from '@/features/agentInteraction/selectors/projectSelectionGroups';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
@@ -160,6 +161,38 @@ function readClientPoint(event: React.MouseEvent | React.TouchEvent | MouseEvent
     return null;
 }
 
+type NodeSide = 'left' | 'right' | 'top' | 'bottom';
+
+function oppositeSide(side: NodeSide): NodeSide {
+    if (side === 'left') return 'right';
+    if (side === 'right') return 'left';
+    if (side === 'top') return 'bottom';
+    return 'top';
+}
+
+function resolveNearestSides(sourceNode: Node<Record<string, unknown>>, targetNode: Node<Record<string, unknown>>) {
+    const sourceDimensions = getDisplayNodeDimensions(sourceNode);
+    const targetDimensions = getDisplayNodeDimensions(targetNode);
+
+    const sourceCenterX = sourceNode.position.x + (sourceDimensions.width / 2);
+    const sourceCenterY = sourceNode.position.y + (sourceDimensions.height / 2);
+    const targetCenterX = targetNode.position.x + (targetDimensions.width / 2);
+    const targetCenterY = targetNode.position.y + (targetDimensions.height / 2);
+
+    const deltaX = targetCenterX - sourceCenterX;
+    const deltaY = targetCenterY - sourceCenterY;
+    const useHorizontal = Math.abs(deltaX) >= Math.abs(deltaY);
+
+    const sourceSide: NodeSide = useHorizontal
+        ? (deltaX >= 0 ? 'right' : 'left')
+        : (deltaY >= 0 ? 'bottom' : 'top');
+
+    return {
+        sourceSide,
+        targetSide: oppositeSide(sourceSide),
+    };
+}
+
 export function GraphCanvas() {
     const router = useRouter();
     const pathname = usePathname();
@@ -186,6 +219,8 @@ export function GraphCanvas() {
         streamingNodeIds,
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
+    const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
+    const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
     const selectionGroups = useAgentInteractionStore((state) => state.groups);
     const toggleSelectionOption = useAgentInteractionStore((state) => state.toggleOptionSelection);
     const confirmSelection = useAgentInteractionStore((state) => state.confirmSelection);
@@ -672,10 +707,14 @@ export function GraphCanvas() {
                 return [];
             }
 
+            const nodeById = new Map(emphasizedDisplayNodes.map((node) => [node.id, node]));
+
             return buildDisplayEdges(
                 [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
                 [...actEdges, ...selectionProjection.edges],
             ).map((edge) => {
+            const sourceNode = nodeById.get(edge.source);
+            const targetNode = nodeById.get(edge.target);
             const isActContext = edge.id.startsWith('edge-ctx-');
             const isRelation = 'relationType' in edge && edge.relationType === 'related';
             const isActContextFocused = isActContext
@@ -692,9 +731,14 @@ export function GraphCanvas() {
             const sourceDepth = persistedGraph.depthById.get(edge.source) ?? persistedGraph.depthById.get(edge.target) ?? 0;
             const hierarchyStroke = `hsla(${rootHue} 70% ${Math.min(54 + (sourceDepth * 5), 72)}% / 1)`;
             const relationStroke = `hsla(${rootHue} 56% ${Math.min(68 + (sourceDepth * 3), 82)}% / 1)`;
+            const nearestSides = autoRouteEdgeHandles && sourceNode && targetNode && sourceNode.type === 'customTask' && targetNode.type === 'customTask'
+                ? resolveNearestSides(sourceNode as Node<Record<string, unknown>>, targetNode as Node<Record<string, unknown>>)
+                : null;
 
             return {
                 ...edge,
+                sourceHandle: nearestSides ? `source-${nearestSides.sourceSide}` : (edge as Edge).sourceHandle,
+                targetHandle: nearestSides ? `target-${nearestSides.targetSide}` : (edge as Edge).targetHandle,
                 type: isActContext ? 'simplebezier' : (isRelation ? 'smoothstep' : 'default'),
                 zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
                 interactionWidth: isActContext ? 32 : 24,
@@ -742,6 +786,8 @@ export function GraphCanvas() {
         },
         [
             actEdges,
+            autoRouteEdgeHandles,
+            emphasizedDisplayNodes,
             isRadialLayout,
             persistedGraph.depthById,
             persistedGraph.hierarchyEdges,
@@ -1033,6 +1079,19 @@ export function GraphCanvas() {
                     </button>
                 );
             })}
+            <button
+                type="button"
+                className={[
+                    'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200 border',
+                    autoRouteEdgeHandles
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-100',
+                ].join(' ')}
+                onClick={() => setStreamPreferences({ autoRouteEdgeHandles: !autoRouteEdgeHandles })}
+                title="Toggle nearest-side edge routing"
+            >
+                Auto Side
+            </button>
         </div>
     );
 

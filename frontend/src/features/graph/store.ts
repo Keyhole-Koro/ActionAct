@@ -310,7 +310,6 @@ export const useGraphStore = create<GraphState>((set) => ({
                 data: { label: '', nodeSource: 'act', createdBy: 'user', kind: 'act', contentMd: '', isManualPosition: true }
             }],
             editingNodeId: id,
-            activeNodeId: id,
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],
@@ -336,7 +335,6 @@ export const useGraphStore = create<GraphState>((set) => ({
             }],
             actEdges: syncActReferenceEdges(state.actEdges, id, state.selectedNodeIds),
             editingNodeId: id,
-            activeNodeId: id,
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],

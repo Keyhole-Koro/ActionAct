@@ -9,8 +9,9 @@ interface StreamPreferencesState {
   includeThoughts: boolean;
   useWebGroundingOverride: boolean | null;
   modelProfile: ModelProfile;
+  autoRouteEdgeHandles: boolean;
   setPreferences: (
-    patch: Partial<Pick<StreamPreferencesState, "showThoughts" | "includeThoughts" | "useWebGroundingOverride" | "modelProfile">>,
+    patch: Partial<Pick<StreamPreferencesState, "showThoughts" | "includeThoughts" | "useWebGroundingOverride" | "modelProfile" | "autoRouteEdgeHandles">>,
   ) => void;
 }
 
@@ -19,5 +20,6 @@ export const useStreamPreferencesStore = create<StreamPreferencesState>((set) =>
   includeThoughts: false,
   useWebGroundingOverride: null,
   modelProfile: "flash",
+  autoRouteEdgeHandles: true,
   setPreferences: (patch) => set((state) => ({ ...state, ...patch })),
 }));

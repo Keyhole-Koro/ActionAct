@@ -57,6 +57,8 @@ export type ActRunClarificationCode =
 export type ActRunClarification = {
   code: ActRunClarificationCode;
   message: string;
+  message_md?: string;
+  followup_prompt?: string;
   suggested_action: "select_node" | "retry_without_context" | "none";
   candidate_options?: ClarificationCandidateOption[];
 };
@@ -110,15 +112,108 @@ function queryNeedsIntentSelection(userMessage: string) {
   return normalized.length > 0 && GENERIC_INTENT_PATTERN.test(normalized);
 }
 
+function compactForMarkdown(value: string, maxLength = 140) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
+}
+
+function escapeMarkdownText(value: string) {
+  return value.replace(/[\\`*_{}[\]()#+\-.!|>]/g, "\\$&");
+}
+
+type ClarificationFollowupMode = "node" | "intent" | "detail";
+
+function buildClarificationMessageMd(params: {
+  userMessage: string;
+  message: string;
+  selectedNodeCount?: number;
+  visibleNodeCount?: number;
+  activeNodeId?: string | null;
+  candidateOptions?: ClarificationCandidateOption[];
+  followupMode?: ClarificationFollowupMode;
+}) {
+  const isJapanese = /[\u3040-\u30ff\u4e00-\u9fff]/u.test(params.userMessage);
+  const followupMode = params.followupMode ?? "detail";
+  const followupPrompt = isJapanese
+    ? followupMode === "intent"
+      ? "次に、候補から知りたい観点を1つ選んでください。候補外なら、どの観点で見たいかを1文で指定してください。"
+      : followupMode === "node"
+        ? "次に、対象ノードを1つ選んでください。候補外なら、ノード名を1文で指定してください。"
+        : "次に、対象ノード名または知りたい観点を1文で教えてください。"
+    : followupMode === "intent"
+      ? "Next, choose one focus area from the options. If none fit, tell me the angle you want in one sentence."
+      : followupMode === "node"
+        ? "Next, choose one target node. If none match, tell me the node name in one sentence."
+        : "Next, tell me either the target node or the angle you want in one sentence.";
+  const knownLabel = isJapanese ? "いま分かっていること" : "What we know now";
+  const followupLabel = isJapanese ? "Follow-up" : "Follow-up";
+  const userLabel = isJapanese ? "依頼" : "Request";
+  const visibleLabel = isJapanese ? "画面内ノード数" : "Visible nodes";
+  const selectedLabel = isJapanese ? "選択中ノード数" : "Selected nodes";
+  const activeLabel = isJapanese ? "アクティブノード" : "Active node";
+  const candidateLabel = isJapanese ? "候補" : "Candidates";
+
+  const facts: string[] = [
+    `- ${userLabel}: ${escapeMarkdownText(compactForMarkdown(params.userMessage, 120))}`,
+  ];
+  if (typeof params.visibleNodeCount === "number") {
+    facts.push(`- ${visibleLabel}: ${params.visibleNodeCount}`);
+  }
+  if (typeof params.selectedNodeCount === "number") {
+    facts.push(`- ${selectedLabel}: ${params.selectedNodeCount}`);
+  }
+  if (params.activeNodeId) {
+    facts.push(`- ${activeLabel}: ${escapeMarkdownText(params.activeNodeId)}`);
+  }
+
+  const candidateLines = (params.candidateOptions ?? []).slice(0, 4).map((candidate) => {
+    const reason = candidate.reason && candidate.reason.trim() !== ""
+      ? ` - ${escapeMarkdownText(candidate.reason)}`
+      : "";
+    return `- ${escapeMarkdownText(candidate.label)}${reason}`;
+  });
+
+  const lines: string[] = [
+    params.message,
+    "",
+    `### ${knownLabel}`,
+    ...facts,
+  ];
+
+  if (candidateLines.length > 0) {
+    lines.push("", `### ${candidateLabel}`, ...candidateLines);
+  }
+
+  lines.push("", `### ${followupLabel}`, followupPrompt);
+  return { messageMd: lines.join("\n"), followupPrompt };
+}
+
 function clarification(
   code: ActRunClarificationCode,
   message: string,
   suggested_action: ActRunClarification["suggested_action"],
   candidate_options?: ActRunClarification["candidate_options"],
+  extra?: {
+    message_md?: string;
+    followup_prompt?: string;
+  },
 ): ClarificationResult {
   return {
     status: "clarification",
-    clarification: { code, message, suggested_action, candidate_options },
+    clarification: {
+      code,
+      message,
+      message_md: extra?.message_md,
+      followup_prompt: extra?.followup_prompt,
+      suggested_action,
+      candidate_options,
+    },
   };
 }
 
@@ -232,6 +327,30 @@ function buildIntentSelectionOptions(userMessage: string, contextNodeIds: string
   }));
 }
 
+function buildDetailFollowupOptions(userMessage: string, contextNodeIds: string[]): ClarificationCandidateOption[] {
+  const isJapanese = /[\u3040-\u30ff\u4e00-\u9fff]/u.test(userMessage);
+  const options = isJapanese
+    ? [
+        ["detail_overview", "まず全体像をつかみたい", "背景と要点を短く整理します。", "全体像と要点"],
+        ["detail_focus_points", "論点ごとに深掘りしたい", "重要論点を分けて具体的に見ます。", "主要な論点を深掘り"],
+        ["detail_next_actions", "次のアクションを決めたい", "実行順にアクションへ落とし込みます。", "次のアクションを提案"],
+      ]
+    : [
+        ["detail_overview", "Get the big picture first", "I will summarize context and key points briefly.", "big picture and key points"],
+        ["detail_focus_points", "Drill into key points", "I will break this down by major focus points.", "deep dive into key points"],
+        ["detail_next_actions", "Decide next actions", "I will convert this into ordered, actionable next steps.", "propose next actions"],
+      ];
+
+  return options.map(([optionId, label, reason, queryHint]) => ({
+    option_id: optionId,
+    label,
+    reason,
+    kind: "intent" as const,
+    query_hint: queryHint,
+    context_node_ids: contextNodeIds,
+  }));
+}
+
 async function safeVisibleGraph(client: FrontendToolClient): Promise<{
   nodes: VisibleDecisionNode[];
   selectedNodeIds: string[];
@@ -283,10 +402,20 @@ async function resolveContextNodeIds(
   const available = await client.available();
   if (!available) {
     if (needsUiContext) {
+      const baseMessage = "この質問は画面上のノード文脈が必要です。ノードを選んでから試すか、そのまま文脈なしで続けてください。";
+      const md = buildClarificationMessageMd({
+        userMessage,
+        message: baseMessage,
+      });
       return clarification(
         "TRANSPORT_UNAVAILABLE",
-        "この質問は画面上のノード文脈が必要です。ノードを選んでから試すか、そのまま文脈なしで続けてください。",
+        baseMessage,
         "select_node",
+        undefined,
+        {
+          message_md: md.messageMd,
+          followup_prompt: md.followupPrompt,
+        },
       );
     }
     return { status: "ready", contextNodeIds: [] };
@@ -300,10 +429,20 @@ async function resolveContextNodeIds(
 
   if (!hasSelectedNodesTool && !hasActiveNodeTool) {
     if (needsUiContext) {
+      const baseMessage = "この質問に必要なノード文脈を今は取得できません。ノードを選んでから再実行するか、文脈なしで続けてください。";
+      const md = buildClarificationMessageMd({
+        userMessage,
+        message: baseMessage,
+      });
       return clarification(
         "REQUIRED_TOOL_UNAVAILABLE",
-        "この質問に必要なノード文脈を今は取得できません。ノードを選んでから再実行するか、文脈なしで続けてください。",
+        baseMessage,
         "select_node",
+        undefined,
+        {
+          message_md: md.messageMd,
+          followup_prompt: md.followupPrompt,
+        },
       );
     }
     return { status: "ready", contextNodeIds: [] };
@@ -315,11 +454,24 @@ async function resolveContextNodeIds(
     const selectedNodeIds = await safeSelectedNodeIds(client);
     if (selectedNodeIds && selectedNodeIds.length > 0) {
       if (needsIntentSelection) {
+        const baseMessage = "何を知りたいですか？近いものを選んでください。";
+        const candidateOptions = buildIntentSelectionOptions(userMessage, selectedNodeIds);
+        const md = buildClarificationMessageMd({
+          userMessage,
+          message: baseMessage,
+          selectedNodeCount: selectedNodeIds.length,
+          candidateOptions,
+          followupMode: "intent",
+        });
         return clarification(
           "MISSING_UI_CONTEXT",
-          "何を知りたいですか？近いものを選んでください。",
+          baseMessage,
           "select_node",
-          buildIntentSelectionOptions(userMessage, selectedNodeIds),
+          candidateOptions,
+          {
+            message_md: md.messageMd,
+            followup_prompt: md.followupPrompt,
+          },
         );
       }
       return { status: "ready", contextNodeIds: selectedNodeIds };
@@ -360,23 +512,61 @@ async function resolveContextNodeIds(
               }))
           : [];
 
+        const baseMessage = typeof decision.message === "string" && decision.message.trim() !== ""
+          ? decision.message
+          : "どのノードを見ればよいか選んでください。";
+        const md = buildClarificationMessageMd({
+          userMessage,
+          message: baseMessage,
+          candidateOptions,
+          visibleNodeCount: visibleGraph.nodes.length,
+          selectedNodeCount: visibleGraph.selectedNodeIds.length,
+          activeNodeId: visibleGraph.activeNodeId,
+          followupMode: "node",
+        });
+
         return clarification(
           "MISSING_UI_CONTEXT",
-          typeof decision.message === "string" && decision.message.trim() !== ""
-            ? decision.message
-            : "どのノードを見ればよいか選んでください。",
+          baseMessage,
           "select_node",
           candidateOptions,
+          {
+            message_md: md.messageMd,
+            followup_prompt: md.followupPrompt,
+          },
         );
       }
 
       if (decision.action === "clarify") {
+        const baseMessage = typeof decision.message === "string" && decision.message.trim() !== ""
+          ? decision.message
+          : "どのノードを見ればよいか分かるように、対象のノードを選んでからもう一度実行してください。";
+        const detailContextNodeIds = normalizeNodeIds([
+          ...visibleGraph.selectedNodeIds,
+          ...(visibleGraph.activeNodeId ? [visibleGraph.activeNodeId] : []),
+        ]);
+        const isRetryWithoutContext = decision.suggested_action === "retry_without_context";
+        const detailOptions = isRetryWithoutContext
+          ? buildDetailFollowupOptions(userMessage, detailContextNodeIds)
+          : undefined;
+        const md = buildClarificationMessageMd({
+          userMessage,
+          message: baseMessage,
+          visibleNodeCount: visibleGraph.nodes.length,
+          selectedNodeCount: visibleGraph.selectedNodeIds.length,
+          activeNodeId: visibleGraph.activeNodeId,
+          candidateOptions: detailOptions,
+          followupMode: isRetryWithoutContext ? "detail" : "node",
+        });
         return clarification(
           "MISSING_UI_CONTEXT",
-          typeof decision.message === "string" && decision.message.trim() !== ""
-            ? decision.message
-            : "どのノードを見ればよいか分かるように、対象のノードを選んでからもう一度実行してください。",
-          decision.suggested_action === "retry_without_context" ? "retry_without_context" : "select_node",
+          baseMessage,
+          isRetryWithoutContext ? "retry_without_context" : "select_node",
+          detailOptions,
+          {
+            message_md: md.messageMd,
+            followup_prompt: md.followupPrompt,
+          },
         );
       }
     } catch {
@@ -388,11 +578,25 @@ async function resolveContextNodeIds(
     const activeNodeId = await safeActiveNodeId(client);
     if (activeNodeId) {
       if (needsIntentSelection) {
+        const baseMessage = "何を知りたいですか？近いものを選んでください。";
+        const candidateOptions = buildIntentSelectionOptions(userMessage, [activeNodeId]);
+        const md = buildClarificationMessageMd({
+          userMessage,
+          message: baseMessage,
+          selectedNodeCount: 1,
+          activeNodeId,
+          candidateOptions,
+          followupMode: "intent",
+        });
         return clarification(
           "MISSING_UI_CONTEXT",
-          "何を知りたいですか？近いものを選んでください。",
+          baseMessage,
           "select_node",
-          buildIntentSelectionOptions(userMessage, [activeNodeId]),
+          candidateOptions,
+          {
+            message_md: md.messageMd,
+            followup_prompt: md.followupPrompt,
+          },
         );
       }
       return { status: "ready", contextNodeIds: [activeNodeId] };
@@ -400,10 +604,21 @@ async function resolveContextNodeIds(
   }
 
   if (needsUiContext) {
+    const baseMessage = "どのノードを見ればよいか分かるように、対象のノードを選んでからもう一度実行してください。";
+    const md = buildClarificationMessageMd({
+      userMessage,
+      message: baseMessage,
+      followupMode: "node",
+    });
     return clarification(
       "MISSING_UI_CONTEXT",
-      "どのノードを見ればよいか分かるように、対象のノードを選んでからもう一度実行してください。",
+      baseMessage,
       "select_node",
+      undefined,
+      {
+        message_md: md.messageMd,
+        followup_prompt: md.followupPrompt,
+      },
     );
   }
 

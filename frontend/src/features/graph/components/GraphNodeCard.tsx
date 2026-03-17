@@ -196,15 +196,61 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                 </div>
                 <Handle
                     type="target"
+                    id="target-left"
                     position={targetPosition ?? Position.Left}
                     isConnectable={isConnectable}
                     className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
                 />
                 <Handle
                     type="source"
+                    id="source-right"
                     position={sourcePosition ?? Position.Right}
                     isConnectable={isConnectable}
                     className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+                />
+                <Handle
+                    type="target"
+                    id="target-right"
+                    position={Position.Right}
+                    isConnectable={isConnectable}
+                    className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+                />
+                <Handle
+                    type="source"
+                    id="source-left"
+                    position={Position.Left}
+                    isConnectable={isConnectable}
+                    className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+                />
+                <Handle
+                    type="target"
+                    id="target-top"
+                    position={Position.Top}
+                    isConnectable={isConnectable}
+                    className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
+                />
+                <Handle
+                    type="source"
+                    id="source-top"
+                    position={Position.Top}
+                    isConnectable={isConnectable}
+                    style={{ marginTop: -8 }}
+                    className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
+                />
+                <Handle
+                    type="target"
+                    id="target-bottom"
+                    position={Position.Bottom}
+                    isConnectable={isConnectable}
+                    className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
+                />
+                <Handle
+                    type="source"
+                    id="source-bottom"
+                    position={Position.Bottom}
+                    isConnectable={isConnectable}
+                    style={{ marginTop: 8 }}
+                    className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
                 />
             </div>
         );
@@ -550,15 +596,61 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
             {/* Custom Handles */}
             <Handle
                 type="target"
+                id="target-left"
                 position={targetPosition ?? Position.Left}
                 isConnectable={isConnectable}
                 className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
             />
             <Handle
                 type="source"
+                id="source-right"
                 position={sourcePosition ?? Position.Right}
                 isConnectable={isConnectable}
                 className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+            />
+            <Handle
+                type="target"
+                id="target-right"
+                position={Position.Right}
+                isConnectable={isConnectable}
+                className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+            />
+            <Handle
+                type="source"
+                id="source-left"
+                position={Position.Left}
+                isConnectable={isConnectable}
+                className="!w-2.5 !h-2.5 !bg-slate-800 !border-2 !border-white !shadow-sm"
+            />
+            <Handle
+                type="target"
+                id="target-top"
+                position={Position.Top}
+                isConnectable={isConnectable}
+                className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
+            />
+            <Handle
+                type="source"
+                id="source-top"
+                position={Position.Top}
+                isConnectable={isConnectable}
+                style={{ marginTop: -8 }}
+                className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
+            />
+            <Handle
+                type="target"
+                id="target-bottom"
+                position={Position.Bottom}
+                isConnectable={isConnectable}
+                className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
+            />
+            <Handle
+                type="source"
+                id="source-bottom"
+                position={Position.Bottom}
+                isConnectable={isConnectable}
+                style={{ marginTop: 8 }}
+                className="!w-2 !h-2 !bg-slate-700 !border-2 !border-white/90 !shadow-sm opacity-70 group-hover:opacity-100"
             />
         </div>
     );
