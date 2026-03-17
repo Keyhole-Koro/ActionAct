@@ -23,11 +23,14 @@ import {
     subscribeResponseLanguagePreference,
     type ResponseLanguage,
 } from '@/lib/response-language-preference';
+import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 
 export function UserAvatar({ className }: { className?: string }) {
     const { user } = useAuthState();
     const [language, setLanguage] = React.useState<ResponseLanguage>("ja");
     const [menuOpen, setMenuOpen] = React.useState(false);
+    const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
+    const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
     const closeTimerRef = React.useRef<number | null>(null);
     const userInitial = user?.displayName?.trim().charAt(0) || user?.email?.trim().charAt(0) || 'U';
 
@@ -144,6 +147,25 @@ export function UserAvatar({ className }: { className?: string }) {
                         <DropdownMenuRadioItem value="en" className="cursor-pointer py-2 rounded-md hover:bg-muted transition-colors">
                             English
                         </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs uppercase tracking-wide">
+                        Graph
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                        value={String(collapseThresholdMinutes)}
+                        onValueChange={(v) => setStreamPreferences({ collapseThresholdMinutes: Number(v) })}
+                    >
+                        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal py-1 px-2">
+                            Auto-close unused nodes
+                        </DropdownMenuLabel>
+                        {([1, 3, 5, 15, 60, 9999] as const).map((min) => (
+                            <DropdownMenuRadioItem key={min} value={String(min)} className="cursor-pointer py-1.5 rounded-md hover:bg-muted transition-colors">
+                                {min === 9999 ? 'なし' : min < 60 ? `${min}分` : '1時間'}
+                            </DropdownMenuRadioItem>
+                        ))}
                     </DropdownMenuRadioGroup>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

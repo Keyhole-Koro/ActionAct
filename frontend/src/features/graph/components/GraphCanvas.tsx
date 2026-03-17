@@ -405,6 +405,7 @@ export function GraphCanvas() {
     } = useGraphStore();
     const { workspaceId, topicId } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
+    const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
     const selectionGroups = useAgentInteractionStore((state) => state.groups);
     const toggleSelectionOption = useAgentInteractionStore((state) => state.toggleOptionSelection);
@@ -1287,16 +1288,16 @@ export function GraphCanvas() {
     }, [handleKeyNavigation]);
 
     useEffect(() => {
-        const COLLAPSE_THRESHOLD_MS = 300_000; // 5分
+        const collapseThresholdMs = collapseThresholdMinutes * 60_000;
         const id = window.setInterval(() => {
             const currentActiveNodeId = activeNodeIdRef.current;
             if (currentActiveNodeId) {
                 recordNodeUsed(currentActiveNodeId);
             }
-            collapseUnusedNodes(Date.now(), COLLAPSE_THRESHOLD_MS);
+            collapseUnusedNodes(Date.now(), collapseThresholdMs);
         }, 5_000);
         return () => window.clearInterval(id);
-    }, [collapseUnusedNodes, recordNodeUsed]);
+    }, [collapseUnusedNodes, recordNodeUsed, collapseThresholdMinutes]);
 
     const activateRadialNode = useCallback((nodeId: string) => {
         recordRecentClickedNode(nodeId);
