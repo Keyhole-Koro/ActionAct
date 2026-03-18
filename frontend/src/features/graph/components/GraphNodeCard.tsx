@@ -43,6 +43,9 @@ const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; 
     act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  ringActive: 'ring-violet-500/80',  ringDescendant: 'ring-violet-400/50',  bgTint: 'bg-violet-50/50',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
 };
 
+// User-created act nodes use a neutral palette regardless of act type
+const actUserConfig = { bar: 'bg-slate-400', dot: 'bg-slate-400', accent: 'text-slate-500', ring: 'ring-slate-400/35', ringActive: 'ring-slate-400/70', ringDescendant: 'ring-slate-300/50', bgTint: 'bg-slate-50/50', topGrad: 'from-slate-300 via-slate-200 to-slate-300' };
+
 const typeConfig: Record<string, { gradient: string; accent: string; glow: string }> = {
     explore: { gradient: 'from-violet-500/10 via-indigo-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     consult: { gradient: 'from-sky-500/10 via-cyan-500/5 to-transparent', accent: 'text-sky-500', glow: 'shadow-sky-500/20' },
@@ -101,6 +104,8 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const hasBodyText = Boolean(data.contextSummary || data.contentMd || hasThoughtText);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
     const hasReferences = referencedNodes.length > 0;
+    const childActNodes = Array.isArray(data.childActNodes) ? data.childActNodes : [];
+    const parentActNode = data.parentActNode ?? null;
     const usedContextNodeIds = Array.isArray(data.usedContextNodeIds) ? data.usedContextNodeIds : [];
     const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
     const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
@@ -219,7 +224,9 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     }
 
     if (isActNode) {
-        const atc = actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act;
+        const atc = createdBy === 'user'
+            ? actUserConfig
+            : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
         const statusDot = isDraftAct
             ? 'bg-slate-300'
             : isNodeStreaming
@@ -323,6 +330,14 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                     {data.contentMd.slice(0, 120)}
                                 </p>
                             )}
+                            {childActNodes.length > 0 && (
+                                <div className="ml-4 flex items-center gap-1">
+                                    <ChevronRight className="h-2.5 w-2.5 text-slate-400" />
+                                    <span className="text-[10px] font-medium text-slate-400">
+                                        {childActNodes.length}件の派生
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -359,6 +374,17 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                     )}
                                 </div>
                             </div>
+                            {/* Parent breadcrumb */}
+                            {parentActNode && (
+                                <button
+                                    type="button"
+                                    className="nodrag mb-1.5 flex items-center gap-1 self-start rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                    onClick={(e) => { e.stopPropagation(); data.onNavigateToNode?.(parentActNode.id); }}
+                                >
+                                    <ChevronRight className="h-2.5 w-2.5 rotate-180 opacity-60" />
+                                    <span className="max-w-[180px] truncate">{parentActNode.label}</span>
+                                </button>
+                            )}
                             {/* Title */}
                             {isEditing ? (
                                 <input
@@ -397,6 +423,30 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                             +{referencedNodes.length - 3}
                                         </span>
                                     )}
+                                </div>
+                            )}
+                            {/* Child act nodes */}
+                            {childActNodes.length > 0 && (
+                                <div className="mt-2 flex flex-col gap-1">
+                                    <span className="text-[10px] font-medium text-slate-400">派生した問い</span>
+                                    <div className="flex flex-wrap gap-1">
+                                        {childActNodes.slice(0, 4).map((child) => (
+                                            <button
+                                                key={child.id}
+                                                type="button"
+                                                className="nodrag flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                                                onClick={(e) => { e.stopPropagation(); data.onNavigateToNode?.(child.id); }}
+                                            >
+                                                <span className="max-w-[140px] truncate">{child.label}</span>
+                                                <ChevronRight className="h-2.5 w-2.5 shrink-0 opacity-50" />
+                                            </button>
+                                        ))}
+                                        {childActNodes.length > 4 && (
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                                +{childActNodes.length - 4}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>

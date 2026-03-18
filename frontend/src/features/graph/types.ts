@@ -59,9 +59,12 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     isExpanded?: boolean;
     isEditing?: boolean;
     isStreaming?: boolean;
+    childActNodes?: ReferencedNodeView[];
+    parentActNode?: ReferencedNodeView;
     onToggleBranch?: () => void;
     onOpenDetails?: () => void;
     onOpenReferencedNode?: (nodeId: string) => void;
+    onNavigateToNode?: (nodeId: string) => void;
     onCommitLabel?: (label: string) => void;
     onRunAction?: (label: string) => void;
     onAddMedia?: (file: File) => Promise<void> | void;

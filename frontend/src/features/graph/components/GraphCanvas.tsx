@@ -797,6 +797,35 @@ export function GraphCanvas() {
         [actNodes],
     );
 
+    // Children of each act node (act-to-act parent/child hierarchy via parentId).
+    const actChildrenByParent = useMemo(() => {
+        const map = new Map<string, string[]>();
+        for (const [id, data] of fullActNodeDataById) {
+            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
+            if (parentId) {
+                const arr = map.get(parentId) ?? [];
+                arr.push(id);
+                map.set(parentId, arr);
+            }
+        }
+        return map;
+    }, [fullActNodeDataById]);
+
+    // Navigate to an act node: expand it and pan the canvas to it.
+    const handleNavigateToActNode = useCallback((nodeId: string) => {
+        if (!expandedNodeIds.includes(nodeId)) {
+            toggleExpandedNode(nodeId);
+        }
+        const target = reactFlowInstance.getNode(nodeId);
+        if (target) {
+            reactFlowInstance.setCenter(
+                target.position.x + 130,
+                target.position.y + 80,
+                { zoom: Math.max(reactFlowInstance.getZoom(), 1.0), duration: 450 },
+            );
+        }
+    }, [expandedNodeIds, reactFlowInstance, toggleExpandedNode]);
+
     // Descendants of activeNodeId (via parentId chain) for relation highlighting.
     const activeDescendantIds = useMemo(() => {
         if (!activeNodeId) return new Set<string>();
@@ -870,6 +899,24 @@ export function GraphCanvas() {
                         : null
                 : null;
 
+            // Act node parent/child navigation data
+            let childActNodes: { id: string; label: string }[] | undefined;
+            let parentActNode: { id: string; label: string } | undefined;
+            if (node.data?.nodeSource === 'act') {
+                const childIds = actChildrenByParent.get(node.id) ?? [];
+                if (childIds.length > 0) {
+                    childActNodes = childIds.map((cid) => {
+                        const cdata = fullActNodeDataById.get(cid);
+                        return { id: cid, label: typeof cdata?.label === 'string' && cdata.label.trim() ? cdata.label : '…' };
+                    });
+                }
+                const parentId = typeof fullActData?.parentId === 'string' ? fullActData.parentId : undefined;
+                if (parentId) {
+                    const pdata = fullActNodeDataById.get(parentId);
+                    parentActNode = { id: parentId, label: typeof pdata?.label === 'string' && pdata.label.trim() ? pdata.label : '…' };
+                }
+            }
+
             return {
                 ...node,
                 data: {
@@ -880,10 +927,13 @@ export function GraphCanvas() {
                     rootHue,
                     ...(activityOpacity !== undefined ? { activityOpacity } : {}),
                     ...(activeRelation !== null ? { activeRelation } : {}),
+                    ...(childActNodes !== undefined ? { childActNodes } : {}),
+                    ...(parentActNode !== undefined ? { parentActNode } : {}),
+                    ...(node.data?.nodeSource === 'act' ? { onNavigateToNode: handleNavigateToActNode } : {}),
                 },
             };
         });
-    }, [activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -1176,7 +1226,7 @@ export function GraphCanvas() {
                 ...edge,
                 sourceHandle: nearestSides ? `source-${nearestSides.sourceSide}` : (edge as Edge).sourceHandle,
                 targetHandle: nearestSides ? `target-${nearestSides.targetSide}` : (edge as Edge).targetHandle,
-                type: isActContext ? 'simplebezier' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
+                type: isActContext ? 'straight' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
                 zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
                 interactionWidth: isActContext ? 32 : 24,
                 markerEnd: isActContext
