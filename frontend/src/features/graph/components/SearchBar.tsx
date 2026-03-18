@@ -33,19 +33,22 @@ export function SearchBar() {
             .slice(0, 8); // Limit results for UI clarity
     }, [allNodes, query]);
 
-    // ── Keyboard Shortcuts ───────────────────────────────────────────────────
+    // ── Keyboard Shortcuts & Events ──────────────────────────────────────────
     useEffect(() => {
+        const handleOpenSearch = () => {
+            setIsOpen(true);
+            setTimeout(() => inputRef.current?.focus(), 10);
+        };
+
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
                 e.preventDefault();
-                setIsOpen(true);
-                setTimeout(() => inputRef.current?.focus(), 10);
+                handleOpenSearch();
             } else if (e.key === '/') {
                 const target = e.target as HTMLElement;
                 if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
                     e.preventDefault();
-                    setIsOpen(true);
-                    setTimeout(() => inputRef.current?.focus(), 10);
+                    handleOpenSearch();
                 }
             } else if (e.key === 'Escape') {
                 setIsOpen(false);
@@ -54,7 +57,11 @@ export function SearchBar() {
         };
 
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('action:open-search', handleOpenSearch);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('action:open-search', handleOpenSearch);
+        };
     }, []);
 
     const handleJumpToNode = (nodeId: string) => {

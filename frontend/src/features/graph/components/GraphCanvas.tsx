@@ -2,6 +2,7 @@
 
 import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Search, Trash2, Keyboard, HelpCircle } from 'lucide-react';
 import {
     Background,
     Edge,
@@ -204,65 +205,66 @@ function NavControl({ actNodeIds, activeNodeId, onFocusActNode }: NavControlProp
 const SHORTCUTS = [
     { keys: ['↑', '↓'],           desc: 'ズームイン / アウト' },
     { keys: ['←', '→'],           desc: 'Act ノード切り替え' },
+    { keys: ['⌘', 'F'],           desc: 'ノード検索 (部分一致)' },
     { keys: ['文字入力'],          desc: 'ノード選択中 → Act 作成' },
     { keys: ['クリック'],          desc: 'ノード展開 / フォーカス' },
     { keys: ['⌘', 'クリック'],    desc: '複数選択' },
     { keys: ['ダブルクリック'],    desc: 'ズームイン' },
-    { keys: ['スクロール'],        desc: 'ズーム' },
     { keys: ['Space', 'ドラッグ'], desc: 'パン' },
 ] as const;
 
 function KeyboardShortcutsHint() {
     return (
-        <Panel position="bottom-right" className="!m-3">
-            <div className="group relative flex flex-col items-end">
-                {/* Expanded panel — visible on hover */}
-                <div className="
-                    mb-2 w-56 origin-bottom-right scale-95 rounded-xl border border-border/40
-                    bg-white/95 backdrop-blur-sm shadow-lg
-                    opacity-0 pointer-events-none
-                    transition-all duration-200
-                    group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto
-                ">
-                    <div className="px-3 pt-2.5 pb-1 border-b border-border/30">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                            Keyboard shortcuts
+        <div className="fixed right-0 top-1/3 z-[100] group flex items-start justify-end">
+            {/* Expanded panel — visible on hover */}
+            <div className="
+                mr-2 w-64 origin-right scale-95 rounded-2xl border border-slate-200
+                bg-white/98 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)]
+                opacity-0 pointer-events-none
+                transition-all duration-300 ease-out
+                group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto
+                group-hover:-translate-x-2
+            ">
+                <div className="px-4 pt-4 pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <Keyboard className="h-4 w-4 text-primary" />
+                        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+                            Shortcuts & Help
                         </p>
                     </div>
-                    <ul className="px-3 py-2 flex flex-col gap-1.5">
-                        {SHORTCUTS.map(({ keys, desc }, i) => (
-                            <li key={i} className="flex items-center justify-between gap-3">
-                                <span className="text-[11px] text-slate-500">{desc}</span>
-                                <span className="flex items-center gap-0.5 shrink-0">
-                                    {keys.map((k) => (
-                                        <kbd key={k} className="
-                                            inline-flex items-center justify-center rounded
-                                            border border-slate-200 bg-slate-50
-                                            px-1.5 py-0.5 text-[10px] font-medium
-                                            text-slate-600 shadow-[0_1px_0_rgba(0,0,0,0.12)]
-                                            leading-none whitespace-nowrap
-                                        ">{k}</kbd>
-                                    ))}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
                 </div>
-
-                {/* Trigger button */}
-                <button
-                    type="button"
-                    className="
-                        flex h-7 w-7 items-center justify-center rounded-full
-                        border border-border/40 bg-white shadow-sm
-                        text-[12px] font-semibold text-slate-400
-                        hover:border-primary/30 hover:text-primary
-                        transition-colors select-none
-                    "
-                    title="Keyboard shortcuts"
-                >?</button>
+                <ul className="px-4 py-3 flex flex-col gap-2.5">
+                    {SHORTCUTS.map(({ keys, desc }, i) => (
+                        <li key={i} className="flex items-center justify-between gap-4">
+                            <span className="text-[11px] font-semibold text-slate-500">{desc}</span>
+                            <span className="flex items-center gap-1 shrink-0">
+                                {keys.map((k) => (
+                                    <kbd key={k} className="
+                                        inline-flex items-center justify-center rounded-md
+                                        border border-slate-200 bg-slate-50
+                                        px-1.5 py-0.5 text-[10px] font-bold
+                                        text-slate-700 shadow-sm
+                                        leading-none whitespace-nowrap
+                                    ">{k}</kbd>
+                                ))}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+                <div className="px-4 py-2 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+                    <p className="text-[10px] text-slate-400 font-medium">Tip: Press <span className="font-bold text-slate-600">/</span> to search anywhere</p>
+                </div>
             </div>
-        </Panel>
+
+            {/* Trigger handle — Sticks out from the edge */}
+            <div className="
+                flex flex-col items-center gap-2 rounded-l-2xl border border-r-0 border-slate-200 bg-white py-4 px-2 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]
+                text-slate-400 hover:text-primary transition-all cursor-help select-none group-hover:bg-slate-50/80
+            ">
+                <HelpCircle className="h-5 w-5" />
+                <span className="[writing-mode:vertical-lr] text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-primary">Shortcuts</span>
+            </div>
+        </div>
     );
 }
 
@@ -797,35 +799,6 @@ export function GraphCanvas() {
         [actNodes],
     );
 
-    // Children of each act node (act-to-act parent/child hierarchy via parentId).
-    const actChildrenByParent = useMemo(() => {
-        const map = new Map<string, string[]>();
-        for (const [id, data] of fullActNodeDataById) {
-            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
-            if (parentId) {
-                const arr = map.get(parentId) ?? [];
-                arr.push(id);
-                map.set(parentId, arr);
-            }
-        }
-        return map;
-    }, [fullActNodeDataById]);
-
-    // Navigate to an act node: expand it and pan the canvas to it.
-    const handleNavigateToActNode = useCallback((nodeId: string) => {
-        if (!expandedNodeIds.includes(nodeId)) {
-            toggleExpandedNode(nodeId);
-        }
-        const target = reactFlowInstance.getNode(nodeId);
-        if (target) {
-            reactFlowInstance.setCenter(
-                target.position.x + 130,
-                target.position.y + 80,
-                { zoom: Math.max(reactFlowInstance.getZoom(), 1.0), duration: 450 },
-            );
-        }
-    }, [expandedNodeIds, reactFlowInstance, toggleExpandedNode]);
-
     // Descendants of activeNodeId (via parentId chain) for relation highlighting.
     const activeDescendantIds = useMemo(() => {
         if (!activeNodeId) return new Set<string>();
@@ -899,24 +872,6 @@ export function GraphCanvas() {
                         : null
                 : null;
 
-            // Act node parent/child navigation data
-            let childActNodes: { id: string; label: string }[] | undefined;
-            let parentActNode: { id: string; label: string } | undefined;
-            if (node.data?.nodeSource === 'act') {
-                const childIds = actChildrenByParent.get(node.id) ?? [];
-                if (childIds.length > 0) {
-                    childActNodes = childIds.map((cid) => {
-                        const cdata = fullActNodeDataById.get(cid);
-                        return { id: cid, label: typeof cdata?.label === 'string' && cdata.label.trim() ? cdata.label : '…' };
-                    });
-                }
-                const parentId = typeof fullActData?.parentId === 'string' ? fullActData.parentId : undefined;
-                if (parentId) {
-                    const pdata = fullActNodeDataById.get(parentId);
-                    parentActNode = { id: parentId, label: typeof pdata?.label === 'string' && pdata.label.trim() ? pdata.label : '…' };
-                }
-            }
-
             return {
                 ...node,
                 data: {
@@ -927,13 +882,10 @@ export function GraphCanvas() {
                     rootHue,
                     ...(activityOpacity !== undefined ? { activityOpacity } : {}),
                     ...(activeRelation !== null ? { activeRelation } : {}),
-                    ...(childActNodes !== undefined ? { childActNodes } : {}),
-                    ...(parentActNode !== undefined ? { parentActNode } : {}),
-                    ...(node.data?.nodeSource === 'act' ? { onNavigateToNode: handleNavigateToActNode } : {}),
                 },
             };
         });
-    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -1226,7 +1178,7 @@ export function GraphCanvas() {
                 ...edge,
                 sourceHandle: nearestSides ? `source-${nearestSides.sourceSide}` : (edge as Edge).sourceHandle,
                 targetHandle: nearestSides ? `target-${nearestSides.targetSide}` : (edge as Edge).targetHandle,
-                type: isActContext ? 'straight' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
+                type: isActContext ? 'simplebezier' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
                 zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
                 interactionWidth: isActContext ? 32 : 24,
                 markerEnd: isActContext
@@ -1632,6 +1584,16 @@ export function GraphCanvas() {
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
+            <button
+                type="button"
+                className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                onClick={() => window.dispatchEvent(new CustomEvent('action:open-search'))}
+            >
+                <Search className="h-3.5 w-3.5" />
+                <span>Search</span>
+                <kbd className="ml-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">⌘F</kbd>
+            </button>
+            <div className="mx-1 h-4 w-px bg-slate-200" />
             {(['orbit'] as const).map((mode) => {
                 const active = persistedLayoutMode === mode;
                 return (
@@ -1691,6 +1653,7 @@ export function GraphCanvas() {
             <GraphToolbar />
             <SelectedNodePanel />
             <FilePreviewPanel />
+            <KeyboardShortcutsHint />
             <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
                 <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">
                     <div>
@@ -1839,7 +1802,6 @@ export function GraphCanvas() {
                 fitView
             >
                 <Background color="var(--border)" gap={24} size={1} />
-                <KeyboardShortcutsHint />
                 <NavControl
                     actNodeIds={(actNodes as GraphNodeBase[]).map((n) => n.id)}
                     activeNodeId={activeNodeId}
