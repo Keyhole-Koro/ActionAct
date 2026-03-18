@@ -32,9 +32,9 @@ class _FakeModels:
     async def generate_content_stream(self, **kwargs):
         self.calls.append(kwargs)
         return _FakeAsyncStream([
-            SimpleNamespace(text="hello "),
-            SimpleNamespace(text="world"),
-            SimpleNamespace(text=""),
+            SimpleNamespace(text="hello ", candidates=[]),
+            SimpleNamespace(text="world", candidates=[]),
+            SimpleNamespace(text="", candidates=[]),
         ])
 
 
@@ -58,7 +58,7 @@ async def test_gemini_llm_awaits_async_stream_before_iteration():
 
     assert [chunk.text for chunk in chunks[:-1]] == ["hello ", "world"]
     assert chunks[-1].is_done is True
-    assert fake_aio.models.calls[0]["config"].tools is None
+    assert not fake_aio.models.calls[0]["config"].tools
 
 
 @pytest.mark.asyncio

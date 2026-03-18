@@ -1,3 +1,5 @@
+import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force';
+
 import type { GraphNodeBase } from '@/features/graph/types';
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -56,7 +58,7 @@ export function layoutOrbit({
     actNodes = [],
 }: OrbitLayoutParams): GraphNodeBase[] {
     const { positions: persistedPositions, sectorByRootId } = placePersistedNodes({ rootIds, childrenByParent });
-    const actPositions = placeActNodes(actNodes, sectorByRootId);
+    const actPositions = placeActNodes(actNodes, sectorByRootId, persistedPositions);
 
     const allNodes = [...nodes, ...actNodes];
     return allNodes.map((node) => {
@@ -161,60 +163,134 @@ function placeChildren({
 
 // ── Act node placement ────────────────────────────────────────────────────────
 
+interface ActSimNode extends SimulationNodeDatum {
+    id: string;
+    fx?: number | null;
+    fy?: number | null;
+}
+interface ActSimLink extends SimulationLinkDatum<ActSimNode> {
+    distance: number;
+    strength: number;
+}
+
 /**
- * Route act nodes to their associated topic sector (inner ring, r=290), or to
- * the center grid if no matching topic is found.
+ * Place act nodes using a force simulation.
+ * - Persisted nodes are fixed anchors; act nodes spring toward their referenced ones.
+ * - Suggestion nodes spring toward their parent act node.
+ * - Act nodes repel each other and resolve collisions.
+ * - Seed positions come from the polar inner-ring so the result is near-deterministic.
  */
 function placeActNodes(
     actNodes: GraphNodeBase[],
     sectorByRootId: Map<string, SectorInfo>,
+    persistedPositions: Map<string, { x: number; y: number }>,
 ): Map<string, { x: number; y: number }> {
     const result = new Map<string, { x: number; y: number }>();
+    if (actNodes.length === 0) return result;
 
-    // Group act nodes by topicId
+    // ── Seed positions ───────────────────────────────────────────────────────
+    // Primary rule: seed each act node at the average position of its referenced
+    // persisted nodes. This naturally places act nodes near what they reference —
+    // outer nodes (depth ≥ 1) pull the act outward; root/topic nodes keep it inner.
+    // Fallback: topicId sector inner-ring, or center if neither is available.
+    const seedPositions = new Map<string, { x: number; y: number }>();
+
+    // Precompute sector angles for topicId fallback
     const byTopic = new Map<string, GraphNodeBase[]>();
-    const unmatched: GraphNodeBase[] = [];
-
     for (const node of actNodes) {
         const topicId = node.data.topicId;
         if (topicId && sectorByRootId.has(topicId)) {
             const group = byTopic.get(topicId) ?? [];
             group.push(node);
             byTopic.set(topicId, group);
-        } else {
-            unmatched.push(node);
         }
     }
-
-    // Place matched act nodes on the inner ring within their topic's sector
+    const topicSeedByNodeId = new Map<string, { x: number; y: number }>();
     for (const [topicId, group] of byTopic) {
         const sector = sectorByRootId.get(topicId)!;
         const n = group.length;
-
-        // Spread within a bounded arc centered on the sector midAngle
         const availableArc = Math.min(ACT_SECTOR_MAX_SPREAD, sector.endAngle - sector.startAngle * 0.8);
         const step = n === 1 ? 0 : availableArc / (n - 1);
         const arcStart = sector.midAngle - availableArc / 2;
-
         group.forEach((node, i) => {
             const angle = n === 1 ? sector.midAngle : arcStart + i * step;
-            result.set(node.id, polarToCartesian(ACT_NEAR_TOPIC_RADIUS, angle));
+            topicSeedByNodeId.set(node.id, polarToCartesian(ACT_NEAR_TOPIC_RADIUS, angle));
         });
     }
 
-    // Place unmatched act nodes in a compact grid at the canvas center
-    const cols = Math.min(unmatched.length, 3);
-    unmatched.forEach((node, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const rowCount = Math.min(cols, unmatched.length - row * cols);
-        const offsetX = (col - (rowCount - 1) / 2) * ACT_SPACING_X;
-        const offsetY = row * ACT_SPACING_Y;
-        result.set(node.id, {
-            x: ORBIT_CENTER_X + offsetX,
-            y: ORBIT_CENTER_Y + offsetY,
-        });
+    for (const node of actNodes) {
+        // Average position of referenced persisted nodes
+        const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
+        const refPositions = refs.map((id) => persistedPositions.get(id)).filter(Boolean) as { x: number; y: number }[];
+        if (refPositions.length > 0) {
+            const avgX = refPositions.reduce((s, p) => s + p.x, 0) / refPositions.length;
+            const avgY = refPositions.reduce((s, p) => s + p.y, 0) / refPositions.length;
+            seedPositions.set(node.id, { x: avgX, y: avgY });
+        } else {
+            // Fallback: topicId sector → inner ring, else center
+            seedPositions.set(node.id, topicSeedByNodeId.get(node.id) ?? { x: ORBIT_CENTER_X, y: ORBIT_CENTER_Y });
+        }
+    }
+
+    // ── Build simulation nodes ───────────────────────────────────────────────
+    const actNodeIds = new Set(actNodes.map((n) => n.id));
+
+    // Persisted anchor nodes (fixed)
+    const anchorSimNodes: ActSimNode[] = [];
+    for (const [id, pos] of persistedPositions) {
+        anchorSimNodes.push({ id, x: pos.x, y: pos.y, fx: pos.x, fy: pos.y });
+    }
+
+    // Act sim nodes (free to move)
+    const actSimNodes: ActSimNode[] = actNodes.map((node) => {
+        const seed = seedPositions.get(node.id) ?? { x: ORBIT_CENTER_X, y: ORBIT_CENTER_Y };
+        return { id: node.id, x: seed.x, y: seed.y };
     });
+
+    const allSimNodes = [...anchorSimNodes, ...actSimNodes];
+    const simNodeById = new Map(allSimNodes.map((n) => [n.id, n]));
+
+    // ── Build links ──────────────────────────────────────────────────────────
+    const links: ActSimLink[] = [];
+
+    for (const node of actNodes) {
+        // Spring to referenced persisted nodes
+        const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
+        for (const refId of refs) {
+            if (simNodeById.has(refId) && !actNodeIds.has(refId)) {
+                links.push({ source: node.id, target: refId, distance: 200, strength: 0.3 });
+            }
+        }
+
+        // Spring suggestion nodes to their parent act node
+        const parentId = typeof node.data.parentId === 'string' ? node.data.parentId : undefined;
+        if (parentId && simNodeById.has(parentId)) {
+            links.push({ source: node.id, target: parentId, distance: 140, strength: 0.5 });
+        }
+    }
+
+    // ── Run simulation ───────────────────────────────────────────────────────
+    const actIdSet = new Set(actNodes.map((n) => n.id));
+    const simulation = forceSimulation<ActSimNode>(allSimNodes)
+        // Repulsion only between act nodes — anchors must not repel act nodes outward
+        .force('charge', forceManyBody<ActSimNode>().strength((d) => actIdSet.has(d.id) ? -220 : 0).distanceMax(350))
+        .force(
+            'link',
+            forceLink<ActSimNode, ActSimLink>(links)
+                .id((d) => d.id)
+                .distance((l) => l.distance)
+                .strength((l) => l.strength),
+        )
+        .force('collide', forceCollide<ActSimNode>(60).iterations(3))
+        .force('x', forceX<ActSimNode>(ORBIT_CENTER_X).strength(0.02))
+        .force('y', forceY<ActSimNode>(ORBIT_CENTER_Y).strength(0.02))
+        .stop();
+
+    simulation.tick(60);
+
+    for (const simNode of actSimNodes) {
+        result.set(simNode.id, { x: simNode.x ?? ORBIT_CENTER_X, y: simNode.y ?? ORBIT_CENTER_Y });
+    }
 
     return result;
 }

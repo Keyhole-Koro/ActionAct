@@ -572,13 +572,44 @@ export function GraphCanvas() {
         [deferredActNodes, deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
+
+    // Act nodes adapted for the radial overview: parentId = primary anchor (referencedNodeIds[0])
+    const actNodesForRadial = useMemo(() => {
+        const persistedIdSet = new Set(persistedNodes.map((n) => n.id));
+        return (actNodes as GraphNodeBase[]).map((node) => {
+            const referencedIds: string[] = Array.isArray(node.data?.referencedNodeIds)
+                ? (node.data.referencedNodeIds as unknown[]).filter((v): v is string => typeof v === 'string')
+                : [];
+            const anchor = referencedIds.find((id) => persistedIdSet.has(id));
+            return {
+                ...node,
+                data: {
+                    ...node.data,
+                    parentId: anchor ?? undefined,
+                },
+            };
+        });
+    }, [actNodes, persistedNodes]);
+
+    const actEdgesForRadial = useMemo(() =>
+        actNodesForRadial
+            .filter((node) => typeof node.data?.parentId === 'string')
+            .map((node) => ({
+                id: `radial-act-edge-${node.id}`,
+                source: node.data!.parentId as string,
+                target: node.id,
+                animated: false,
+            })),
+        [actNodesForRadial],
+    );
+
     const radialOverviewGraph = useMemo(
         () => projectPersistedGraph(
-            persistedNodes as GraphNodeBase[],
-            persistedEdges,
+            [...persistedNodes, ...actNodesForRadial] as GraphNodeBase[],
+            [...persistedEdges, ...actEdgesForRadial],
             'radial',
         ),
-        [persistedEdges, persistedNodes],
+        [actEdgesForRadial, actNodesForRadial, persistedEdges, persistedNodes],
     );
 
     const regularGraphNodes = useMemo(
