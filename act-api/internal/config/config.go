@@ -28,7 +28,8 @@ func MustLoad() *Config {
 	if pubsubTopic == "" {
 		pubsubTopic = "mind-events"
 	}
-	return &Config{
+
+	cfg := &Config{
 		Port:              mustEnv("PORT"),
 		RedisAddr:         mustEnv("REDIS_ADDR"),
 		RedisDB:           mustIntEnv("REDIS_DB"),
@@ -44,6 +45,12 @@ func MustLoad() *Config {
 		SIDReqTTLSeconds:  mustIntEnv("SID_REQ_TTL_SECONDS"),
 		SIDLockTTLSeconds: mustIntEnv("SID_LOCK_TTL_SECONDS"),
 	}
+
+	fmt.Printf("[CONFIG DEBUG] STORAGE_EMULATOR_HOST: %q\n", cfg.StorageEmulatorHost)
+	fmt.Printf("[CONFIG DEBUG] PUBSUB_EMULATOR_HOST: %q\n", cfg.PubSubEmulatorHost)
+	fmt.Printf("[CONFIG DEBUG] GCS_BUCKET: %q\n", cfg.GCSBucket)
+
+	return cfg
 }
 
 func mustEnv(key string) string {

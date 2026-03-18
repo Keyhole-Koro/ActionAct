@@ -990,40 +990,35 @@ export function GraphCanvas() {
     }, [actNodes, addOrUpdateActNode, addQueryActNode, regularGraphNodes, removeActNode, selectedNodeIds]);
 
     const normalizedDisplayNodes = useMemo(() => {
+        if (layoutAwareDisplayNodes.length === 0) return layoutAwareDisplayNodes;
+
+        // Single pass: sanitize positions and track min in one loop
+        let minX = Infinity;
+        let minY = Infinity;
         const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
             const x = node.position?.x;
             const y = node.position?.y;
-            if (isRenderableCoordinate(x) && isRenderableCoordinate(y)) {
-                return node;
-            }
-            return {
-                ...node,
-                position: {
-                    x: 120 + ((index % 4) * 360),
-                    y: 100 + (Math.floor(index / 4) * 220),
-                },
-            };
+            const safe = isRenderableCoordinate(x) && isRenderableCoordinate(y)
+                ? node
+                : {
+                    ...node,
+                    position: {
+                        x: 120 + ((index % 4) * 360),
+                        y: 100 + (Math.floor(index / 4) * 220),
+                    },
+                };
+            if (safe.position.x < minX) minX = safe.position.x;
+            if (safe.position.y < minY) minY = safe.position.y;
+            return safe;
         });
 
-        if (safeDisplayNodes.length === 0) {
-            return safeDisplayNodes;
-        }
-
-        const minX = Math.min(...safeDisplayNodes.map((node) => node.position.x));
-        const minY = Math.min(...safeDisplayNodes.map((node) => node.position.y));
         const offsetX = minX < 120 ? 120 - minX : 0;
         const offsetY = minY < 100 ? 100 - minY : 0;
-
-        if (offsetX === 0 && offsetY === 0) {
-            return safeDisplayNodes;
-        }
+        if (offsetX === 0 && offsetY === 0) return safeDisplayNodes;
 
         return safeDisplayNodes.map((node) => ({
             ...node,
-            position: {
-                x: node.position.x + offsetX,
-                y: node.position.y + offsetY,
-            },
+            position: { x: node.position.x + offsetX, y: node.position.y + offsetY },
         }));
     }, [layoutAwareDisplayNodes]);
 
@@ -1041,15 +1036,32 @@ export function GraphCanvas() {
             return normalizedDisplayNodes;
         }
 
+        // Precompute expanded node bboxes once — avoids calling getDisplayNodeDimensions
+        // M×N times (once per pair). Now expanded nodes are O(M), test nodes are O(N).
+        const MARGIN = 28;
+        const expandedBBoxes = expandedNodes.map((n) => {
+            const { width, height } = getDisplayNodeDimensions(n as Node<Record<string, unknown>>);
+            return { id: n.id, x: n.position.x, y: n.position.y, w: width, h: height };
+        });
+
         return normalizedDisplayNodes.map((node) => {
             if (node.type !== 'customTask') {
                 return node;
             }
             const isExpanded = isExpandedNode(node);
             const isSelected = selectedNodeIds.includes(node.id);
-            const overlapsExpanded = !isExpanded && expandedNodes.some((expandedNode) => (
-                expandedNode.id !== node.id && overlapsWithMargin(node, expandedNode)
-            ));
+
+            let overlapsExpanded = false;
+            if (!isExpanded) {
+                const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                overlapsExpanded = expandedBBoxes.some((bbox) => (
+                    bbox.id !== node.id
+                    && node.position.x < bbox.x + bbox.w + MARGIN
+                    && node.position.x + width + MARGIN > bbox.x
+                    && node.position.y < bbox.y + bbox.h + MARGIN
+                    && node.position.y + height + MARGIN > bbox.y
+                ));
+            }
 
             return {
                 ...node,
@@ -1098,6 +1110,9 @@ export function GraphCanvas() {
                 });
             }
 
+            // Precompute rootId → index Map so edge loop is O(1) instead of O(n) per edge
+            const rootIdToIndex = new Map(persistedGraph.rootIds.map((id, i) => [id, i]));
+
             return buildDisplayEdges(
                 [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
                 [...actEdges, ...selectionProjection.edges],
@@ -1113,7 +1128,7 @@ export function GraphCanvas() {
             const sourceRootId = persistedRootIdByNode.get(edge.source);
             const targetRootId = persistedRootIdByNode.get(edge.target);
             const rootId = sourceRootId ?? targetRootId;
-            const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
+            const rootIndex = rootId ? (rootIdToIndex.get(rootId) ?? -1) : -1;
             const rootHue = rootIndex >= 0
                 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length]
                 : 210;

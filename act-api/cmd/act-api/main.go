@@ -76,6 +76,7 @@ func main() {
 	// ── GCS ──
 	var gcsOpts []option.ClientOption
 	if cfg.StorageEmulatorHost != "" {
+		slog.Info("using GCS emulator", "endpoint", cfg.StorageEmulatorHost)
 		gcsOpts = append(gcsOpts, option.WithEndpoint(cfg.StorageEmulatorHost))
 		gcsOpts = append(gcsOpts, option.WithoutAuthentication())
 	}
@@ -90,6 +91,7 @@ func main() {
 	// ── Pub/Sub ──
 	var psOpts []option.ClientOption
 	if cfg.PubSubEmulatorHost != "" {
+		slog.Info("using Pub/Sub emulator", "endpoint", cfg.PubSubEmulatorHost)
 		psOpts = append(psOpts, option.WithEndpoint(cfg.PubSubEmulatorHost))
 		psOpts = append(psOpts, option.WithoutAuthentication())
 	}

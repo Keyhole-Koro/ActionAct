@@ -181,6 +181,23 @@ interface SimLink extends SimulationLinkDatum<SimNode> {
     strength: number;
 }
 
+// Module-level cache: skip full re-simulation when node topology is unchanged.
+// Key encodes act node IDs + their references + persisted node IDs.
+let _simCache: { key: string; positions: Map<string, { x: number; y: number }> } | null = null;
+
+function buildSimCacheKey(
+    actNodes: GraphNodeBase[],
+    homePositions: Map<string, { x: number; y: number }>,
+): string {
+    const actParts = actNodes.map((n) => {
+        const refs = Array.isArray(n.data.referencedNodeIds) ? (n.data.referencedNodeIds as string[]).join('+') : '';
+        const parentId = typeof n.data.parentId === 'string' ? n.data.parentId : '';
+        return `${n.id}:${refs}:${parentId}`;
+    });
+    const persistedIds = [...homePositions.keys()].sort().join(',');
+    return `${actParts.join('|')}||${persistedIds}`;
+}
+
 /**
  * Run a unified force simulation over both persisted and act nodes.
  *
@@ -197,6 +214,10 @@ function runCombinedSimulation(
     homePositions: Map<string, { x: number; y: number }>,
     sectorByRootId: Map<string, SectorInfo>,
 ): Map<string, { x: number; y: number }> {
+    // Return cached result if node topology (IDs + references) is unchanged
+    const cacheKey = buildSimCacheKey(actNodes, homePositions);
+    if (_simCache?.key === cacheKey) return _simCache.positions;
+
     const actIds = new Set(actNodes.map((n) => n.id));
     const persistedIds = new Set(homePositions.keys());
 
@@ -275,6 +296,8 @@ function runCombinedSimulation(
     for (const simNode of allSimNodes) {
         result.set(simNode.id, { x: simNode.x ?? ORBIT_CENTER_X, y: simNode.y ?? ORBIT_CENTER_Y });
     }
+
+    _simCache = { key: cacheKey, positions: result };
     return result;
 }
 
