@@ -1,28 +1,28 @@
 import type { GraphNodeBase } from '@/features/graph/types';
-import { layoutPersistedForce } from '@/features/graph/layout/layoutForce';
 import { layoutPersistedRadial } from '@/features/graph/layout/layoutRadial';
 import { layoutOrbit } from '@/features/graph/layout/layoutOrbit';
 import { buildVisibleHierarchy, type GraphEdgeLike } from '@/features/graph/model/hierarchy';
 import { partitionVisibleEdges } from '@/features/graph/model/relations';
 
 export type PersistedGraphProjection = ReturnType<typeof projectPersistedGraph>;
-export type PersistedGraphLayoutMode = 'force' | 'radial' | 'orbit';
+export type PersistedGraphLayoutMode = 'radial' | 'orbit';
 
 export function projectPersistedGraph(
     persistedNodes: GraphNodeBase[],
     persistedEdges: GraphEdgeLike[],
-    expandedBranchNodeIds: string[],
-    expandedNodeIds: string[],
-    layoutMode: PersistedGraphLayoutMode = 'force',
+    layoutMode: PersistedGraphLayoutMode = 'radial',
+    expandedBranchNodeIds?: string[],
     actNodes?: GraphNodeBase[],
-    actEdges?: GraphEdgeLike[],
 ) {
+    // radial overview always shows all nodes; orbit respects user expansion state
+    const expandedIds = layoutMode === 'radial' || expandedBranchNodeIds === undefined
+        ? persistedNodes.map((node) => node.id)
+        : expandedBranchNodeIds;
+
     const hierarchy = buildVisibleHierarchy(
         persistedNodes,
         persistedEdges,
-        (layoutMode === 'radial' || layoutMode === 'orbit')
-            ? persistedNodes.map((node) => node.id)
-            : expandedBranchNodeIds,
+        expandedIds,
     );
     const relations = partitionVisibleEdges(hierarchy.visibleNodes, hierarchy.visibleEdges);
 
@@ -34,29 +34,12 @@ export function projectPersistedGraph(
             rootIds: hierarchy.rootIds,
             childrenByParent: hierarchy.childrenByParent,
         });
-    } else if (layoutMode === 'orbit') {
+    } else {
         positionedNodes = layoutOrbit({
             nodes: hierarchy.visibleNodes,
             rootIds: hierarchy.rootIds,
             childrenByParent: hierarchy.childrenByParent,
             actNodes: actNodes ?? [],
-        });
-    } else {
-        positionedNodes = layoutPersistedForce({
-            nodes: hierarchy.visibleNodes,
-            edges: [...relations.hierarchyEdges, ...relations.relationEdges],
-            depthById: hierarchy.depthById,
-            rootIds: hierarchy.rootIds,
-            expandedNodeIds: new Set(expandedNodeIds),
-            previousPositions: new Map(
-                [...hierarchy.visibleNodes, ...(actNodes ?? [])].map((node) => [
-                    node.id,
-                    { x: node.position.x, y: node.position.y },
-                ]),
-            ),
-            childrenByParent: hierarchy.childrenByParent,
-            actNodes: actNodes ?? [],
-            actEdges: actEdges ?? [],
         });
     }
 

@@ -46,7 +46,7 @@ export type ActNodeData = BaseNodeData & {
 export type GraphNodeBaseData = PersistedNodeData | ActNodeData;
 
 export type GraphNodeRenderData = GraphNodeBaseData & {
-    layoutMode?: 'force' | 'radial';
+    layoutMode?: 'radial';
     radialDepth?: number;
     rootHue?: number;
     activityOpacity?: number;

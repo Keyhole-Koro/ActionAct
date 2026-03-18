@@ -17,6 +17,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
+import { GraphToolbar } from './GraphToolbar';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
@@ -385,6 +386,7 @@ export function GraphCanvas() {
         toggleExpandedNode,
         expandNode,
         expandBranchNode,
+        clearAllFocus,
         addOrUpdateActNode,
         addQueryActNode,
         addEmptyActNode,
@@ -435,9 +437,8 @@ export function GraphCanvas() {
     }, [searchParams]);
     const persistedLayoutMode = useMemo(() => {
         const layout = searchParams.get('layout');
-        if (layout === 'radial') return 'radial' as const;
         if (layout === 'orbit') return 'orbit' as const;
-        return 'force' as const;
+        return 'radial' as const;
     }, [searchParams]);
 
     useEffect(() => {
@@ -536,22 +537,10 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [setActGraph, topicId, workspaceId]);
 
-    const effectiveExpandedBranchNodeIds = useMemo(() => {
-        // We no longer force root nodes to be expanded by default.
-        // Only nodes explicitly toggled by the user (expandedBranchNodeIds) will be open.
-        return expandedBranchNodeIds;
-    }, [expandedBranchNodeIds]);
-
-    // Defer layout-heavy inputs so user interactions (expand/collapse clicks)
-    // are rendered immediately while the force simulation runs in a background pass.
-    const deferredExpandedBranchNodeIds = useDeferredValue(effectiveExpandedBranchNodeIds);
-    const deferredExpandedNodeIds = useDeferredValue(expandedNodeIds);
-
-    // Strip act nodes down to layout-relevant fields only (position + refs + label).
-    // This prevents streaming content updates (contentMd, contextSummary, etc.) from
-    // triggering an expensive force layout recomputation on every streaming tick.
+    // Strip act nodes down to layout-relevant fields only (topicId + label).
+    // This prevents streaming content updates from triggering layout recomputation.
     const actNodesLayoutKey = (actNodes as GraphNodeBase[]).map((n) =>
-        `${n.id}:${n.position.x.toFixed(0)},${n.position.y.toFixed(0)}:${n.data?.label ?? ''}:${(n.data?.referencedNodeIds as string[] | undefined)?.join(',') ?? ''}`
+        `${n.id}:${n.data?.label ?? ''}:${(n.data?.topicId as string | undefined) ?? ''}`
     ).join('|');
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({
@@ -560,6 +549,7 @@ export function GraphCanvas() {
             kind: n.data?.kind,
             nodeSource: n.data?.nodeSource,
             label: n.data?.label,
+            topicId: n.data?.topicId,
             referencedNodeIds: n.data?.referencedNodeIds,
             parentId: n.data?.parentId,
             isManualPosition: n.data?.isManualPosition,
@@ -567,30 +557,27 @@ export function GraphCanvas() {
     } as GraphNodeBase)), [actNodesLayoutKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const deferredActNodes = useDeferredValue(actNodesForLayout);
-    const deferredActEdges = useDeferredValue(actEdges);
+
+    const deferredExpandedBranchNodeIds = useDeferredValue(expandedBranchNodeIds);
 
     const persistedGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
             persistedEdges,
-            deferredExpandedBranchNodeIds,
-            deferredExpandedNodeIds,
             persistedLayoutMode,
+            deferredExpandedBranchNodeIds,
             deferredActNodes,
-            deferredActEdges,
         ),
-        [deferredActEdges, deferredActNodes, deferredExpandedBranchNodeIds, deferredExpandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [deferredActNodes, deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
     const radialOverviewGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
             persistedEdges,
-            effectiveExpandedBranchNodeIds,
-            expandedNodeIds,
             'radial',
         ),
-        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
+        [persistedEdges, persistedNodes],
     );
 
     const regularGraphNodes = useMemo(
@@ -703,9 +690,9 @@ export function GraphCanvas() {
         const FREQ_K = 4;
 
         return canvasNodes.map((node) => {
-            const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
+            const layoutMode: 'radial' | undefined = isRadialLayout && node.data?.nodeSource === 'persisted'
                 ? 'radial'
-                : 'force';
+                : undefined;
 
             let rootHue = 210;
             if (node.data?.nodeSource === 'persisted') {
@@ -1227,6 +1214,18 @@ export function GraphCanvas() {
     }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
 
     const handleKeyNavigation = useCallback((event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            const target = event.target;
+            if (
+                target instanceof HTMLElement
+                && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+            ) {
+                return;
+            }
+            clearAllFocus();
+            return;
+        }
+
         const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key);
         if (!isArrow) return;
         if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1382,9 +1381,9 @@ export function GraphCanvas() {
         </div>
     ) : null;
 
-    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial' | 'orbit') => {
+    const setLayoutMode = useCallback((nextLayout: 'radial' | 'orbit') => {
         const nextParams = new URLSearchParams(searchParams.toString());
-        if (nextLayout === 'force') {
+        if (nextLayout === 'radial') {
             nextParams.delete('layout');
         } else {
             nextParams.set('layout', nextLayout);
@@ -1395,7 +1394,7 @@ export function GraphCanvas() {
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
-            {(['force', 'radial', 'orbit'] as const).map((mode) => {
+            {(['radial', 'orbit'] as const).map((mode) => {
                 const active = persistedLayoutMode === mode;
                 return (
                     <button
@@ -1409,7 +1408,7 @@ export function GraphCanvas() {
                         ].join(' ')}
                         onClick={() => setLayoutMode(mode)}
                     >
-                        {mode === 'force' ? 'Force' : mode === 'radial' ? 'Radial' : 'Orbit'}
+                        {mode === 'radial' ? 'Radial' : 'Orbit'}
                     </button>
                 );
             })}
@@ -1450,6 +1449,7 @@ export function GraphCanvas() {
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             {layoutToggle}
             {recentClickedSelector}
+            <GraphToolbar />
             <SelectedNodePanel />
             <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
                 <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">

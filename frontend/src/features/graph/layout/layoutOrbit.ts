@@ -11,6 +11,8 @@ type OrbitLayoutParams = {
     actNodes?: GraphNodeBase[];
 };
 
+type SectorInfo = { startAngle: number; endAngle: number; midAngle: number };
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const ORBIT_CENTER_X = 980;
@@ -19,13 +21,19 @@ export const ORBIT_CENTER_Y = 720;
 // Topic root nodes sit on this ring
 const TOPIC_RING_RADIUS = 480;
 
+// Act nodes routed to a topic sit on this inner ring (between center and topic ring)
+const ACT_NEAR_TOPIC_RADIUS = 290;
+
 // Each additional depth level extends outward by this amount
 const CHILD_DEPTH_GAP = 230;
 
 // Small gap (radians) between adjacent topic sectors
 const SECTOR_GAP = 0.05;
 
-// Horizontal spacing between act nodes clustered near center
+// Max arc (radians) that act nodes for one topic may occupy within its sector
+const ACT_SECTOR_MAX_SPREAD = Math.PI / 6; // 30°
+
+// Spacing between act nodes in the center grid (unmatched)
 const ACT_SPACING_X = 140;
 const ACT_SPACING_Y = 100;
 
@@ -33,9 +41,10 @@ const ACT_SPACING_Y = 100;
 
 /**
  * Orbit layout:
- *   - Act nodes: small grid cluster at the canvas center
- *   - Topic root nodes: arranged on an outer ring (TOPIC_RING_RADIUS)
- *   - Children: each depth level spreads radially outward from the topic's angle
+ *   - Act nodes with a matching topicId: inner ring near their topic (r=290)
+ *   - Act nodes with no topic match: compact grid at canvas center
+ *   - Topic root nodes: outer ring (r=480), sectors proportional to subtree size
+ *   - Children: spread radially outward per sector
  *
  * `childrenByParent` must already be filtered to visible nodes (as provided by
  * buildVisibleHierarchy). This layout does not re-check expansion state.
@@ -46,8 +55,8 @@ export function layoutOrbit({
     childrenByParent,
     actNodes = [],
 }: OrbitLayoutParams): GraphNodeBase[] {
-    const persistedPositions = placePersistedNodes({ rootIds, childrenByParent });
-    const actPositions = placeActNodesAtCenter(actNodes);
+    const { positions: persistedPositions, sectorByRootId } = placePersistedNodes({ rootIds, childrenByParent });
+    const actPositions = placeActNodes(actNodes, sectorByRootId);
 
     const allNodes = [...nodes, ...actNodes];
     return allNodes.map((node) => {
@@ -67,9 +76,10 @@ function placePersistedNodes({
 }: {
     rootIds: string[];
     childrenByParent: Map<string, string[]>;
-}): Map<string, { x: number; y: number }> {
+}): { positions: Map<string, { x: number; y: number }>; sectorByRootId: Map<string, SectorInfo> } {
     const positions = new Map<string, { x: number; y: number }>();
-    if (rootIds.length === 0) return positions;
+    const sectorByRootId = new Map<string, SectorInfo>();
+    if (rootIds.length === 0) return { positions, sectorByRootId };
 
     // Subtree sizes drive proportional angular allocation per topic
     const subtreeSizeById = computeSubtreeSizes(rootIds, childrenByParent);
@@ -85,6 +95,7 @@ function placePersistedNodes({
         const midAngle = cursor + sectorAngle / 2;
 
         positions.set(rootId, polarToCartesian(TOPIC_RING_RADIUS, midAngle));
+        sectorByRootId.set(rootId, { startAngle: cursor, endAngle: cursor + sectorAngle, midAngle });
 
         placeChildren({
             parentId: rootId,
@@ -99,7 +110,7 @@ function placePersistedNodes({
         cursor += sectorAngle + SECTOR_GAP;
     }
 
-    return positions;
+    return { positions, sectorByRootId };
 }
 
 function placeChildren({
@@ -151,22 +162,52 @@ function placeChildren({
 // ── Act node placement ────────────────────────────────────────────────────────
 
 /**
- * Place act nodes in a compact grid near the canvas center.
- * Up to 3 per row, centered horizontally.
+ * Route act nodes to their associated topic sector (inner ring, r=290), or to
+ * the center grid if no matching topic is found.
  */
-function placeActNodesAtCenter(
+function placeActNodes(
     actNodes: GraphNodeBase[],
+    sectorByRootId: Map<string, SectorInfo>,
 ): Map<string, { x: number; y: number }> {
     const result = new Map<string, { x: number; y: number }>();
-    const n = actNodes.length;
-    if (n === 0) return result;
 
-    const cols = Math.min(n, 3);
-    actNodes.forEach((node, i) => {
+    // Group act nodes by topicId
+    const byTopic = new Map<string, GraphNodeBase[]>();
+    const unmatched: GraphNodeBase[] = [];
+
+    for (const node of actNodes) {
+        const topicId = node.data.topicId;
+        if (topicId && sectorByRootId.has(topicId)) {
+            const group = byTopic.get(topicId) ?? [];
+            group.push(node);
+            byTopic.set(topicId, group);
+        } else {
+            unmatched.push(node);
+        }
+    }
+
+    // Place matched act nodes on the inner ring within their topic's sector
+    for (const [topicId, group] of byTopic) {
+        const sector = sectorByRootId.get(topicId)!;
+        const n = group.length;
+
+        // Spread within a bounded arc centered on the sector midAngle
+        const availableArc = Math.min(ACT_SECTOR_MAX_SPREAD, sector.endAngle - sector.startAngle * 0.8);
+        const step = n === 1 ? 0 : availableArc / (n - 1);
+        const arcStart = sector.midAngle - availableArc / 2;
+
+        group.forEach((node, i) => {
+            const angle = n === 1 ? sector.midAngle : arcStart + i * step;
+            result.set(node.id, polarToCartesian(ACT_NEAR_TOPIC_RADIUS, angle));
+        });
+    }
+
+    // Place unmatched act nodes in a compact grid at the canvas center
+    const cols = Math.min(unmatched.length, 3);
+    unmatched.forEach((node, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
-        const rowCount = Math.min(cols, n - row * cols);
-        // Center each row horizontally
+        const rowCount = Math.min(cols, unmatched.length - row * cols);
         const offsetX = (col - (rowCount - 1) / 2) * ACT_SPACING_X;
         const offsetY = row * ACT_SPACING_Y;
         result.set(node.id, {

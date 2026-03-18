@@ -28,6 +28,7 @@ interface GraphState {
     clearActGraph: () => void;
     clearSelection: () => void;
     setActiveNode: (id: string | null) => void;
+    clearAllFocus: () => void;
     toggleExpandedNode: (id: string) => void;
     expandNode: (id: string) => void;
     toggleExpandedBranchNode: (id: string) => void;
@@ -200,15 +201,35 @@ export const useGraphStore = create<GraphState>((set) => ({
         return { selectedNodeIds: [] };
     }),
     setActiveNode: (id: string | null) => set({ activeNodeId: id }),
-    toggleExpandedNode: (id: string) => set((state) => ({
-        expandedNodeIds: state.expandedNodeIds.includes(id)
-            ? state.expandedNodeIds.filter((expandedId) => expandedId !== id)
-            : [...state.expandedNodeIds, id],
-    })),
+    clearAllFocus: () => set((state) => {
+        if (state.selectedNodeIds.length > 0) {
+            writeStoredSelectedNodeIds([]);
+        }
+        return {
+            activeNodeId: null,
+            editingNodeId: null,
+            selectedNodeIds: [],
+            expandedNodeIds: [],
+        };
+    }),
+    toggleExpandedNode: (id: string) => set((state) => {
+        const isExpanding = !state.expandedNodeIds.includes(id);
+        return {
+            expandedNodeIds: isExpanding
+                ? [...state.expandedNodeIds, id]
+                : state.expandedNodeIds.filter((expandedId) => expandedId !== id),
+            ...(isExpanding && {
+                nodeLastUsedAt: { ...state.nodeLastUsedAt, [id]: Date.now() },
+            }),
+        };
+    }),
     expandNode: (id: string) => set((state) => (
         state.expandedNodeIds.includes(id)
             ? state
-            : { expandedNodeIds: [...state.expandedNodeIds, id] }
+            : {
+                expandedNodeIds: [...state.expandedNodeIds, id],
+                nodeLastUsedAt: { ...state.nodeLastUsedAt, [id]: Date.now() },
+            }
     )),
     toggleExpandedBranchNode: (id: string) => set((state) => {
         const isExpanding = !state.expandedBranchNodeIds.includes(id);
@@ -223,8 +244,14 @@ export const useGraphStore = create<GraphState>((set) => ({
             .filter((n) => n.data?.parentId === id)
             .map((n) => n.id);
 
+        const now = Date.now();
+        const usageUpdates = Object.fromEntries(
+            [id, ...childIds].map((nodeId) => [nodeId, now]),
+        );
+
         return {
             expandedBranchNodeIds: [...new Set([...state.expandedBranchNodeIds, id, ...childIds])],
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, ...usageUpdates },
         };
     }),
     expandBranchNode: (id: string) => set((state) => {
@@ -237,8 +264,14 @@ export const useGraphStore = create<GraphState>((set) => ({
             .filter((n) => n.data?.parentId === id)
             .map((n) => n.id);
 
+        const now = Date.now();
+        const usageUpdates = Object.fromEntries(
+            [id, ...childIds].map((nodeId) => [nodeId, now]),
+        );
+
         return {
             expandedBranchNodeIds: [...new Set([...state.expandedBranchNodeIds, id, ...childIds])],
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, ...usageUpdates },
         };
     }),
     setEditingNode: (id: string | null) => set({ editingNodeId: id }),
