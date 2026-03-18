@@ -7,11 +7,70 @@ import logging
 from typing import AsyncIterator
 
 from google import genai
-from google.genai.types import Content, GenerateContentConfig, GoogleSearch, Part, ThinkingConfig, Tool
+from google.genai.types import (
+    Content,
+    FunctionDeclaration,
+    GenerateContentConfig,
+    GoogleSearch,
+    Part,
+    Schema,
+    ThinkingConfig,
+    Tool,
+)
 
 from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
 logger = logging.getLogger(__name__)
+
+# ── Function declarations ──────────────────────────────────────────────────
+
+_SUGGEST_DEEP_DIVES_DECL = FunctionDeclaration(
+    name="suggest_deep_dives",
+    description=(
+        "回答に関連する深掘りポイントをグラフノードとして提案する。"
+        "回答の後、ユーザーがさらに探索したいと思われるトピックを2〜4件提案すること。"
+    ),
+    parameters=Schema(
+        type="OBJECT",
+        properties={
+            "suggestions": Schema(
+                type="ARRAY",
+                items=Schema(
+                    type="OBJECT",
+                    properties={
+                        "label": Schema(type="STRING", description="ノードのラベル（短く端的に）"),
+                        "query": Schema(type="STRING", description="深掘りクエリ（ユーザーが次に問いかける文章）"),
+                    },
+                    required=["label", "query"],
+                ),
+            )
+        },
+        required=["suggestions"],
+    ),
+)
+
+_START_ACT_DECL = FunctionDeclaration(
+    name="start_act",
+    description=(
+        "ユーザーの指示がなくても、自律的に別の Act（調査・要約など）を開始する。"
+        "現在の回答だけでは不十分で、追加の調査が明らかに必要な場合にのみ使用すること。"
+    ),
+    parameters=Schema(
+        type="OBJECT",
+        properties={
+            "act_type": Schema(
+                type="STRING",
+                enum=["ACT_TYPE_EXPLORE", "ACT_TYPE_INVESTIGATE"],
+                description="Act の種別",
+            ),
+            "user_message": Schema(type="STRING", description="次の Act に渡すクエリ"),
+            "anchor_node_id": Schema(type="STRING", description="起点ノード ID（省略可）"),
+        },
+        required=["user_message"],
+    ),
+)
+
+_ACT_TOOLS = Tool(function_declarations=[_SUGGEST_DEEP_DIVES_DECL, _START_ACT_DECL])
 
 
 def _build_system_instruction(bundle: PromptBundle) -> str | None:
@@ -49,7 +108,7 @@ class GeminiLLM:
         bundle: PromptBundle,
         config: LLMConfig,
     ) -> AsyncIterator[LLMChunk]:
-        model_name = config.model or "gemini-2.0-flash"
+        model_name = config.model or "gemini-3-flash"
 
         parts = []
         if bundle.user_prompt:
@@ -68,10 +127,12 @@ class GeminiLLM:
         # Keep the current user message as the sole user turn.
         contents = [Content(role="user", parts=parts)]
 
-        tools = [Tool(googleSearch=GoogleSearch())] if config.enable_grounding else None
+        base_tools: list[Tool] = [_ACT_TOOLS]
+        if config.enable_grounding:
+            base_tools.append(Tool(googleSearch=GoogleSearch()))
         gen_config = GenerateContentConfig(
             systemInstruction=_build_system_instruction(bundle),
-            tools=tools,
+            tools=base_tools,
             thinkingConfig=ThinkingConfig(includeThoughts=True) if config.enable_thinking else None,
         )
 
@@ -90,13 +151,27 @@ class GeminiLLM:
                 contents=contents,
                 config=gen_config,
             )
+
+            collected_function_calls: list[dict] = []
+
             async for response in stream:
+                # テキストチャンクをストリーム
                 if response.text:
-                    # google-genai doesn't expose thought vs. answer natively
-                    # in the basic streaming API — all chunks are answer
                     yield LLMChunk(text=response.text, is_thought=False)
 
-            yield LLMChunk(text="", is_done=True)
+                # function_call パートを収集（ストリーム末尾に来る）
+                if response.candidates:
+                    for candidate in response.candidates:
+                        if candidate.content and candidate.content.parts:
+                            for part in candidate.content.parts:
+                                if part.function_call:
+                                    fc = part.function_call
+                                    collected_function_calls.append({
+                                        "name": fc.name,
+                                        "args": dict(fc.args) if fc.args else {},
+                                    })
+
+            yield LLMChunk(text="", is_done=True, function_calls=collected_function_calls)
 
         except Exception as e:
             logger.exception("Gemini generation failed")

@@ -415,7 +415,7 @@ func (x *LLMConfig) GetEnableThinking() bool {
 }
 
 // RunActEvent はサーバーストリームのレスポンス。
-// text_delta or patch_ops or terminal のいずれかを持つ。
+// text_delta or patch_ops or terminal or action_trigger のいずれかを持つ。
 type RunActEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Event:
@@ -423,6 +423,7 @@ type RunActEvent struct {
 	//	*RunActEvent_TextDelta
 	//	*RunActEvent_PatchOps
 	//	*RunActEvent_Terminal
+	//	*RunActEvent_ActionTrigger
 	Event isRunActEvent_Event `protobuf_oneof:"event"`
 	// true のとき thought（思考ストリーム）。false のとき通常回答。
 	IsThought     bool `protobuf:"varint,4,opt,name=is_thought,json=isThought,proto3" json:"is_thought,omitempty"`
@@ -494,6 +495,15 @@ func (x *RunActEvent) GetTerminal() *Terminal {
 	return nil
 }
 
+func (x *RunActEvent) GetActionTrigger() *ActionTrigger {
+	if x != nil {
+		if x, ok := x.Event.(*RunActEvent_ActionTrigger); ok {
+			return x.ActionTrigger
+		}
+	}
+	return nil
+}
+
 func (x *RunActEvent) GetIsThought() bool {
 	if x != nil {
 		return x.IsThought
@@ -517,11 +527,17 @@ type RunActEvent_Terminal struct {
 	Terminal *Terminal `protobuf:"bytes,3,opt,name=terminal,proto3,oneof"`
 }
 
+type RunActEvent_ActionTrigger struct {
+	ActionTrigger *ActionTrigger `protobuf:"bytes,5,opt,name=action_trigger,json=actionTrigger,proto3,oneof"`
+}
+
 func (*RunActEvent_TextDelta) isRunActEvent_Event() {}
 
 func (*RunActEvent_PatchOps) isRunActEvent_Event() {}
 
 func (*RunActEvent_Terminal) isRunActEvent_Event() {}
+
+func (*RunActEvent_ActionTrigger) isRunActEvent_Event() {}
 
 type TextDelta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -620,8 +636,14 @@ type PatchOp struct {
 	Seq uint64 `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
 	// append 適用前の本文長。frontend 側の安全適用に使う。
 	ExpectedOffset uint32 `protobuf:"varint,5,opt,name=expected_offset,json=expectedOffset,proto3" json:"expected_offset,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// ノードの種別。upsert 時に使用（例: "act", "suggestion"）。
+	Kind string `protobuf:"bytes,6,opt,name=kind,proto3" json:"kind,omitempty"`
+	// 親ノード ID。子ノード生成時に使用。
+	ParentId string `protobuf:"bytes,7,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	// ノードのラベル。upsert 時に使用。
+	Label         string `protobuf:"bytes,8,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PatchOp) Reset() {
@@ -689,6 +711,82 @@ func (x *PatchOp) GetExpectedOffset() uint32 {
 	return 0
 }
 
+func (x *PatchOp) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *PatchOp) GetParentId() string {
+	if x != nil {
+		return x.ParentId
+	}
+	return ""
+}
+
+func (x *PatchOp) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+// LLM がフロントへ送るアクション命令。
+type ActionTrigger struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// アクション種別: "start_act"
+	Action string `protobuf:"bytes,1,opt,name=action,proto3" json:"action,omitempty"`
+	// アクション引数（JSON シリアライズ済み）
+	PayloadJson   string `protobuf:"bytes,2,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionTrigger) Reset() {
+	*x = ActionTrigger{}
+	mi := &file_act_v1_act_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionTrigger) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionTrigger) ProtoMessage() {}
+
+func (x *ActionTrigger) ProtoReflect() protoreflect.Message {
+	mi := &file_act_v1_act_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionTrigger.ProtoReflect.Descriptor instead.
+func (*ActionTrigger) Descriptor() ([]byte, []int) {
+	return file_act_v1_act_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ActionTrigger) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *ActionTrigger) GetPayloadJson() string {
+	if x != nil {
+		return x.PayloadJson
+	}
+	return ""
+}
+
 type SourceRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -701,7 +799,7 @@ type SourceRef struct {
 
 func (x *SourceRef) Reset() {
 	*x = SourceRef{}
-	mi := &file_act_v1_act_proto_msgTypes[8]
+	mi := &file_act_v1_act_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +811,7 @@ func (x *SourceRef) String() string {
 func (*SourceRef) ProtoMessage() {}
 
 func (x *SourceRef) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[8]
+	mi := &file_act_v1_act_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,7 +824,7 @@ func (x *SourceRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceRef.ProtoReflect.Descriptor instead.
 func (*SourceRef) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{8}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SourceRef) GetId() string {
@@ -771,7 +869,7 @@ type Terminal struct {
 
 func (x *Terminal) Reset() {
 	*x = Terminal{}
-	mi := &file_act_v1_act_proto_msgTypes[9]
+	mi := &file_act_v1_act_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -783,7 +881,7 @@ func (x *Terminal) String() string {
 func (*Terminal) ProtoMessage() {}
 
 func (x *Terminal) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[9]
+	mi := &file_act_v1_act_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -796,7 +894,7 @@ func (x *Terminal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Terminal.ProtoReflect.Descriptor instead.
 func (*Terminal) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{9}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Terminal) GetDone() bool {
@@ -855,7 +953,7 @@ type ErrorInfo struct {
 
 func (x *ErrorInfo) Reset() {
 	*x = ErrorInfo{}
-	mi := &file_act_v1_act_proto_msgTypes[10]
+	mi := &file_act_v1_act_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -867,7 +965,7 @@ func (x *ErrorInfo) String() string {
 func (*ErrorInfo) ProtoMessage() {}
 
 func (x *ErrorInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_act_v1_act_proto_msgTypes[10]
+	mi := &file_act_v1_act_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -880,7 +978,7 @@ func (x *ErrorInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorInfo.ProtoReflect.Descriptor instead.
 func (*ErrorInfo) Descriptor() ([]byte, []int) {
-	return file_act_v1_act_proto_rawDescGZIP(), []int{10}
+	return file_act_v1_act_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ErrorInfo) GetCode() string {
@@ -963,25 +1061,32 @@ const file_act_v1_act_proto_rawDesc = "" +
 	"\tLLMConfig\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12)\n" +
 	"\x10enable_grounding\x18\x02 \x01(\bR\x0fenableGrounding\x12'\n" +
-	"\x0fenable_thinking\x18\x03 \x01(\bR\x0eenableThinking\"\xca\x01\n" +
+	"\x0fenable_thinking\x18\x03 \x01(\bR\x0eenableThinking\"\x8a\x02\n" +
 	"\vRunActEvent\x122\n" +
 	"\n" +
 	"text_delta\x18\x01 \x01(\v2\x11.act.v1.TextDeltaH\x00R\ttextDelta\x12/\n" +
 	"\tpatch_ops\x18\x02 \x01(\v2\x10.act.v1.PatchOpsH\x00R\bpatchOps\x12.\n" +
-	"\bterminal\x18\x03 \x01(\v2\x10.act.v1.TerminalH\x00R\bterminal\x12\x1d\n" +
+	"\bterminal\x18\x03 \x01(\v2\x10.act.v1.TerminalH\x00R\bterminal\x12>\n" +
+	"\x0eaction_trigger\x18\x05 \x01(\v2\x15.act.v1.ActionTriggerH\x00R\ractionTrigger\x12\x1d\n" +
 	"\n" +
 	"is_thought\x18\x04 \x01(\bR\tisThoughtB\a\n" +
 	"\x05event\"\x1f\n" +
 	"\tTextDelta\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\"-\n" +
 	"\bPatchOps\x12!\n" +
-	"\x03ops\x18\x01 \x03(\v2\x0f.act.v1.PatchOpR\x03ops\"\x87\x01\n" +
+	"\x03ops\x18\x01 \x03(\v2\x0f.act.v1.PatchOpR\x03ops\"\xce\x01\n" +
 	"\aPatchOp\x12\x0e\n" +
 	"\x02op\x18\x01 \x01(\tR\x02op\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12\x10\n" +
 	"\x03seq\x18\x04 \x01(\x04R\x03seq\x12'\n" +
-	"\x0fexpected_offset\x18\x05 \x01(\rR\x0eexpectedOffset\"W\n" +
+	"\x0fexpected_offset\x18\x05 \x01(\rR\x0eexpectedOffset\x12\x12\n" +
+	"\x04kind\x18\x06 \x01(\tR\x04kind\x12\x1b\n" +
+	"\tparent_id\x18\a \x01(\tR\bparentId\x12\x14\n" +
+	"\x05label\x18\b \x01(\tR\x05label\"J\n" +
+	"\rActionTrigger\x12\x16\n" +
+	"\x06action\x18\x01 \x01(\tR\x06action\x12!\n" +
+	"\fpayload_json\x18\x02 \x01(\tR\vpayloadJson\"W\n" +
 	"\tSourceRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +
@@ -1024,7 +1129,7 @@ func file_act_v1_act_proto_rawDescGZIP() []byte {
 }
 
 var file_act_v1_act_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_act_v1_act_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_act_v1_act_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_act_v1_act_proto_goTypes = []any{
 	(ActType)(0),                // 0: act.v1.ActType
 	(*RunActRequest)(nil),       // 1: act.v1.RunActRequest
@@ -1035,9 +1140,10 @@ var file_act_v1_act_proto_goTypes = []any{
 	(*TextDelta)(nil),           // 6: act.v1.TextDelta
 	(*PatchOps)(nil),            // 7: act.v1.PatchOps
 	(*PatchOp)(nil),             // 8: act.v1.PatchOp
-	(*SourceRef)(nil),           // 9: act.v1.SourceRef
-	(*Terminal)(nil),            // 10: act.v1.Terminal
-	(*ErrorInfo)(nil),           // 11: act.v1.ErrorInfo
+	(*ActionTrigger)(nil),       // 9: act.v1.ActionTrigger
+	(*SourceRef)(nil),           // 10: act.v1.SourceRef
+	(*Terminal)(nil),            // 11: act.v1.Terminal
+	(*ErrorInfo)(nil),           // 12: act.v1.ErrorInfo
 }
 var file_act_v1_act_proto_depIdxs = []int32{
 	0,  // 0: act.v1.RunActRequest.act_type:type_name -> act.v1.ActType
@@ -1046,18 +1152,19 @@ var file_act_v1_act_proto_depIdxs = []int32{
 	2,  // 3: act.v1.RunActRequest.selected_node_contexts:type_name -> act.v1.SelectedNodeContext
 	6,  // 4: act.v1.RunActEvent.text_delta:type_name -> act.v1.TextDelta
 	7,  // 5: act.v1.RunActEvent.patch_ops:type_name -> act.v1.PatchOps
-	10, // 6: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal
-	8,  // 7: act.v1.PatchOps.ops:type_name -> act.v1.PatchOp
-	11, // 8: act.v1.Terminal.error:type_name -> act.v1.ErrorInfo
-	2,  // 9: act.v1.Terminal.used_selected_node_contexts:type_name -> act.v1.SelectedNodeContext
-	9,  // 10: act.v1.Terminal.used_sources:type_name -> act.v1.SourceRef
-	1,  // 11: act.v1.ActService.RunAct:input_type -> act.v1.RunActRequest
-	5,  // 12: act.v1.ActService.RunAct:output_type -> act.v1.RunActEvent
-	12, // [12:13] is the sub-list for method output_type
-	11, // [11:12] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	11, // 6: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal
+	9,  // 7: act.v1.RunActEvent.action_trigger:type_name -> act.v1.ActionTrigger
+	8,  // 8: act.v1.PatchOps.ops:type_name -> act.v1.PatchOp
+	12, // 9: act.v1.Terminal.error:type_name -> act.v1.ErrorInfo
+	2,  // 10: act.v1.Terminal.used_selected_node_contexts:type_name -> act.v1.SelectedNodeContext
+	10, // 11: act.v1.Terminal.used_sources:type_name -> act.v1.SourceRef
+	1,  // 12: act.v1.ActService.RunAct:input_type -> act.v1.RunActRequest
+	5,  // 13: act.v1.ActService.RunAct:output_type -> act.v1.RunActEvent
+	13, // [13:14] is the sub-list for method output_type
+	12, // [12:13] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_act_v1_act_proto_init() }
@@ -1069,6 +1176,7 @@ func file_act_v1_act_proto_init() {
 		(*RunActEvent_TextDelta)(nil),
 		(*RunActEvent_PatchOps)(nil),
 		(*RunActEvent_Terminal)(nil),
+		(*RunActEvent_ActionTrigger)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1076,7 +1184,7 @@ func file_act_v1_act_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_act_v1_act_proto_rawDesc), len(file_act_v1_act_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

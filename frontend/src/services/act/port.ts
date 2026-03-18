@@ -4,6 +4,7 @@ export interface PatchOp {
     data?: Partial<{
         label: string;
         kind: string;
+        parentId: string;
         contentMd: string;
         seq: bigint;
         expectedOffset: number;
@@ -17,6 +18,11 @@ export interface PatchOp {
         usedTools: string[];
         usedSources: SourceRef[];
     }>;
+}
+
+export interface ActionTriggerPayload {
+    action: string;      // "start_act"
+    payloadJson: string; // JSON string of action args
 }
 
 export interface StreamResponse {
@@ -60,6 +66,7 @@ export interface ActPort {
         onPatch: (patch: PatchOp) => void,
         onDone: () => void,
         onError: (err: Error) => void,
-        options?: StreamActOptions
+        options?: StreamActOptions,
+        onActionTrigger?: (trigger: ActionTriggerPayload) => void,
     ) => () => void; // returns a cancel function
 }

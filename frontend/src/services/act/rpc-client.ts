@@ -8,7 +8,7 @@ import { config } from "@/lib/config";
 import { applyResponseLanguagePreference } from "@/lib/response-language-preference";
 import { getCSRFToken } from "@/services/firebase/csrf";
 import { getFirebaseIdToken } from "@/services/firebase/token";
-import type { ActPort, PatchOp, StreamActOptions } from "./port";
+import type { ActionTriggerPayload, ActPort, PatchOp, StreamActOptions } from "./port";
 
 function getBaseUrl(): string {
   return config.rpcBaseUrl;
@@ -75,7 +75,10 @@ function toUiPatch(op: RpcPatchOp): PatchOp | null {
       type: "upsert",
       nodeId: op.nodeId,
       data: {
-        kind: "act",
+        kind: op.kind || "act",
+        ...(op.label ? { label: op.label } : {}),
+        ...(op.parentId ? { parentId: op.parentId } : {}),
+        ...(op.content ? { contentMd: op.content } : {}),
       },
     };
   }
@@ -110,6 +113,7 @@ function handleEvent(
   onPatch: (patch: PatchOp) => void,
   onDone: () => void,
   onError: (err: Error) => void,
+  onActionTrigger?: (trigger: ActionTriggerPayload) => void,
 ): { reachedTerminal: boolean } {
   if (event.event.case === "patchOps") {
     for (const op of event.event.value.ops) {
@@ -172,6 +176,12 @@ function handleEvent(
     }
   }
 
+  if (event.event.case === "actionTrigger") {
+    const t = event.event.value;
+    onActionTrigger?.({ action: t.action, payloadJson: t.payloadJson });
+    return { reachedTerminal: false };
+  }
+
   return { reachedTerminal: false };
 }
 
@@ -188,7 +198,7 @@ export function createRpcActService(): ActPort {
   const client = createClient(ActService, transport);
 
   return {
-    streamAct(query, onPatch, onDone, onError, options?: StreamActOptions) {
+    streamAct(query, onPatch, onDone, onError, options?: StreamActOptions, onActionTrigger?) {
       const abortController = new AbortController();
       let terminalSeen = false;
 
@@ -257,7 +267,7 @@ export function createRpcActService(): ActPort {
               continue;
             }
 
-            const { reachedTerminal } = handleEvent(event, onPatch, onDone, onError);
+            const { reachedTerminal } = handleEvent(event, onPatch, onDone, onError, onActionTrigger);
             if (reachedTerminal) {
               terminalSeen = true;
             }

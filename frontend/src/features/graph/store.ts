@@ -61,7 +61,7 @@ interface GraphState {
         usedSources?: Array<{ id: string; kind?: string; label?: string; uri?: string }>;
     }) => void;
     addEmptyActNode: (position: { x: number; y: number }) => string;
-    addQueryActNode: (position: { x: number; y: number }, initialLabel: string) => string;
+    addQueryActNode: (position: { x: number; y: number }, initialLabel: string, options?: { isManualPosition?: boolean }) => string;
     resetActNode: (nodeId: string, payload?: { label?: string; referencedNodeIds?: string[] }) => void;
     updateActNodeLabel: (nodeId: string, label: string) => void;
     appendActNodeContent: (nodeId: string, content: string) => void;
@@ -466,7 +466,7 @@ export const useGraphStore = create<GraphState>((set) => ({
         return id;
     },
 
-    addQueryActNode: (position, initialLabel) => {
+    addQueryActNode: (position, initialLabel, options) => {
         const id = `act-node-${++_nodeCounter}-${Date.now()}`;
         set((state) => ({
             actNodes: [...state.actNodes, {
@@ -481,6 +481,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                     kind: 'act',
                     contentMd: '',
                     referencedNodeIds: [...state.selectedNodeIds],
+                    ...(options?.isManualPosition ? { isManualPosition: true } : {}),
                 }
             }],
             actEdges: syncActReferenceEdges(state.actEdges, id, state.selectedNodeIds),

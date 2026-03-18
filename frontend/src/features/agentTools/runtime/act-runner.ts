@@ -9,12 +9,15 @@ import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
 import type { PatchOp, StreamActOptions } from "@/services/act/port";
 
+const MAX_TRIGGER_DEPTH = 3;
+
 export type StartActRunParams = {
   targetNodeId: string | null;
   query: string;
   workspaceId?: string;
   topicId?: string;
   options?: StreamActOptions & { clear?: boolean };
+  triggerDepth?: number;
 };
 
 export type StartActRunResult = {
@@ -101,7 +104,7 @@ function shouldAutoEnableGrounding(query: string, actType: StreamActOptions["act
   return actType === "investigate";
 }
 
-export function startActRun({ targetNodeId, query, workspaceId, topicId, options }: StartActRunParams): StartActRunResult {
+export function startActRun({ targetNodeId, query, workspaceId, topicId, options, triggerDepth = 0 }: StartActRunParams): StartActRunResult {
   const graphStore = useGraphStore.getState();
   const runContext = useRunContextStore.getState();
   const preferences = useStreamPreferencesStore.getState();
@@ -188,6 +191,9 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
 
       if (patch.type === "upsert" && patch.data) {
         const existingNode = useGraphStore.getState().actNodes.find((node) => node.id === normalizedNodeId);
+        const resolvedParentId = patch.data.parentId
+          ? resolveFrontendNodeId(patch.data.parentId)
+          : undefined;
         useGraphStore.getState().addOrUpdateActNode(normalizedNodeId, {
           label:
             patch.data.label ??
@@ -203,7 +209,12 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
           usedSelectedNodeContexts: patch.data.usedSelectedNodeContexts,
           usedTools: patch.data.usedTools,
           usedSources: patch.data.usedSources,
+          ...(resolvedParentId ? { parentId: resolvedParentId } : {}),
+          ...(patch.data.contentMd ? { contentMd: patch.data.contentMd } : {}),
         });
+        if (resolvedParentId) {
+          useGraphStore.getState().expandBranchNode(resolvedParentId);
+        }
         return;
       }
 
@@ -273,6 +284,28 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       includeThoughts: options?.includeThoughts ?? preferences.includeThoughts,
       modelProfile: options?.modelProfile ?? preferences.modelProfile,
     },
+    triggerDepth < MAX_TRIGGER_DEPTH
+      ? (trigger) => {
+          if (trigger.action === "start_act") {
+            try {
+              const payload = JSON.parse(trigger.payloadJson) as Record<string, unknown>;
+              const triggerQuery = typeof payload.user_message === "string" ? payload.user_message : "";
+              const anchorNodeId = typeof payload.anchor_node_id === "string" ? payload.anchor_node_id : undefined;
+              if (triggerQuery) {
+                startActRun({
+                  targetNodeId: anchorNodeId ? resolveFrontendNodeId(anchorNodeId) : null,
+                  query: triggerQuery,
+                  workspaceId: effectiveWorkspaceId,
+                  topicId: effectiveTopicId,
+                  triggerDepth: triggerDepth + 1,
+                });
+              }
+            } catch {
+              console.warn("[RunAct] Failed to parse start_act payload", trigger.payloadJson);
+            }
+          }
+        }
+      : undefined,
   );
 
   return { requestId, cancel };

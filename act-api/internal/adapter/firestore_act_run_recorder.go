@@ -54,8 +54,8 @@ func (r *FirestoreActRunRecorder) AppendEvent(ctx context.Context, input domain.
 				"content": op.GetContent(),
 			}
 			if op.GetSeq() > 0 {
-				payloadOp["seq"] = op.GetSeq()
-				payloadOp["expectedOffset"] = op.GetExpectedOffset()
+				payloadOp["seq"] = int64(op.GetSeq())
+				payloadOp["expectedOffset"] = int64(op.GetExpectedOffset())
 			}
 			ops = append(ops, payloadOp)
 		}

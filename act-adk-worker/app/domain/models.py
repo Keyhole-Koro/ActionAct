@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 
 class LLMConfig(BaseModel):
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-3-flash"
     enable_grounding: bool = False
     enable_thinking: bool = False
 
@@ -102,6 +102,7 @@ class LLMChunk(BaseModel):
     text: str = ""
     is_thought: bool = False
     is_done: bool = False
+    function_calls: list[dict] = Field(default_factory=list)
 
 
 # ── Outbound (SSE events back to act-api) ──
@@ -113,6 +114,15 @@ class PatchOp(BaseModel):
     content: str
     seq: Optional[int] = None
     expected_offset: Optional[int] = None
+    kind: Optional[str] = None       # ノード種別（例: "act", "suggestion"）
+    parent_id: Optional[str] = None  # 親ノード ID（子ノード生成時）
+    label: Optional[str] = None      # ノードラベル
+
+
+class ActionTrigger(BaseModel):
+    """LLM からフロントへの実行命令。"""
+    action: str        # "start_act"
+    payload_json: str  # JSON シリアライズ済みのアクション引数
 
 
 class ErrorInfo(BaseModel):
@@ -159,7 +169,7 @@ class ActDecisionOutput(BaseModel):
 class RunActEvent(BaseModel):
     """A single SSE event line sent back to act-api as ndjson."""
 
-    type: str  # "patch_ops" | "text_delta" | "terminal"
+    type: str  # "patch_ops" | "text_delta" | "terminal" | "action_trigger"
     # patch_ops
     ops: Optional[list[PatchOp]] = None
     # text_delta
@@ -172,3 +182,5 @@ class RunActEvent(BaseModel):
     used_selected_node_contexts: list[SelectedNodeContext] = Field(default_factory=list)
     used_tools: list[str] = Field(default_factory=list)
     used_sources: list[SourceRef] = Field(default_factory=list)
+    # action_trigger
+    action_triggers: Optional[list[ActionTrigger]] = None

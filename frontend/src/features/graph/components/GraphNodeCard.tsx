@@ -36,6 +36,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     investigate: { gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent', accent: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
     note: { gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent', accent: 'text-amber-500', glow: 'shadow-amber-500/20' },
     act: { gradient: 'from-blue-500/10 via-indigo-500/5 to-transparent', accent: 'text-blue-500', glow: 'shadow-blue-500/20' },
+    suggestion: { gradient: 'from-violet-500/10 via-purple-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     topic: { gradient: 'from-blue-500/20 via-cyan-500/10 to-transparent', accent: 'text-blue-600', glow: 'shadow-blue-500/25' },
     cluster: { gradient: 'from-teal-500/20 via-emerald-500/10 to-transparent', accent: 'text-teal-600', glow: 'shadow-teal-500/25' },
     subcluster: { gradient: 'from-orange-500/20 via-amber-500/10 to-transparent', accent: 'text-orange-600', glow: 'shadow-orange-500/25' },
@@ -163,6 +164,36 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
             }
         }
     }, [data]);
+
+    if (data.kind === 'suggestion') {
+        const suggestionQuery = typeof data.contentMd === 'string' ? data.contentMd : '';
+        const canExplore = suggestionQuery.length > 0 && typeof data.onRunAction === 'function' && !isNodeStreaming;
+        return (
+            <div
+                className={`nodrag group relative flex min-w-[140px] max-w-[260px] cursor-default flex-col gap-1 rounded-xl border border-dashed border-violet-300/60 bg-gradient-to-br ${cfg.gradient} px-3 py-2.5 shadow-sm transition-all hover:border-violet-400/80 hover:shadow-md`}
+                style={{ backdropFilter: 'blur(4px)' }}
+            >
+                <Handle type="target" position={targetPosition ?? Position.Top} className="opacity-0" />
+                <div className="flex items-start gap-1.5">
+                    <span className="mt-0.5 text-violet-400">✦</span>
+                    <span className="flex-1 text-[12px] font-medium leading-snug text-slate-700">{data.label || suggestionQuery}</span>
+                </div>
+                {canExplore && (
+                    <button
+                        className="nodrag mt-1 flex items-center gap-1 self-end rounded-full border border-violet-200 bg-white/80 px-2.5 py-0.5 text-[11px] font-medium text-violet-600 shadow-sm transition-all hover:bg-violet-50 hover:shadow"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            data.onRunAction?.(suggestionQuery);
+                        }}
+                    >
+                        <span>▶</span>
+                        <span>深掘り</span>
+                    </button>
+                )}
+                <Handle type="source" position={sourcePosition ?? Position.Bottom} className="opacity-0" />
+            </div>
+        );
+    }
 
     if (isRadialMode) {
         const radialDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;

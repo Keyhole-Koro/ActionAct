@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import AsyncIterator
 
 from app.domain.models import (
+    ActionTrigger,
     LLMConfig,
     PatchOp,
     RunActEvent,
@@ -101,9 +103,11 @@ class RunActUsecase:
         # 3. LLM Generate → stream as text_delta + append_md
         accumulated = ""
         seq = 0
+        function_calls: list[dict] = []
         try:
             async for chunk in self._llm.generate(bundle, llm_config):
                 if chunk.is_done:
+                    function_calls = chunk.function_calls
                     break
 
                 # Stream text_delta for live UI
@@ -142,6 +146,38 @@ class RunActUsecase:
                 ),
             )
             return
+
+        # 3b. Process function calls from the LLM
+        for fc in function_calls:
+            fc_name = fc.get("name", "")
+            fc_args = fc.get("args", {})
+
+            if fc_name == "suggest_deep_dives":
+                suggestions = fc_args.get("suggestions", [])
+                for i, suggestion in enumerate(suggestions):
+                    suggestion_node_id = f"{node_id}-suggest-{i}"
+                    yield RunActEvent(
+                        type="patch_ops",
+                        ops=[PatchOp(
+                            op="upsert",
+                            node_id=suggestion_node_id,
+                            content=suggestion.get("query", ""),
+                            kind="suggestion",
+                            parent_id=node_id,
+                            label=suggestion.get("label", ""),
+                        )],
+                    )
+                logger.info("suggest_deep_dives: %d suggestions yielded", len(suggestions))
+
+            elif fc_name == "start_act":
+                yield RunActEvent(
+                    type="action_trigger",
+                    action_triggers=[ActionTrigger(
+                        action="start_act",
+                        payload_json=json.dumps(fc_args, ensure_ascii=False),
+                    )],
+                )
+                logger.info("start_act triggered: %s", fc_args.get("user_message", "")[:80])
 
         # 4. Terminal done with trace metadata for frontend visibility.
         used_tools = ["assembly", "llm.generate"]

@@ -1088,8 +1088,16 @@ export function GraphCanvas() {
             x: event.clientX,
             y: event.clientY,
         });
-        addEmptyActNode(flowPosition);
-    }, [addEmptyActNode, reactFlowInstance]);
+
+        if (selectedNodeIds.length > 0) {
+            // Create act node at clicked position referencing currently selected nodes.
+            // isManualPosition: true prevents the overlay from overriding the user-chosen position.
+            const composerNodeId = addQueryActNode(flowPosition, '', { isManualPosition: true });
+            addOrUpdateActNode(composerNodeId, { referencedNodeIds: selectedNodeIds, kind: 'act', createdBy: 'user' });
+        } else {
+            addEmptyActNode(flowPosition);
+        }
+    }, [addEmptyActNode, addOrUpdateActNode, addQueryActNode, selectedNodeIds, reactFlowInstance]);
 
     const viewSignature = useMemo(
         () => JSON.stringify({
