@@ -33,6 +33,7 @@ import {
     getBoundingBoxForNodes,
 } from '@/services/camera/cameraService';
 
+import { ActTreeGroupNode } from './ActTreeGroupNode';
 import { BundledEdge } from './BundledEdge';
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
@@ -46,6 +47,7 @@ import {
     getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
+import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
@@ -273,6 +275,7 @@ const edgeTypes = {
 };
 
 const nodeTypes = {
+    actTreeGroup: ActTreeGroupNode,
     customTask: GraphNodeCardWithBoundary,
     selectionHeader: SelectionHeaderNodeCard,
     selectionNode: SelectionOptionNodeCard,
@@ -529,6 +532,7 @@ export function GraphCanvas() {
                     contextSummary: node.contextSummary,
                     detailHtml: node.detailHtml,
                     referencedNodeIds: node.referencedNodeIds,
+                    parentId: node.parentId,
                 },
             }));
             const graphState = useGraphStore.getState();
@@ -558,11 +562,18 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [setActGraph, topicId, workspaceId]);
 
-    // Strip act nodes down to layout-relevant fields only (topicId + label).
-    // This prevents streaming content updates from triggering layout recomputation.
-    const actNodesLayoutKey = (actNodes as GraphNodeBase[]).map((n) =>
-        `${n.id}:${n.data?.label ?? ''}:${(n.data?.topicId as string | undefined) ?? ''}`
-    ).join('|');
+    // Strip act nodes down to layout-relevant fields only.
+    // parentId and referencedNodeIds are included because they directly determine
+    // tree structure and Y anchors — changes to these must trigger layout recomputation.
+    const actNodesLayoutKey = (actNodes as GraphNodeBase[]).map((n) => {
+        const refs = Array.isArray(n.data?.referencedNodeIds)
+            ? (n.data.referencedNodeIds as unknown[])
+                .filter((v): v is string => typeof v === 'string')
+                .join(',')
+            : '';
+        const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
+        return `${n.id}:${n.data?.label ?? ''}:${(n.data?.topicId as string | undefined) ?? ''}:${parentId}:${refs}`;
+    }).join('|');
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({
         ...n,
@@ -587,9 +598,8 @@ export function GraphCanvas() {
             persistedEdges,
             persistedLayoutMode,
             deferredExpandedBranchNodeIds,
-            deferredActNodes,
         ),
-        [deferredActNodes, deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
 
@@ -632,9 +642,41 @@ export function GraphCanvas() {
         [actEdgesForRadial, actNodesForRadial, persistedEdges, persistedNodes],
     );
 
+    // Full act node data keyed by id. Used to restore fields stripped by actNodesForLayout
+    // (kind, contentMd, etc.) which are excluded from layout input to avoid streaming thrash.
+    const fullActNodeDataById = useMemo(
+        () => new Map((actNodes as GraphNodeBase[]).map((n) => [n.id, n.data])),
+        [actNodes],
+    );
+
+    // Parent → children map for act nodes (for tree navigation and edges).
+    const actChildrenByParent = useMemo(() => {
+        const map = new Map<string, string[]>();
+        for (const [id, data] of fullActNodeDataById) {
+            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
+            if (parentId) {
+                const arr = map.get(parentId) ?? [];
+                arr.push(id);
+                map.set(parentId, arr);
+            }
+        }
+        return map;
+    }, [fullActNodeDataById]);
+
+    // Rectangle-first act node layout: each tree gets a pre-allocated zone anchored to its
+    // referenced persisted node. Only active in orbit mode; radial uses RadialOverview instead.
+    const positionedActNodes = useMemo(() => {
+        if (persistedLayoutMode !== 'orbit') return [];
+        return projectActOverlay({
+            actNodes: deferredActNodes,
+            persistedNodes: persistedGraph.positionedNodes,
+            expandedNodeIds,
+        });
+    }, [deferredActNodes, expandedNodeIds, persistedGraph.positionedNodes, persistedLayoutMode]);
+
     const regularGraphNodes = useMemo(
-        () => persistedGraph.positionedNodes,
-        [persistedGraph.positionedNodes],
+        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
+        [persistedGraph.positionedNodes, positionedActNodes],
     );
 
     const selectionProjection = useMemo(
@@ -792,13 +834,6 @@ export function GraphCanvas() {
         return resolved;
     }, [persistedGraph.positionedNodes]);
 
-    // Full act node data keyed by id. Used to restore fields stripped by actNodesForLayout
-    // (kind, contentMd, etc.) which are excluded from layout input to avoid streaming thrash.
-    const fullActNodeDataById = useMemo(
-        () => new Map((actNodes as GraphNodeBase[]).map((n) => [n.id, n.data])),
-        [actNodes],
-    );
-
     // Descendants of activeNodeId (via parentId chain) for relation highlighting.
     const activeDescendantIds = useMemo(() => {
         if (!activeNodeId) return new Set<string>();
@@ -824,6 +859,22 @@ export function GraphCanvas() {
         }
         return descendants;
     }, [activeNodeId, fullActNodeDataById]);
+
+    // Navigate to an act node: expand it if collapsed, then pan camera to it.
+    // Defined before layoutAwareDisplayNodes so it can be injected into node data.
+    const handleNavigateToActNode = useCallback((nodeId: string) => {
+        if (!expandedNodeIds.includes(nodeId)) {
+            toggleExpandedNode(nodeId);
+        }
+        const target = reactFlowInstance.getNode(nodeId);
+        if (target) {
+            reactFlowInstance.setCenter(
+                target.position.x + 130,
+                target.position.y + 80,
+                { zoom: Math.max(reactFlowInstance.getZoom(), 1.0), duration: 450 },
+            );
+        }
+    }, [expandedNodeIds, reactFlowInstance, toggleExpandedNode]);
 
     const layoutAwareDisplayNodes = useMemo(() => {
         const now = Date.now();
@@ -872,6 +923,24 @@ export function GraphCanvas() {
                         : null
                 : null;
 
+            // Parent/child navigation chips for act nodes.
+            let childActNodes: Array<{ id: string; label: string }> | undefined;
+            let parentActNode: { id: string; label: string } | undefined;
+            if (node.data?.nodeSource === 'act') {
+                const childIds = actChildrenByParent.get(node.id) ?? [];
+                if (childIds.length > 0) {
+                    childActNodes = childIds.map((cid) => {
+                        const d = fullActNodeDataById.get(cid);
+                        return { id: cid, label: typeof d?.label === 'string' ? d.label : cid };
+                    });
+                }
+                const parentId = typeof fullActData?.parentId === 'string' ? fullActData.parentId : undefined;
+                if (parentId) {
+                    const pd = fullActNodeDataById.get(parentId);
+                    parentActNode = { id: parentId, label: typeof pd?.label === 'string' ? pd.label : parentId };
+                }
+            }
+
             return {
                 ...node,
                 data: {
@@ -882,10 +951,13 @@ export function GraphCanvas() {
                     rootHue,
                     ...(activityOpacity !== undefined ? { activityOpacity } : {}),
                     ...(activeRelation !== null ? { activeRelation } : {}),
+                    ...(childActNodes !== undefined ? { childActNodes } : {}),
+                    ...(parentActNode !== undefined ? { parentActNode } : {}),
+                    ...(node.data?.nodeSource === 'act' ? { onNavigateToNode: handleNavigateToActNode } : {}),
                 },
             };
         });
-    }, [activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -1056,9 +1128,6 @@ export function GraphCanvas() {
         );
 
         const expandedNodes = normalizedDisplayNodes.filter((node) => isExpandedNode(node));
-        if (expandedNodes.length === 0) {
-            return normalizedDisplayNodes;
-        }
 
         // Precompute expanded node bboxes once — avoids calling getDisplayNodeDimensions
         // M×N times (once per pair). Now expanded nodes are O(M), test nodes are O(N).
@@ -1076,7 +1145,7 @@ export function GraphCanvas() {
             const isSelected = selectedNodeIds.includes(node.id);
 
             let overlapsExpanded = false;
-            if (!isExpanded) {
+            if (!isExpanded && expandedNodes.length > 0) {
                 const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
                 overlapsExpanded = expandedBBoxes.some((bbox) => (
                     bbox.id !== node.id
@@ -1098,6 +1167,80 @@ export function GraphCanvas() {
         });
     }, [normalizedDisplayNodes, selectedNodeIds]);
 
+    // ── Act tree group rectangles ─────────────────────────────────────────────
+    // One background rectangle per user-created act node. Agent act nodes that
+    // descend from a user act node are included in that user node's rectangle.
+    // Agent nodes with no user ancestor are skipped (no rectangle for them).
+    const actTreeGroupNodes = useMemo(() => {
+        const GROUP_PAD = 20;
+        const HEADER_H = 28; // reserve space for the header stripe
+
+        const actDisplayNodes = emphasizedDisplayNodes.filter(
+            (n) => (n.data as Record<string, unknown>)?.nodeSource === 'act',
+        );
+        if (actDisplayNodes.length === 0) return [];
+
+        const actIdSet = new Set(actDisplayNodes.map((n) => n.id));
+
+        // Walk up parentId chain to find the nearest user-created act ancestor (or self).
+        // Returns null if no user ancestor exists (pure agent subtree with no user root).
+        const findUserOwner = (nodeId: string, seen = new Set<string>()): string | null => {
+            if (seen.has(nodeId)) return null; // cycle guard
+            seen.add(nodeId);
+            const data = fullActNodeDataById.get(nodeId);
+            if (!data) return null;
+            if (data.createdBy === 'user') return nodeId;
+            const parentId = typeof data.parentId === 'string' ? data.parentId : undefined;
+            if (parentId && actIdSet.has(parentId)) return findUserOwner(parentId, seen);
+            return null;
+        };
+
+        // Group all act nodes by their user-created owner.
+        const byOwner = new Map<string, typeof actDisplayNodes>();
+        for (const node of actDisplayNodes) {
+            const ownerId = findUserOwner(node.id);
+            if (!ownerId) continue; // agent node with no user ancestor → no rectangle
+            const group = byOwner.get(ownerId) ?? [];
+            group.push(node);
+            byOwner.set(ownerId, group);
+        }
+
+        // Build one rectangle per user-owned group.
+        const groupNodes: Node[] = [];
+        for (const [ownerId, nodes] of byOwner) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const node of nodes) {
+                const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                minX = Math.min(minX, node.position.x);
+                minY = Math.min(minY, node.position.y);
+                maxX = Math.max(maxX, node.position.x + width);
+                maxY = Math.max(maxY, node.position.y + height);
+            }
+
+            const ownerData = fullActNodeDataById.get(ownerId);
+            const label = typeof ownerData?.label === 'string' ? ownerData.label : '';
+
+            groupNodes.push({
+                id: `act-group-${ownerId}`,
+                type: 'actTreeGroup',
+                position: {
+                    x: minX - GROUP_PAD,
+                    y: minY - HEADER_H - GROUP_PAD,
+                },
+                data: {
+                    width: maxX - minX + GROUP_PAD * 2,
+                    height: maxY - minY + HEADER_H + GROUP_PAD * 2,
+                    label,
+                    nodeCount: nodes.length,
+                    createdBy: 'user',
+                },
+                selectable: false,
+                draggable: false,
+                focusable: false,
+            } as Node);
+        }
+        return groupNodes;
+    }, [emphasizedDisplayNodes, fullActNodeDataById]);
 
     const persistedParentById = useMemo(
         () => new Map(
@@ -1116,6 +1259,18 @@ export function GraphCanvas() {
             }
 
             const nodeById = new Map(emphasizedDisplayNodes.map((node) => [node.id, node]));
+
+            // Straight edges connecting act parent → child nodes
+            const actParentChildEdges: Edge[] = [];
+            for (const [parentId, childIds] of actChildrenByParent) {
+                for (const childId of childIds) {
+                    actParentChildEdges.push({
+                        id: `edge-act-${parentId}-${childId}`,
+                        source: parentId,
+                        target: childId,
+                    });
+                }
+            }
 
             // Precompute per-cluster centroids for edge bundling
             const clusterPoints = new Map<string, { x: number; y: number }[]>();
@@ -1139,7 +1294,7 @@ export function GraphCanvas() {
 
             return buildDisplayEdges(
                 [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
-                [...actEdges, ...selectionProjection.edges],
+                [...actEdges, ...actParentChildEdges, ...selectionProjection.edges],
             ).map((edge) => {
             const sourceNode = nodeById.get(edge.source);
             const targetNode = nodeById.get(edge.target);
@@ -1214,6 +1369,7 @@ export function GraphCanvas() {
             });
         },
         [
+            actChildrenByParent,
             actEdges,
             autoRouteEdgeHandles,
             emphasizedDisplayNodes,
@@ -1682,7 +1838,7 @@ export function GraphCanvas() {
                 </div>
             </div>
             <ReactFlow
-                nodes={emphasizedDisplayNodes as GraphNodeRender[]}
+                nodes={[...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[]}
                 edges={displayEdges}
                 defaultEdgeOptions={{
                     style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },

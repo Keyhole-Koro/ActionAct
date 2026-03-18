@@ -55,6 +55,7 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
     kind: readString(data.kind) ?? "act",
     createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
     topicId: readString(data.topicId),
+    parentId: readString(data.parentId),
     referencedNodeIds: readStringArray(data.referencedNodeIds),
     contentMd: readString(data.contentMd),
     contextSummary: readString(data.contextSummary),
@@ -84,7 +85,7 @@ export const actDraftService = {
     workspaceId: string,
     topicId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent' },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; parentId?: string },
   ) {
     await setDoc(
       draftDoc(workspaceId, topicId, nodeId),
@@ -96,6 +97,7 @@ export const actDraftService = {
         createdBy: draft.createdBy ?? "agent",
         contentMd: draft.contentMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
+        ...(draft.parentId !== undefined ? { parentId: draft.parentId } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastTouchedAt: serverTimestamp(),
@@ -114,6 +116,7 @@ export const actDraftService = {
       kind: patch.data?.kind ?? "act",
       createdBy: patch.data?.createdBy ?? "agent",
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],
+      ...(patch.data?.parentId !== undefined ? { parentId: patch.data.parentId } : {}),
       ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),

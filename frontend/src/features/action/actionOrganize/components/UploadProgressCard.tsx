@@ -21,7 +21,7 @@ export function UploadProgressList() {
     if (uploadTasks.length === 0) return null;
 
     return (
-        <div className="pointer-events-auto flex flex-col gap-1.5">
+        <div className="pointer-events-auto flex flex-col gap-1.5 max-h-[280px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200/50 hover:scrollbar-thumb-slate-300/50 transition-all">
             {uploadTasks.map((task) => (
                 <UploadProgressCard key={task.id} task={task} />
             ))}

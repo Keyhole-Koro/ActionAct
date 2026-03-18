@@ -166,6 +166,7 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
           referencedNodeIds: Array.isArray(node.data?.referencedNodeIds)
             ? node.data.referencedNodeIds.filter((value): value is string => typeof value === "string")
             : referencedNodeIds,
+          parentId: typeof node.data?.parentId === "string" ? node.data.parentId : undefined,
         });
       }),
     );

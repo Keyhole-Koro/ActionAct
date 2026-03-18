@@ -1,5 +1,6 @@
 import type { GraphNodeBase } from '@/features/graph/types';
 import {
+    GRAPH_ACT_NODE_HEIGHT,
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
     getLayoutDimensionsForNodeType,
@@ -13,10 +14,12 @@ type ProjectActOverlayParams = {
 
 // X distance from the rightmost persisted node to the first act lane
 const GLOBAL_X_OFFSET = 220;
-// Horizontal gap between lanes (lane 0, lane 1, lane 2, …)
+// Horizontal gap between lanes within a tree
 const LANE_WIDTH = 340;
-// Extra vertical gap between rows
+// Extra vertical gap between rows within a tree
 const ROW_GAP = 28;
+// Extra vertical gap between separate trees
+const TREE_GAP = 48;
 
 export function projectActOverlay({
     actNodes,
@@ -61,76 +64,89 @@ export function projectActOverlay({
         }
     }
 
-    // Roots: float nodes whose parentId is absent or outside floatNodes
+    // Roots: float nodes with no float-node parent
     const roots = floatNodes.filter((n) => {
         const parentId =
             typeof n.data?.parentId === 'string' ? n.data.parentId : undefined;
         return !parentId || !floatIds.has(parentId);
     });
 
-    // ── Lane assignment (DFS) ────────────────────────────────────────────────
-    // Each root gets a new lane. First child inherits parent lane (main branch
-    // continues straight). Each additional sibling gets a new lane (branch out).
-    const laneMap = new Map<string, number>();
-    let nextLane = 0;
+    // ── Per-tree layout ──────────────────────────────────────────────────────
+    // Lanes and rows are LOCAL to each tree so that independent trees don't
+    // force each other into ever-wider lane numbers.
 
-    function assignLanes(nodeId: string, lane: number): void {
-        laneMap.set(nodeId, lane);
-        const children = childrenMap.get(nodeId) ?? [];
-        for (let i = 0; i < children.length; i++) {
-            if (i === 0) {
-                // First child continues on the same lane
-                assignLanes(children[i], lane);
-            } else {
-                // Subsequent children branch onto new lanes
-                assignLanes(children[i], nextLane++);
+    const laneMap = new Map<string, number>();   // nodeId → local lane within its tree
+    const localRowMap = new Map<string, number>(); // nodeId → depth from its root
+    const rootOf = new Map<string, string>();      // nodeId → rootId
+
+    for (const root of roots) {
+        // ── DFS lane assignment (local, resets per tree) ──
+        let nextLocalLane = 0;
+
+        const assignLanes = (nodeId: string, lane: number): void => {
+            laneMap.set(nodeId, lane);
+            rootOf.set(nodeId, root.id);
+            const children = childrenMap.get(nodeId) ?? [];
+            for (let i = 0; i < children.length; i++) {
+                if (i === 0) {
+                    assignLanes(children[i], lane);       // first child: same lane
+                } else {
+                    assignLanes(children[i], nextLocalLane++); // siblings: new lane
+                }
+            }
+        };
+
+        assignLanes(root.id, nextLocalLane++);
+
+        // ── BFS local row assignment ──
+        const bfsQueue = [root.id];
+        localRowMap.set(root.id, 0);
+        let qi = 0;
+        while (qi < bfsQueue.length) {
+            const nodeId = bfsQueue[qi++];
+            const row = localRowMap.get(nodeId)!;
+            for (const childId of childrenMap.get(nodeId) ?? []) {
+                if (!localRowMap.has(childId)) {
+                    localRowMap.set(childId, row + 1);
+                    bfsQueue.push(childId);
+                }
             }
         }
     }
 
-    for (const root of roots) {
-        assignLanes(root.id, nextLane++);
-    }
-
-    // ── Row assignment (BFS from all roots simultaneously) ───────────────────
-    const rowMap = new Map<string, number>();
-    const queue: string[] = [];
-
-    for (const root of roots) {
-        rowMap.set(root.id, 0);
-        queue.push(root.id);
-    }
-
-    let qi = 0;
-    while (qi < queue.length) {
-        const nodeId = queue[qi++];
-        const row = rowMap.get(nodeId)!;
-        for (const childId of childrenMap.get(nodeId) ?? []) {
-            if (!rowMap.has(childId)) {
-                rowMap.set(childId, row + 1);
-                queue.push(childId);
-            }
-        }
-    }
-
-    // ── Dynamic row heights ──────────────────────────────────────────────────
-    const maxRow = Math.max(0, ...Array.from(rowMap.values()));
-    const rowHeights = new Array<number>(maxRow + 1).fill(0);
-
+    // ── Per-tree row heights ─────────────────────────────────────────────────
+    const rowHeightsPerRoot = new Map<string, number[]>();
     for (const node of floatNodes) {
-        const row = rowMap.get(node.id) ?? 0;
+        const rootId = rootOf.get(node.id);
+        if (!rootId) continue;
+        const localRow = localRowMap.get(node.id) ?? 0;
         const { height } = getNodeDimensions(node, expandedSet.has(node.id));
-        rowHeights[row] = Math.max(rowHeights[row], height);
+        const heights = rowHeightsPerRoot.get(rootId) ?? [];
+        while (heights.length <= localRow) heights.push(0);
+        heights[localRow] = Math.max(heights[localRow], height);
+        rowHeightsPerRoot.set(rootId, heights);
     }
 
-    // Cumulative Y offsets per row (row 0 starts at 0)
-    const rowYOffset = new Array<number>(maxRow + 1).fill(0);
-    for (let r = 1; r <= maxRow; r++) {
-        rowYOffset[r] = rowYOffset[r - 1] + rowHeights[r - 1] + ROW_GAP;
+    // ── Per-tree cumulative Y offsets ────────────────────────────────────────
+    const rowYOffsetsPerRoot = new Map<string, number[]>();
+    for (const [rootId, heights] of rowHeightsPerRoot) {
+        const offsets = [0];
+        for (let r = 1; r < heights.length; r++) {
+            offsets.push(offsets[r - 1] + heights[r - 1] + ROW_GAP);
+        }
+        rowYOffsetsPerRoot.set(rootId, offsets);
     }
 
-    // ── Y anchor: center-of-mass of all referenced persisted nodes ───────────
-    const anchorYs: number[] = [];
+    // Total pixel height of a tree
+    const getTreeHeight = (rootId: string): number => {
+        const heights = rowHeightsPerRoot.get(rootId) ?? [GRAPH_ACT_NODE_HEIGHT];
+        const offsets = rowYOffsetsPerRoot.get(rootId) ?? [0];
+        return offsets[offsets.length - 1] + heights[heights.length - 1];
+    };
+
+    // ── Anchor Y per root (center of primary referenced persisted node) ───────
+    const anchorYPerRoot = new Map<string, number>();
+    let fallbackY = 200;
     for (const root of roots) {
         const referencedIds: string[] = Array.isArray(root.data?.referencedNodeIds)
             ? (root.data.referencedNodeIds as unknown[]).filter(
@@ -140,30 +156,78 @@ export function projectActOverlay({
         const anchor = referencedIds.map((id) => persistedById.get(id)).find(Boolean);
         if (anchor) {
             const ad = getNodeDimensions(anchor, expandedSet.has(anchor.id));
-            anchorYs.push(anchor.position.y + ad.height / 2);
+            anchorYPerRoot.set(root.id, anchor.position.y + ad.height / 2);
+        } else {
+            anchorYPerRoot.set(root.id, fallbackY);
+            fallbackY += getTreeHeight(root.id) + TREE_GAP;
         }
     }
 
-    const totalLayoutHeight =
-        rowYOffset[maxRow] + rowHeights[maxRow];
+    // ── Sort roots by anchor Y, assign final Y origins (bidirectional relaxation) ─
+    const sortedRoots = [...roots].sort(
+        (a, b) => (anchorYPerRoot.get(a.id) ?? 0) - (anchorYPerRoot.get(b.id) ?? 0),
+    );
 
-    const baseY =
-        anchorYs.length > 0
-            ? anchorYs.reduce((a, b) => a + b, 0) / anchorYs.length -
-              totalLayoutHeight / 2
-            : 100;
+    const idealYOf = (rootId: string): number => {
+        const anchorY = anchorYPerRoot.get(rootId) ?? 200;
+        const firstRowH = (rowHeightsPerRoot.get(rootId) ?? [GRAPH_ACT_NODE_HEIGHT])[0];
+        return anchorY - firstRowH / 2;
+    };
 
+    // Initialize at ideal positions
+    const treeOriginY = new Map<string, number>();
+    for (const root of sortedRoots) {
+        treeOriginY.set(root.id, idealYOf(root.id));
+    }
+
+    // Alternate forward (push down) + backward (pull toward ideal) passes.
+    // Forward ensures trees don't overlap the tree above.
+    // Backward pulls trees that were shoved down back toward their anchor.
+    // 3 iterations converges for typical layouts.
+    for (let iter = 0; iter < 3; iter++) {
+        // Forward: push down if overlapping tree above
+        let prevBottom = -Infinity;
+        for (const root of sortedRoots) {
+            const y = Math.max(treeOriginY.get(root.id)!, prevBottom + TREE_GAP);
+            treeOriginY.set(root.id, y);
+            prevBottom = y + getTreeHeight(root.id);
+        }
+
+        // Backward: pull toward ideal, constrained only by tree below
+        let nextTop = Infinity;
+        for (let i = sortedRoots.length - 1; i >= 0; i--) {
+            const root = sortedRoots[i];
+            const maxAllowed = nextTop - TREE_GAP - getTreeHeight(root.id);
+            // Go to idealY if room permits; otherwise as high as maxAllowed allows
+            const newY = Math.min(idealYOf(root.id), maxAllowed);
+            treeOriginY.set(root.id, newY);
+            nextTop = newY;
+        }
+    }
+
+    // Final forward pass: guarantee no overlap from above after backward pulls
+    let finalPrevBottom = -Infinity;
+    for (const root of sortedRoots) {
+        const y = Math.max(treeOriginY.get(root.id)!, finalPrevBottom + TREE_GAP);
+        treeOriginY.set(root.id, y);
+        finalPrevBottom = y + getTreeHeight(root.id);
+    }
+
+    // ── Final positions ──────────────────────────────────────────────────────
     const baseX = maxPersistedRight + GLOBAL_X_OFFSET;
 
-    // ── Map back to graph nodes ──────────────────────────────────────────────
     const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
         const lane = laneMap.get(node.id) ?? 0;
-        const row = rowMap.get(node.id) ?? 0;
+        const rootId = rootOf.get(node.id) ?? roots[0]?.id ?? '';
+        const localRow = localRowMap.get(node.id) ?? 0;
+        const offsets = rowYOffsetsPerRoot.get(rootId) ?? [0];
+        const originY = treeOriginY.get(rootId) ?? 0;
+
         return {
             ...node,
             position: {
                 x: baseX + lane * LANE_WIDTH,
-                y: baseY + rowYOffset[row],
+                y: originY + (offsets[localRow] ?? 0),
             },
             data: { ...node.data, overlayPositioned: true },
         };
