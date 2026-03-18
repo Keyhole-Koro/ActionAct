@@ -42,8 +42,8 @@ else:
     raise RuntimeError("GOOGLE_API_KEY or VERTEX_USE_REAL_API=true is required")
 
 # Discord store (agentic RAG over raw Discord messages in Firestore)
-discord_store = DiscordStore(project=config.google_cloud_project)
-logger.info("DiscordStore initialized for project=%s", config.google_cloud_project)
+discord_store = DiscordStore(project=config.google_cloud_project, bucket=config.gcs_discord_bucket)
+logger.info("DiscordStore initialized project=%s bucket=%s", config.google_cloud_project, config.gcs_discord_bucket)
 
 # Usecase
 usecase = RunActUsecase(assembly=assembly, llm=llm, discord_store=discord_store)

@@ -10,9 +10,11 @@ class Config:
     google_cloud_project: str
     vertex_use_real_api: bool
     google_api_key: str | None
+    gcs_discord_bucket: str
 
     def __init__(self):
         self.port = os.getenv("PORT", "8000")
         self.google_cloud_project = os.getenv("GOOGLE_CLOUD_PROJECT", "local-dev")
         self.vertex_use_real_api = os.getenv("VERTEX_USE_REAL_API", "false").lower() == "true"
         self.google_api_key = os.getenv("GOOGLE_API_KEY") or None
+        self.gcs_discord_bucket = os.getenv("GCS_DISCORD_BUCKET", "discord-logs-dev")
