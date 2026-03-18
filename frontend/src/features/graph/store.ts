@@ -21,6 +21,8 @@ interface GraphState {
     nodeLastUsedAt: Record<string, number>;
     nodeUseCount: Record<string, number>;
     pinnedExpandedNodeIds: string[];
+    previewInputId: string | null;
+    previewWorkspaceId: string | null;
 
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
@@ -41,6 +43,7 @@ interface GraphState {
     pinExpandedNode: (nodeId: string) => void;
     unpinExpandedNode: (nodeId: string) => void;
     collapseUnusedNodes: (nowMs: number, thresholdMs: number) => void;
+    setFilePreview: (workspaceId: string | null, inputId: string | null) => void;
 
     addOrUpdateActNode: (nodeId: string, payload: {
         label?: string;
@@ -149,6 +152,8 @@ export const useGraphStore = create<GraphState>((set) => ({
     nodeLastUsedAt: {},
     nodeUseCount: {},
     pinnedExpandedNodeIds: [],
+    previewInputId: null,
+    previewWorkspaceId: null,
 
     setSelectedNodes: (ids) => set((state) => {
         const nextIds = uniqueIds(ids).sort();
@@ -303,6 +308,10 @@ export const useGraphStore = create<GraphState>((set) => ({
     unpinExpandedNode: (nodeId) => set((state) => ({
         pinnedExpandedNodeIds: state.pinnedExpandedNodeIds.filter((id) => id !== nodeId),
     })),
+    setFilePreview: (workspaceId, inputId) => set({
+        previewWorkspaceId: workspaceId,
+        previewInputId: inputId,
+    }),
     collapseUnusedNodes: (nowMs, thresholdMs) => set((state) => {
         const pinnedSet = new Set(state.pinnedExpandedNodeIds);
         const streamingSet = new Set(state.streamingNodeIds);

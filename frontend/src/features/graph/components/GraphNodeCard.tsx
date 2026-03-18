@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, NodeProps, useUpdateNodeInternals } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
     Play,
     RotateCcw,
@@ -15,6 +17,10 @@ import {
     Loader2,
     Code,
     FileText,
+    ExternalLink,
+    Wrench,
+    Network,
+    Globe,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
@@ -99,6 +105,15 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
     const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
     const hasRunTrace = usedContextNodeIds.length > 0 || usedTools.length > 0 || usedSources.length > 0;
+    const [runTraceOpen, setRunTraceOpen] = useState(false);
+    const nodeContextLabelMap = React.useMemo(() => {
+        const map: Record<string, string> = {};
+        const ctxs = Array.isArray(data.usedSelectedNodeContexts) ? data.usedSelectedNodeContexts : [];
+        for (const ctx of ctxs) {
+            if (ctx.nodeId && ctx.label) map[ctx.nodeId] = ctx.label;
+        }
+        return map;
+    }, [data.usedSelectedNodeContexts]);
     const retryQuery = typeof data.label === 'string' ? data.label.trim() : '';
     const canRetry = isActNode && retryQuery.length > 0 && typeof data.onRunAction === 'function' && !isNodeStreaming;
     const actStageLabel = actStage === 'thinking'
@@ -279,27 +294,34 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
 
                     {/* ── Collapsed header ── */}
                     {!isExpanded && (
-                        <div className={`relative flex items-center gap-2 pl-5 pr-3.5 py-2.5 ${hasChildNodes ? 'pr-10' : ''}`}>
-                            <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${statusDot}`} />
-                            {isEditing ? (
-                                <input
-                                    ref={inputRef}
-                                    value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
-                                    onBlur={commitEdit}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Ask a question..."
-                                    className="flex-1 min-w-0 bg-transparent border-b border-primary outline-none text-[14px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-0.5"
-                                />
-                            ) : (
-                                <h3 className="flex-1 min-w-0 truncate text-[14px] font-semibold leading-snug text-slate-800">
-                                    {data.label || <span className="font-normal italic text-slate-400">Ask a question…</span>}
-                                </h3>
-                            )}
-                            {hasReferences && (
-                                <span className="shrink-0 rounded-full border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-600 tabular-nums">
-                                    {referencedNodes.length}
-                                </span>
+                        <div className={`relative flex flex-col gap-1 pl-5 pr-3.5 py-2.5 ${hasChildNodes ? 'pr-10' : ''}`}>
+                            <div className="flex items-center gap-2">
+                                <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${statusDot}`} />
+                                {isEditing ? (
+                                    <input
+                                        ref={inputRef}
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onBlur={commitEdit}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="Ask a question..."
+                                        className="flex-1 min-w-0 bg-transparent border-b border-primary outline-none text-[14px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-0.5"
+                                    />
+                                ) : (
+                                    <h3 className="flex-1 min-w-0 truncate text-[14px] font-semibold leading-snug text-slate-800">
+                                        {data.label || <span className="font-normal italic text-slate-400">Ask a question…</span>}
+                                    </h3>
+                                )}
+                                {hasReferences && (
+                                    <span className="shrink-0 rounded-full border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-600 tabular-nums">
+                                        {referencedNodes.length}
+                                    </span>
+                                )}
+                            </div>
+                            {actStage === 'ready' && data.contentMd && (
+                                <p className="ml-4 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                                    {data.contentMd.slice(0, 120)}
+                                </p>
                             )}
                         </div>
                     )}
@@ -394,9 +416,17 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                     </p>
                                 )}
                                 {data.contentMd && (
-                                    <div className="text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap">
-                                        {data.contentMd}
+                                    <div className="prose prose-sm max-w-none text-slate-700 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:text-[13px] [&_p]:leading-relaxed [&_li]:text-[13px] [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-semibold [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px] [&_pre]:bg-slate-100 [&_pre]:rounded-md [&_pre]:p-2.5 [&_pre]:overflow-x-auto [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-500 [&_a]:text-blue-600 [&_a]:underline [&_table]:text-[12px] [&_th]:font-semibold [&_th]:text-left [&_th]:py-1 [&_td]:py-1">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {data.contentMd}
+                                        </ReactMarkdown>
                                     </div>
+                                )}
+                                {data.detailHtml && !data.contentMd && (
+                                    <div
+                                        className="text-[13px] leading-relaxed text-slate-700 [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_h1]:font-bold [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                                        dangerouslySetInnerHTML={{ __html: data.detailHtml }}
+                                    />
                                 )}
                                 {showThoughts && data.thoughtMd && (
                                     <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
@@ -406,18 +436,70 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                         </div>
                                     </div>
                                 )}
-                                {/* Run trace */}
+                                {/* Run trace — collapsible */}
                                 {hasRunTrace && (
-                                    <div className="mt-3 rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-2">
-                                        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Run Trace</p>
-                                        {usedTools.length > 0 && (
-                                            <p className="mt-1 text-[11px] text-slate-600">tools: {usedTools.join(', ')}</p>
-                                        )}
-                                        {usedContextNodeIds.length > 0 && (
-                                            <p className="mt-1 text-[11px] text-slate-600">nodes: {usedContextNodeIds.join(', ')}</p>
-                                        )}
-                                        {usedSources.length > 0 && (
-                                            <p className="mt-1 text-[11px] text-slate-600">sources: {usedSources.map((s) => s.label || s.id).join(', ')}</p>
+                                    <div className="mt-3 rounded-md border border-slate-200/80 bg-slate-50/70">
+                                        <button
+                                            type="button"
+                                            className="nodrag flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+                                            onClick={(e) => { e.stopPropagation(); setRunTraceOpen((v) => !v); }}
+                                        >
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Run Trace</span>
+                                            <ChevronDown className={`ml-auto h-3 w-3 text-slate-400 transition-transform duration-200 ${runTraceOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {runTraceOpen && (
+                                            <div className="border-t border-slate-200/80 px-2.5 pb-2 pt-1.5 flex flex-col gap-1.5">
+                                                {usedTools.length > 0 && (
+                                                    <div className="flex flex-wrap items-start gap-1">
+                                                        <Wrench className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {usedTools.map((tool) => (
+                                                                <span key={tool} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                                                                    {tool}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {usedContextNodeIds.length > 0 && (
+                                                    <div className="flex flex-wrap items-start gap-1">
+                                                        <Network className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {usedContextNodeIds.map((nid) => (
+                                                                <span key={nid} className="rounded border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] text-teal-700">
+                                                                    {nodeContextLabelMap[nid] ?? nid}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {usedSources.length > 0 && (
+                                                    <div className="flex flex-wrap items-start gap-1">
+                                                        <Globe className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {usedSources.map((s) => (
+                                                                s.uri ? (
+                                                                    <a
+                                                                        key={s.id}
+                                                                        href={s.uri}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="nodrag flex items-center gap-0.5 rounded border border-blue-200/80 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700 hover:bg-blue-100 transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        {s.label || s.id}
+                                                                        <ExternalLink className="h-2.5 w-2.5 opacity-70" />
+                                                                    </a>
+                                                                ) : (
+                                                                    <span key={s.id} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                                                                        {s.label || s.id}
+                                                                    </span>
+                                                                )
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 )}

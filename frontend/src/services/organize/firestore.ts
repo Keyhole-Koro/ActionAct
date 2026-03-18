@@ -86,6 +86,7 @@ function mapTopicNode(
   return {
     id: nodeId,
     topicId,
+    inputId: readString(data.sourceInputId),
     title: readString(data.title) ?? nodeId,
     kind: readString(data.kind),
     parentId: readString(data.parentId),

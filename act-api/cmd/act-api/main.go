@@ -154,7 +154,7 @@ func main() {
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
 	mux.Handle(path, connectHandler)
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
-	mux.Handle("/api/upload", uploadHandler)
+	uploadHandler.Register(mux)
 	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
 	mux.Handle("/api/workspace/visibility", workspaceVisibilityHandler)
 	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)

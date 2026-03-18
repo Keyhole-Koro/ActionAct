@@ -37,6 +37,8 @@ import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import { SelectedNodePanel } from './SelectedNodePanel';
+import { FilePreviewPanel } from './FilePreviewPanel';
+import { SearchBar } from './SearchBar';
 import {
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
@@ -478,6 +480,7 @@ export function GraphCanvas() {
                     nodeSource: 'persisted',
                     createdBy: node.createdBy,
                     topicId: node.topicId,
+                    inputId: node.inputId,
                     label: node.title,
                     kind: node.kind,
                     contextSummary: node.contextSummary,
@@ -1634,8 +1637,10 @@ export function GraphCanvas() {
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             {layoutToggle}
             {recentClickedSelector}
+            <SearchBar />
             <GraphToolbar />
             <SelectedNodePanel />
+            <FilePreviewPanel />
             <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
                 <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">
                     <div>

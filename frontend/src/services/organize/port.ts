@@ -8,6 +8,7 @@ export interface EvidenceRef {
 export interface TopicNode {
     id: string;
     topicId?: string;
+    inputId?: string;
     title: string;
     kind?: string;
     createdBy?: 'user' | 'agent';

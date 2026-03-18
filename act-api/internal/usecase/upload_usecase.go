@@ -120,6 +120,41 @@ func (u *UploadUsecase) Execute(
 	}
 }
 
+func (u *UploadUsecase) DownloadInput(
+	ctx context.Context,
+	authHeader string,
+	workspaceID string,
+	inputID string,
+) (*domain.DownloadResult, error) {
+	// 1. Auth verification
+	_, err := u.authVerifier.VerifyToken(ctx, authHeader)
+	if err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
+	}
+
+	// 2. Retrieve metadata from Firestore
+	detail, err := u.inputRecorder.GetInput(ctx, workspaceID, inputID)
+	if err != nil {
+		return nil, fmt.Errorf("get input: %w", err)
+	}
+
+	// 3. Download from GCS
+	if detail.GCSUri == "" {
+		return nil, fmt.Errorf("no GCS URI found for input")
+	}
+
+	data, err := u.storage.Download(ctx, detail.GCSUri)
+	if err != nil {
+		return nil, fmt.Errorf("storage download: %w", err)
+	}
+
+	return &domain.DownloadResult{
+		Content:     data,
+		ContentType: detail.ContentType,
+		Filename:    detail.OriginalFilename,
+	}, nil
+}
+
 func (u *UploadUsecase) processFile(
 	ctx context.Context,
 	workspaceID string,

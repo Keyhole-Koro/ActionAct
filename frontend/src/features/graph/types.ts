@@ -17,6 +17,7 @@ export type BaseNodeData = {
     nodeSource?: 'persisted' | 'act';
     createdBy?: 'user' | 'agent';
     topicId?: string;
+    inputId?: string;
     label: string;
     kind?: string;
     actions?: GraphNodeAction[];
