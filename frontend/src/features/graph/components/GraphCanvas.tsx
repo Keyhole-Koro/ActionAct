@@ -437,6 +437,7 @@ export function GraphCanvas() {
     const selectionComposerNodeIdRef = useRef<string | null>(null);
     const recentStorageKey = workspaceId ? `graph.recentClickedNodeIds.${workspaceId}` : null;
     const [recentClickedNodeIds, setRecentClickedNodeIds] = React.useState<string[]>([]);
+    const [customNodeSizes, setCustomNodeSizes] = React.useState<Map<string, { width: number; height: number }>>(new Map());
 
     // Load from localStorage when workspaceId becomes available
     const loadedWorkspaceIdRef = useRef<string | null>(null);
@@ -447,9 +448,11 @@ export function GraphCanvas() {
         try {
             const stored = window.localStorage.getItem(`graph.recentClickedNodeIds.${workspaceId}`);
             if (stored) setRecentClickedNodeIds(JSON.parse(stored) as string[]);
-        } catch {
-            // ignore
-        }
+        } catch { /* ignore */ }
+        try {
+            const storedSizes = window.localStorage.getItem(`graph.nodeSizes.${workspaceId}`);
+            if (storedSizes) setCustomNodeSizes(new Map(JSON.parse(storedSizes) as [string, { width: number; height: number }][]));
+        } catch { /* ignore */ }
     }, [workspaceId]);
     useLayoutEffect(() => {
         selectedNodeIdsRef.current = selectedNodeIds;
@@ -714,6 +717,17 @@ export function GraphCanvas() {
         });
     }, [recentStorageKey]);
 
+    const handleNodeResize = useCallback((nodeId: string, width: number, height: number) => {
+        setCustomNodeSizes((prev) => {
+            const next = new Map(prev);
+            next.set(nodeId, { width, height });
+            if (typeof window !== 'undefined' && workspaceId) {
+                try { window.localStorage.setItem(`graph.nodeSizes.${workspaceId}`, JSON.stringify([...next])); } catch { /* ignore quota errors */ }
+            }
+            return next;
+        });
+    }, [workspaceId]);
+
     useEffect(() => {
         if (referenceableNodeById.size === 0) return; // nodes not yet loaded, don't wipe localStorage-restored ids
         setRecentClickedNodeIds((previous) => previous.filter((id) => referenceableNodeById.has(id)));
@@ -797,19 +811,20 @@ export function GraphCanvas() {
     const canvasNodes = useMemo(
         () => [
             ...displayNodes.map((node) => {
-                if (node.data.nodeSource !== 'persisted' || node.data.kind !== 'topic') return node;
-                return {
-                    ...node,
-                    data: {
-                        ...node.data,
+                const customSize = customNodeSizes.get(node.id);
+                const extraData: Record<string, unknown> = {
+                    onResize: (w: number, h: number) => handleNodeResize(node.id, w, h),
+                    ...(customSize !== undefined ? { customWidth: customSize.width, customHeight: customSize.height } : {}),
+                    ...(node.data.nodeSource === 'persisted' && node.data.kind === 'topic' ? {
                         briefGenerating: briefGeneratingNodeIds.has(node.id),
                         onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
-                    },
+                    } : {}),
                 };
+                return { ...node, data: { ...node.data, ...extraData } };
             }),
             ...selectionProjection.nodes,
         ],
-        [briefGeneratingNodeIds, displayNodes, handleGenerateBrief, selectionProjection.nodes],
+        [briefGeneratingNodeIds, customNodeSizes, displayNodes, handleGenerateBrief, handleNodeResize, selectionProjection.nodes],
     );
 
     // Computed early so both layoutAwareDisplayNodes and displayEdges can share it.
@@ -1872,6 +1887,17 @@ export function GraphCanvas() {
                         } else {
                             setSelectedNodes([...currentIds, node.id]);
                             setActiveNode(node.id);
+                        }
+                        return;
+                    }
+
+                    // Draft or suggestion act node: click to run
+                    const nodeKind = node.data?.kind as string | undefined;
+                    const actStage = node.data?.actStage as string | undefined;
+                    if ((nodeKind === 'suggestion' || actStage === 'draft') && !isStreaming) {
+                        const query = ((node.data?.contentMd as string | undefined) || (node.data?.label as string | undefined) || '').trim();
+                        if (query) {
+                            void commands.runActFromNode(node.id, query);
                         }
                         return;
                     }

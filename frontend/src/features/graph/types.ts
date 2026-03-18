@@ -71,6 +71,9 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     onAddMedia?: (file: File) => Promise<void> | void;
     onGenerateBrief?: () => void;
     briefGenerating?: boolean;
+    customWidth?: number;
+    customHeight?: number;
+    onResize?: (width: number, height: number) => void;
 };
 
 export type GraphNodeBase = Node<GraphNodeBaseData>;

@@ -81,22 +81,22 @@ export function projectActOverlay({
 
     for (const root of roots) {
         // ── DFS lane assignment (local, resets per tree) ──
-        let nextLocalLane = 0;
-
-        const assignLanes = (nodeId: string, lane: number): void => {
-            laneMap.set(nodeId, lane);
+        // Returns the next available lane after this subtree.
+        // First child inherits the parent's lane (vertical chain);
+        // subsequent siblings start immediately after their predecessor's subtree.
+        const assignLanes = (nodeId: string, startLane: number): number => {
+            laneMap.set(nodeId, startLane);
             rootOf.set(nodeId, root.id);
             const children = childrenMap.get(nodeId) ?? [];
+            if (children.length === 0) return startLane + 1;
+            let nextLane = startLane;
             for (let i = 0; i < children.length; i++) {
-                if (i === 0) {
-                    assignLanes(children[i], lane);       // first child: same lane
-                } else {
-                    assignLanes(children[i], nextLocalLane++); // siblings: new lane
-                }
+                nextLane = assignLanes(children[i], i === 0 ? startLane : nextLane);
             }
+            return nextLane;
         };
 
-        assignLanes(root.id, nextLocalLane++);
+        assignLanes(root.id, 0);
 
         // ── BFS local row assignment ──
         const bfsQueue = [root.id];

@@ -1,14 +1,13 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { Handle, Position, NodeProps, useUpdateNodeInternals, NodeResizeControl } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
     Play,
-    RotateCcw,
     ChevronRight,
     ChevronDown,
     Bot,
@@ -91,10 +90,13 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
-    const cardWidth = isActNode
+    const [liveResizeWidth, setLiveResizeWidth] = React.useState<number | null>(null);
+    const [liveResizeHeight, setLiveResizeHeight] = React.useState<number | null>(null);
+    const cardWidth = liveResizeWidth ?? data.customWidth ?? (isActNode
         ? (isExpanded ? expandedTitleWidth : collapsedTitleWidth)
-        : (isExpanded ? expandedTitleWidth : collapsedTitleWidth);
-    const cardMaxWidth = isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH;
+        : (isExpanded ? expandedTitleWidth : collapsedTitleWidth));
+    const cardExplicitHeight = liveResizeHeight ?? data.customHeight ?? undefined;
+    const cardMaxWidth = data.customWidth ?? (isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH);
     const expandedMaxHeight = isActNode ? GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT : GRAPH_NODE_EXPANDED_MAX_HEIGHT;
     const { height: cardHeight } = getLayoutDimensionsForNodeType(type, isExpanded, data.kind);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -119,8 +121,6 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
         }
         return map;
     }, [data.usedSelectedNodeContexts]);
-    const retryQuery = typeof data.label === 'string' ? data.label.trim() : '';
-    const canRetry = isActNode && retryQuery.length > 0 && typeof data.onRunAction === 'function' && !isNodeStreaming;
     const actStageLabel = actStage === 'thinking'
         ? 'Thinking'
         : actStage === 'ready'
@@ -255,6 +255,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                         width: cardWidth,
                         minWidth: ACT_NODE_COMPACT_WIDTH,
                         maxWidth: cardMaxWidth,
+                        ...(cardExplicitHeight !== undefined ? { height: cardExplicitHeight, overflow: 'hidden' } : {}),
                         ...(activityOpacity !== undefined ? { opacity: activityOpacity } : {}),
                     }}
                     className={[
@@ -404,7 +405,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                             {/* Referenced nodes */}
                             {referencedNodes.length > 0 && (
                                 <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                                    <span className="text-[10px] font-medium text-slate-400">via</span>
+                                    <span className="text-[9px] font-medium text-slate-300">via</span>
                                     {referencedNodes.slice(0, 3).map((node) => (
                                         <button
                                             key={node.id}
@@ -589,21 +590,29 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                                 {action.label}
                                             </Button>
                                         ))}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className={['h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all group/btn', canRetry ? '' : 'opacity-40 pointer-events-none'].join(' ')}
-                                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (canRetry) data.onRunAction?.(retryQuery); }}
-                                        >
-                                            <RotateCcw className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 transition-all" />
-                                            Retry
-                                        </Button>
                                     </div>
                                 )}
                             </div>
                         </div>
                     )}
                 </div>
+
+                {/* Resize handle — bottom-right, only when expanded */}
+                {isExpanded && data.onResize && (
+                    <NodeResizeControl
+                        position="bottom-right"
+                        minWidth={200}
+                        maxWidth={800}
+                        minHeight={80}
+                        onResize={(_, params) => { setLiveResizeWidth(params.width); setLiveResizeHeight(params.height); }}
+                        onResizeEnd={(_, params) => { setLiveResizeWidth(null); setLiveResizeHeight(null); data.onResize!(params.width, params.height); }}
+                        style={{ background: 'transparent', border: 'none', width: 16, height: 16, right: 2, bottom: 2, cursor: 'se-resize' }}
+                    >
+                        <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0 right-0 text-slate-300 hover:text-slate-500 transition-colors cursor-se-resize">
+                            <path d="M9 1L1 9M9 5L5 9M9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                    </NodeResizeControl>
+                )}
 
                 {/* Handles */}
                 <Handle type="target" id="target-left" position={targetPosition ?? Position.Left} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
@@ -1057,30 +1066,6 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                             <FileUp className="w-3.5 h-3.5 mr-1.5" />
                                         )}
                                         Add Media
-                                    </Button>
-                                </div>
-                            )}
-                            {isActNode && (
-                                <div className={`flex flex-wrap gap-2 ${isDraftAct && !hasActionButtons && !hasBodyText ? 'mt-0 pt-0' : `border-t border-border/20 ${isActNode ? 'mt-3 pt-2.5' : 'mt-4 pt-3'}`}`}>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className={[
-                                            `${isActNode ? 'h-7 text-[11px] px-2.5 rounded-md' : 'h-8 text-xs px-3 rounded-lg'} font-semibold shadow-sm border border-border/50`,
-                                            'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
-                                            'transition-all duration-300 group/btn',
-                                            canRetry ? '' : 'opacity-50 pointer-events-none',
-                                        ].join(' ')}
-                                        onClick={(e: React.MouseEvent) => {
-                                            e.stopPropagation();
-                                            if (!canRetry) {
-                                                return;
-                                            }
-                                            data.onRunAction?.(retryQuery);
-                                        }}
-                                    >
-                                        <RotateCcw className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
-                                        Retry
                                     </Button>
                                 </div>
                             )}
