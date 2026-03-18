@@ -3,15 +3,13 @@
 import React from 'react';
 import { useAuthState } from '@/features/auth/hooks/useAuthState';
 import { signOutCurrentUser } from '@/services/firebase/auth';
-import { LogOut, Settings, Languages } from 'lucide-react';
+import { LogOut, Settings, Languages, ChevronDown } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuGroup,
     DropdownMenuItem,
     DropdownMenuLabel,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -25,10 +23,20 @@ import {
 } from '@/lib/response-language-preference';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 
-export function UserAvatar({ className }: { className?: string }) {
+export function UserAvatar({
+    className,
+    dropdownSide = "top",
+    dropdownAlign = "start",
+}: {
+    className?: string;
+    dropdownSide?: "top" | "bottom" | "left" | "right";
+    dropdownAlign?: "start" | "center" | "end";
+}) {
     const { user } = useAuthState();
     const [language, setLanguage] = React.useState<ResponseLanguage>("ja");
     const [menuOpen, setMenuOpen] = React.useState(false);
+    const [accountOpen, setAccountOpen] = React.useState(false);
+    const [userSettingsOpen, setUserSettingsOpen] = React.useState(false);
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
     const closeTimerRef = React.useRef<number | null>(null);
@@ -106,8 +114,8 @@ export function UserAvatar({ className }: { className?: string }) {
                 </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-                align="start"
-                side="top"
+                align={dropdownAlign}
+                side={dropdownSide}
                 className="w-56 p-2 rounded-xl shadow-lg border-border/40 mb-2 ml-2"
                 onMouseEnter={openMenu}
                 onMouseLeave={scheduleCloseMenu}
@@ -126,48 +134,62 @@ export function UserAvatar({ className }: { className?: string }) {
                     </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                    <DropdownMenuItem className="cursor-pointer gap-2 py-2 rounded-md hover:bg-muted transition-colors">
-                        <Settings className="w-4 h-4 text-muted-foreground" />
-                        <span>Account Settings</span>
-                    </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-xs uppercase tracking-wide">
-                        <span className="inline-flex items-center gap-2">
-                            <Languages className="w-3.5 h-3.5" />
-                            Language
-                        </span>
-                    </DropdownMenuLabel>
-                    <DropdownMenuRadioGroup value={language} onValueChange={handleLanguageChange}>
-                        <DropdownMenuRadioItem value="ja" className="cursor-pointer py-2 rounded-md hover:bg-muted transition-colors">
-                            日本語
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="en" className="cursor-pointer py-2 rounded-md hover:bg-muted transition-colors">
-                            English
-                        </DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-xs uppercase tracking-wide">
-                        Graph
-                    </DropdownMenuLabel>
-                    <DropdownMenuRadioGroup
-                        value={String(collapseThresholdMinutes)}
-                        onValueChange={(v) => setStreamPreferences({ collapseThresholdMinutes: Number(v) })}
+                <div className="space-y-0.5">
+                    <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-muted transition-colors"
+                        onClick={() => setAccountOpen((v) => !v)}
                     >
-                        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal py-1 px-2">
-                            Auto-close unused nodes
-                        </DropdownMenuLabel>
-                        {([1, 3, 5, 15, 60, 9999] as const).map((min) => (
-                            <DropdownMenuRadioItem key={min} value={String(min)} className="cursor-pointer py-1.5 rounded-md hover:bg-muted transition-colors">
-                                {min === 9999 ? 'なし' : min < 60 ? `${min}分` : '1時間'}
-                            </DropdownMenuRadioItem>
-                        ))}
-                    </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
+                        <Settings className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="flex-1 text-left">Account Settings</span>
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", accountOpen && "rotate-180")} />
+                    </button>
+                    {accountOpen && (
+                        <div className="space-y-0.5">
+                            <p className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Languages className="w-3.5 h-3.5" /> Language
+                            </p>
+                            {(["ja", "en"] as const).map((lang) => (
+                                <button
+                                    key={lang}
+                                    type="button"
+                                    className={cn("w-full flex items-center gap-2 pl-6 pr-2 py-1.5 text-sm rounded-md hover:bg-muted transition-colors", language === lang && "text-primary")}
+                                    onClick={() => handleLanguageChange(lang)}
+                                >
+                                    <span className={cn("w-2 h-2 rounded-full border shrink-0", language === lang ? "bg-primary border-primary" : "border-muted-foreground")} />
+                                    {lang === "ja" ? "日本語" : "English"}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <DropdownMenuSeparator />
+                <div className="space-y-0.5">
+                    <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-muted transition-colors"
+                        onClick={() => setUserSettingsOpen((v) => !v)}
+                    >
+                        <span className="flex-1 text-left">User Settings</span>
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", userSettingsOpen && "rotate-180")} />
+                    </button>
+                    {userSettingsOpen && (
+                        <div className="space-y-0.5">
+                            <p className="px-2 py-1 text-xs text-muted-foreground">Auto-close unused nodes</p>
+                            {([1, 3, 5, 15, 60, 9999] as const).map((min) => (
+                                <button
+                                    key={min}
+                                    type="button"
+                                    className={cn("w-full flex items-center gap-2 pl-6 pr-2 py-1.5 text-sm rounded-md hover:bg-muted transition-colors", collapseThresholdMinutes === min && "text-primary")}
+                                    onClick={() => setStreamPreferences({ collapseThresholdMinutes: min })}
+                                >
+                                    <span className={cn("w-2 h-2 rounded-full border shrink-0", collapseThresholdMinutes === min ? "bg-primary border-primary" : "border-muted-foreground")} />
+                                    {min === 9999 ? 'なし' : min < 60 ? `${min}分` : '1時間'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                     onClick={() => void signOutCurrentUser()}

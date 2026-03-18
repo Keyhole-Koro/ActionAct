@@ -107,7 +107,7 @@ export function FloatingHeader() {
                     <div className="h-5 w-px bg-border/60 mx-1" />
 
                     <Link
-                        href="/workspaces"
+                        href="/dashboard"
                         className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent transition-colors"
                         title="All workspaces"
                     >

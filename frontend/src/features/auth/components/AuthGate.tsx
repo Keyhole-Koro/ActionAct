@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { doc, getDoc } from "firebase/firestore";
 
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
-import { emitAuthContext } from "@/features/auth/session";
-import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
 import { config } from "@/lib/config";
 import { firestore } from "@/services/firebase/firestore";
@@ -19,9 +18,13 @@ type AuthGateProps = {
 
 export function AuthGate({ children }: AuthGateProps) {
   const { user, loading, error, isAuthenticated } = useRequireAuth();
-  const { workspaceId, topicId } = useRunContextStore();
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [bootstrapping, setBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+
+  const workspaceId = params?.id ?? '';
 
   useEffect(() => {
     if (!user) {
@@ -36,38 +39,29 @@ export function AuthGate({ children }: AuthGateProps) {
 
     void (async () => {
       try {
-        // Verify the persisted workspaceId actually belongs to this user.
-        // Handles: first-time users, browsers with stale 'workspace-1' in localStorage,
-        // and users logging in with a different account on the same browser.
-        let resolvedWorkspaceId = workspaceId;
-        let resolvedTopicId = topicId;
-
         const isMember =
-          resolvedWorkspaceId.length > 0 &&
+          workspaceId.length > 0 &&
           (await getDoc(
-            doc(firestore, `workspaces/${resolvedWorkspaceId}/members/${user.uid}`),
+            doc(firestore, `workspaces/${workspaceId}/members/${user.uid}`),
           ).then((s) => s.exists()).catch(() => false));
 
         if (!isMember) {
-          // No valid workspace → create one for this user
           const result = await createWorkspace({
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
           });
           if (cancelled) return;
-          resolvedWorkspaceId = result.workspaceId;
-          resolvedTopicId = result.topicId;
-          emitAuthContext({ workspaceId: resolvedWorkspaceId, topicId: resolvedTopicId });
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("run_context.workspaceId", resolvedWorkspaceId);
-            window.localStorage.setItem("run_context.topicId", resolvedTopicId);
-          }
+          router.push(`/workspace/${result.workspaceId}?topicId=${result.topicId}`);
+          return;
         }
 
         if (cancelled) return;
 
-        await ensureLocalWorkspaceAccess(user, resolvedWorkspaceId, resolvedTopicId);
+        const topicId = searchParams.get('topicId') ??
+          (typeof window !== 'undefined' ? window.localStorage.getItem('run_context.topicId') : null) ?? '';
+
+        await ensureLocalWorkspaceAccess(user, workspaceId, topicId);
 
         const idToken = await user.getIdToken();
         if (!idToken) {
@@ -100,7 +94,7 @@ export function AuthGate({ children }: AuthGateProps) {
     return () => {
       cancelled = true;
     };
-  }, [topicId, user, workspaceId]);
+  }, [user, workspaceId, searchParams, router]);
 
   if (loading) {
     return <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">Loading auth...</div>;

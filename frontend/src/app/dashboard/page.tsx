@@ -6,11 +6,12 @@ import { FolderKanban, Plus, ArrowRight } from "lucide-react";
 
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
+import { UserAvatar } from "@/features/layout/components/UserAvatar";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
 import { listUserWorkspaces } from "@/features/workspace/services/list-workspaces";
 import { type WorkspaceData } from "@/features/workspace/services/workspace-service";
 
-export default function WorkspacesPage() {
+export default function DashboardPage() {
     const { user, loading, isAuthenticated } = useRequireAuth();
     const router = useRouter();
     const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
@@ -27,8 +28,7 @@ export default function WorkspacesPage() {
     }, [user]);
 
     const handleSelect = (ws: WorkspaceData) => {
-        window.localStorage.setItem("run_context.workspaceId", ws.id);
-        router.push(`/?workspaceId=${ws.id}`);
+        router.push(`/workspace/${ws.id}`);
     };
 
     const handleCreate = async () => {
@@ -40,9 +40,7 @@ export default function WorkspacesPage() {
                 email: user.email,
                 displayName: user.displayName,
             });
-            window.localStorage.setItem("run_context.workspaceId", result.workspaceId);
-            window.localStorage.setItem("run_context.topicId", result.topicId);
-            router.push(`/?workspaceId=${result.workspaceId}`);
+            router.push(`/workspace/${result.workspaceId}?topicId=${result.topicId}`);
         } catch (error) {
             console.error("Failed to create workspace", error);
             setCreating(false);
@@ -70,6 +68,16 @@ export default function WorkspacesPage() {
 
     return (
         <div className="min-h-screen bg-background">
+            <header className="border-b bg-background/95 backdrop-blur-sm sticky top-0 z-10">
+                <div className="mx-auto max-w-4xl px-6 h-14 flex items-center justify-between">
+                    <span className="text-base font-semibold tracking-tight">Act</span>
+                    <UserAvatar
+                        className="h-8 w-8 rounded-full"
+                        dropdownSide="bottom"
+                        dropdownAlign="end"
+                    />
+                </div>
+            </header>
             <div className="mx-auto max-w-4xl px-6 py-12">
                 <div className="mb-8 flex items-center justify-between">
                     <div>

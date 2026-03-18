@@ -1,22 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { emitAuthContext } from "@/features/auth/session";
 import { useAuthState } from "@/features/auth/hooks/useAuthState";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
 
 export function CreateWorkspaceControl() {
   const { user } = useAuthState();
+  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (submitting) {
-      return;
-    }
+    if (submitting) return;
     if (!user) {
       toast.error("Sign in first");
       return;
@@ -28,17 +27,11 @@ export function CreateWorkspaceControl() {
         email: user.email,
         displayName: user.displayName,
       });
-
-      emitAuthContext({ workspaceId, topicId });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("run_context.workspaceId", workspaceId);
-        window.localStorage.setItem("run_context.topicId", topicId);
-      }
+      router.push(`/workspace/${workspaceId}?topicId=${topicId}`);
       toast.success("Workspace created");
     } catch (error) {
       console.error("Failed to create workspace", error);
       toast.error("Failed to create workspace");
-    } finally {
       setSubmitting(false);
     }
   };
