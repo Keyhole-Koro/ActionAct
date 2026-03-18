@@ -1,4 +1,5 @@
 import { useUploadStore, type UploadTask } from "../store/useUploadStore";
+import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { emitAuthContext } from "@/features/auth/session";
 
@@ -14,7 +15,8 @@ const phaseLabel: Record<string, string> = {
 
 export function UploadProgressList() {
     const uploads = useUploadStore((state) => state.uploads);
-    const uploadTasks = Object.values(uploads);
+    const { workspaceId } = useRunContextStore();
+    const uploadTasks = Object.values(uploads).filter((t) => t.workspaceId === workspaceId);
 
     if (uploadTasks.length === 0) return null;
 

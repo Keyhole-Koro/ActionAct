@@ -83,10 +83,10 @@ export function AppShell({ children }: AppShellProps) {
         return () => window.removeEventListener('action:auth-context', onAuthContext);
     }, [setContext]);
 
-    // Restore any in-progress uploads that were running before the last page reload.
+    // Restore any in-progress uploads for the current workspace after reload or workspace switch.
     useEffect(() => {
         if (!workspaceId) return;
-        useUploadStore.getState().bootstrapFromFirestore();
+        useUploadStore.getState().bootstrapForWorkspace(workspaceId);
     }, [workspaceId]);
 
     return (

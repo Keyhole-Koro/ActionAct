@@ -25,8 +25,8 @@ function savePending(entries: PendingEntry[]): void {
 // Keep Firestore unsubscribers outside of state to avoid triggering re-renders.
 const unsubscribers = new Map<string, () => void>();
 
-// Guard so bootstrapFromFirestore only runs once per page load.
-let bootstrapped = false;
+// Tracks which workspaces have already been bootstrapped this session.
+const bootstrappedWorkspaces = new Set<string>();
 
 export interface UploadTask {
     id: string; // inputId
@@ -53,7 +53,7 @@ interface UploadStoreState {
     addUpload: (workspaceId: string, topicId: string, inputId: string, filename: string) => void;
     removeUpload: (inputId: string) => void;
     updateProgress: (inputId: string, progress: InputProgress | null) => void;
-    bootstrapFromFirestore: () => void;
+    bootstrapForWorkspace: (workspaceId: string) => void;
 }
 
 export const useUploadStore = create<UploadStoreState>()(
@@ -118,17 +118,18 @@ export const useUploadStore = create<UploadStoreState>()(
             });
         },
 
-        bootstrapFromFirestore: () => {
-            if (bootstrapped) return;
-            bootstrapped = true;
+        bootstrapForWorkspace: (workspaceId: string) => {
+            if (bootstrappedWorkspaces.has(workspaceId)) return;
+            bootstrappedWorkspaces.add(workspaceId);
 
             const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
             const all = loadPending();
             const valid = all.filter(e => e.addedAt > sevenDaysAgo);
             if (valid.length < all.length) savePending(valid);
 
+            const forThisWorkspace = valid.filter(e => e.workspaceId === workspaceId);
             const current = get().uploads;
-            for (const { workspaceId, topicId, inputId, filename } of valid) {
+            for (const { topicId, inputId, filename } of forThisWorkspace) {
                 if (current[inputId]) continue;
                 set((state) => ({
                     uploads: {
