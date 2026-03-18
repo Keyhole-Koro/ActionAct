@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/storage"
@@ -76,8 +78,12 @@ func main() {
 	// ── GCS ──
 	var gcsOpts []option.ClientOption
 	if cfg.StorageEmulatorHost != "" {
-		slog.Info("using GCS emulator", "endpoint", cfg.StorageEmulatorHost)
-		gcsOpts = append(gcsOpts, option.WithEndpoint(cfg.StorageEmulatorHost))
+		endpoint := cfg.StorageEmulatorHost
+		if !strings.HasSuffix(endpoint, "/storage/v1/") {
+			endpoint = fmt.Sprintf("%s/storage/v1/", strings.TrimSuffix(endpoint, "/"))
+		}
+		slog.Info("using GCS emulator", "endpoint", endpoint)
+		gcsOpts = append(gcsOpts, option.WithEndpoint(endpoint))
 		gcsOpts = append(gcsOpts, option.WithoutAuthentication())
 	}
 	gcsClient, err := storage.NewClient(ctx, gcsOpts...)

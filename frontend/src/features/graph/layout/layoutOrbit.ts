@@ -1,4 +1,4 @@
-import { forceCollide, forceLink, forceManyBody, forceRadial, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force';
+import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force';
 
 import type { GraphNodeBase } from '@/features/graph/types';
 
@@ -221,16 +221,16 @@ function runCombinedSimulation(
     const actIds = new Set(actNodes.map((n) => n.id));
     const persistedIds = new Set(homePositions.keys());
 
-    // Target radius for act nodes: just outside the outermost persisted ring.
-    // Adapts automatically when topic children are expanded (which adds outer rings).
-    const maxPersistedRadius = homePositions.size > 0
-        ? Math.max(...[...homePositions.values()].map(({ x, y }) =>
-            Math.sqrt((x - ORBIT_CENTER_X) ** 2 + (y - ORBIT_CENTER_Y) ** 2)))
-        : TOPIC_RING_RADIUS;
-    const actTargetRadius = maxPersistedRadius + 150;
+    // Per-sector max radius: how far expanded children reach in each sector.
+    const sectorMaxRadius = computeSectorMaxRadius(homePositions, sectorByRootId);
 
     // ── Seed act node positions ───────────────────────────────────────────────
     const actSeedPositions = computeActSeedPositions(actNodes, homePositions, sectorByRootId);
+
+    // Per-act-node target: seed angle + sector-aware radius.
+    // Angle from seed = "which direction this node naturally belongs to."
+    // Radius from sector state = "how far out based on expansion."
+    const actTargetPositions = computeActTargetPositions(actNodes, sectorByRootId, sectorMaxRadius, actSeedPositions);
 
     // ── Build simulation nodes ────────────────────────────────────────────────
     const allSimNodes: SimNode[] = [
@@ -279,15 +279,15 @@ function runCombinedSimulation(
         )
         // Per-node collision radius: act nodes are larger cards
         .force('collide', forceCollide<SimNode>((d) => actIds.has(d.id) ? ACT_COLLISION_RADIUS : PERSISTED_COLLISION_RADIUS).iterations(6))
-        // Persisted nodes: strong home spring toward their polar position.
-        .force('x', forceX<SimNode>((d) => homePositions.get(d.id)?.x ?? ORBIT_CENTER_X)
-            .strength((d) => persistedIds.has(d.id) ? 0.8 : 0))
-        .force('y', forceY<SimNode>((d) => homePositions.get(d.id)?.y ?? ORBIT_CENTER_Y)
-            .strength((d) => persistedIds.has(d.id) ? 0.8 : 0))
-        // Act nodes: pull toward a ring just outside the outermost persisted ring.
-        // actTargetRadius grows automatically as topic children are expanded.
-        .force('radial', forceRadial<SimNode>(actTargetRadius, ORBIT_CENTER_X, ORBIT_CENTER_Y)
-            .strength((d) => actIds.has(d.id) ? 0.5 : 0))
+        // Persisted: strong home spring. Act: per-node target (seed angle + sector radius).
+        .force('x', forceX<SimNode>((d) => {
+            if (persistedIds.has(d.id)) return homePositions.get(d.id)?.x ?? ORBIT_CENTER_X;
+            return actTargetPositions.get(d.id)?.x ?? ORBIT_CENTER_X;
+        }).strength((d) => persistedIds.has(d.id) ? 0.8 : 0.45))
+        .force('y', forceY<SimNode>((d) => {
+            if (persistedIds.has(d.id)) return homePositions.get(d.id)?.y ?? ORBIT_CENTER_Y;
+            return actTargetPositions.get(d.id)?.y ?? ORBIT_CENTER_Y;
+        }).strength((d) => persistedIds.has(d.id) ? 0.8 : 0.45))
         .stop();
 
     simulation.tick(120);
@@ -306,6 +306,76 @@ function runCombinedSimulation(
  * Primary: average position of referenced persisted nodes.
  * Fallback: topicId sector inner ring → canvas center.
  */
+/**
+ * For each topic sector, compute the maximum radius of persisted nodes within it.
+ * Sectors with no expanded children return TOPIC_RING_RADIUS (480).
+ * Sectors with expanded children return the outermost child radius.
+ */
+function computeSectorMaxRadius(
+    homePositions: Map<string, { x: number; y: number }>,
+    sectorByRootId: Map<string, SectorInfo>,
+): Map<string, number> {
+    const result = new Map<string, number>();
+    for (const rootId of sectorByRootId.keys()) {
+        result.set(rootId, TOPIC_RING_RADIUS);
+    }
+
+    for (const [, pos] of homePositions) {
+        const dx = pos.x - ORBIT_CENTER_X;
+        const dy = pos.y - ORBIT_CENTER_Y;
+        const radius = Math.sqrt(dx * dx + dy * dy);
+        // Normalize angle to match sector range (sectors start at -PI/2)
+        let angle = Math.atan2(dy, dx);
+        if (angle < -Math.PI / 2) angle += Math.PI * 2;
+
+        for (const [rootId, sector] of sectorByRootId) {
+            if (angle >= sector.startAngle && angle <= sector.endAngle) {
+                const current = result.get(rootId) ?? TOPIC_RING_RADIUS;
+                if (radius > current) result.set(rootId, radius);
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+/**
+ * Compute per-act-node target position by combining:
+ *   - Angle from seed position (= direction toward referenced nodes → natural sector alignment)
+ *   - Radius from sector expansion state (= how far out to place in that direction)
+ *
+ * When a sector has no expanded children, its max radius is TOPIC_RING_RADIUS (480),
+ * so act nodes target r=630 — the empty space just outside the topic ring.
+ * When children are expanded to r=710, act nodes target r=860.
+ */
+function computeActTargetPositions(
+    actNodes: GraphNodeBase[],
+    sectorByRootId: Map<string, SectorInfo>,
+    sectorMaxRadius: Map<string, number>,
+    seedPositions: Map<string, { x: number; y: number }>,
+): Map<string, { x: number; y: number }> {
+    const globalMax = sectorMaxRadius.size > 0
+        ? Math.max(...sectorMaxRadius.values())
+        : TOPIC_RING_RADIUS;
+    const result = new Map<string, { x: number; y: number }>();
+
+    for (const node of actNodes) {
+        const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
+        const sectorRootId = refs.find((id) => sectorByRootId.has(id));
+        const maxR = sectorRootId ? (sectorMaxRadius.get(sectorRootId) ?? TOPIC_RING_RADIUS) : globalMax;
+        const targetRadius = maxR + 150;
+
+        // Derive angle from seed position — points toward referenced/associated nodes naturally
+        const seed = seedPositions.get(node.id) ?? { x: ORBIT_CENTER_X + targetRadius, y: ORBIT_CENTER_Y };
+        const dx = seed.x - ORBIT_CENTER_X;
+        const dy = seed.y - ORBIT_CENTER_Y;
+        const seedAngle = (dx === 0 && dy === 0) ? 0 : Math.atan2(dy, dx);
+
+        result.set(node.id, polarToCartesian(targetRadius, seedAngle));
+    }
+    return result;
+}
+
 function computeActSeedPositions(
     actNodes: GraphNodeBase[],
     persistedPositions: Map<string, { x: number; y: number }>,

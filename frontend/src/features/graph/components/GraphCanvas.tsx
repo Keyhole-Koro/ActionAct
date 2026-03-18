@@ -428,7 +428,22 @@ export function GraphCanvas() {
     const suppressNextSelectionChangeRef = useRef(false);
     const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
     const selectionComposerNodeIdRef = useRef<string | null>(null);
+    const recentStorageKey = workspaceId ? `graph.recentClickedNodeIds.${workspaceId}` : null;
     const [recentClickedNodeIds, setRecentClickedNodeIds] = React.useState<string[]>([]);
+
+    // Load from localStorage when workspaceId becomes available
+    const loadedWorkspaceIdRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!workspaceId || loadedWorkspaceIdRef.current === workspaceId) return;
+        loadedWorkspaceIdRef.current = workspaceId;
+        if (typeof window === 'undefined') return;
+        try {
+            const stored = window.localStorage.getItem(`graph.recentClickedNodeIds.${workspaceId}`);
+            if (stored) setRecentClickedNodeIds(JSON.parse(stored) as string[]);
+        } catch {
+            // ignore
+        }
+    }, [workspaceId]);
     useLayoutEffect(() => {
         selectedNodeIdsRef.current = selectedNodeIds;
         activeNodeIdRef.current = activeNodeId;
@@ -643,13 +658,17 @@ export function GraphCanvas() {
     );
 
     const recordRecentClickedNode = useCallback((nodeId: string) => {
-        setRecentClickedNodeIds((previous) => [
-            nodeId,
-            ...previous.filter((id) => id !== nodeId),
-        ].slice(0, RECENT_CLICKED_NODE_LIMIT));
-    }, []);
+        setRecentClickedNodeIds((previous) => {
+            const next = [nodeId, ...previous.filter((id) => id !== nodeId)].slice(0, RECENT_CLICKED_NODE_LIMIT);
+            if (typeof window !== 'undefined' && recentStorageKey) {
+                try { window.localStorage.setItem(recentStorageKey, JSON.stringify(next)); } catch { /* ignore quota errors */ }
+            }
+            return next;
+        });
+    }, [recentStorageKey]);
 
     useEffect(() => {
+        if (referenceableNodeById.size === 0) return; // nodes not yet loaded, don't wipe localStorage-restored ids
         setRecentClickedNodeIds((previous) => previous.filter((id) => referenceableNodeById.has(id)));
     }, [referenceableNodeById]);
 

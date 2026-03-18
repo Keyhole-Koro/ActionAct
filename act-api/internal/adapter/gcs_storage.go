@@ -26,6 +26,7 @@ func (s *GCSStorage) Upload(ctx context.Context, objectPath string, data []byte,
 	obj := s.client.Bucket(s.bucketName).Object(objectPath)
 	w := obj.NewWriter(ctx)
 	w.ContentType = contentType
+	w.ChunkSize = 0 // Disable resumable uploads for emulator compatibility
 
 	if _, err = w.Write(data); err != nil {
 		_ = w.Close()
