@@ -49,15 +49,103 @@ def _bundle_debug_summary(input: RunActInput, *, system_instruction: str, user_p
 class RunActUsecase:
     """Pipeline: Context Assembly → LLM Generate → Normalize to PatchOps → Yield events."""
 
-    def __init__(self, assembly: AssemblyPort, llm: LLMPort):
+    def __init__(self, assembly: AssemblyPort, llm: LLMPort, discord_store=None):
         self._assembly = assembly
         self._llm = llm
+        self._discord_store = discord_store
+
+    async def _discord_tool_executor(self, fn_name: str, fn_args: dict, workspace_id: str):
+        """Execute Discord tool calls on behalf of Gemini."""
+        if fn_name == "list_discord_structure":
+            return await self._discord_store.list_structure(workspace_id)
+        elif fn_name == "read_discord_messages":
+            return await self._discord_store.read_messages(
+                workspace_id,
+                channel_id=fn_args.get("channel_id"),
+                thread_id=fn_args.get("thread_id"),
+                limit=int(fn_args.get("limit", 100)),
+            )
+        elif fn_name == "search_discord_messages":
+            return await self._discord_store.search_messages(
+                workspace_id,
+                query=fn_args["query"],
+                channel_id=fn_args.get("channel_id"),
+                thread_id=fn_args.get("thread_id"),
+                limit=int(fn_args.get("limit", 50)),
+            )
+        else:
+            return {"error": f"Unknown tool: {fn_name}"}
 
     async def execute(self, input: RunActInput) -> AsyncIterator[RunActEvent]:
         node_id = input.anchor_node_id or f"act-{uuid.uuid4().hex[:8]}"
         llm_config = input.llm_config or LLMConfig()
 
-        # 1. Context Assembly
+        # 2. Send initial upsert (block must exist before append_md)
+        yield RunActEvent(
+            type="patch_ops",
+            ops=[PatchOp(op="upsert", node_id=node_id, content="")],
+        )
+
+        # ── Discord agentic path ─────────────────────────────────────────────
+        if self._discord_store is not None:
+            system_instruction = (
+                "You are a helpful assistant. "
+                "You have access to Discord messages stored in this workspace. "
+                "Use the provided tools to find relevant information and answer the user's question. "
+                "Always check the Discord structure first, then read or search relevant channels/threads."
+            )
+            logger.info("Using Discord agentic RAG for workspace=%s", input.workspace_id)
+            try:
+                accumulated = ""
+                seq = 0
+                async for chunk in self._llm.generate_with_discord_tools(
+                    user_message=input.user_message,
+                    system_instruction=system_instruction,
+                    workspace_id=input.workspace_id,
+                    tool_executor=self._discord_tool_executor,
+                    config=llm_config,
+                ):
+                    if chunk.is_done:
+                        break
+                    yield RunActEvent(type="text_delta", text=chunk.text, is_thought=chunk.is_thought)
+                    if not chunk.is_thought and chunk.text:
+                        seq += 1
+                        yield RunActEvent(
+                            type="patch_ops",
+                            ops=[PatchOp(
+                                op="append_md",
+                                node_id=node_id,
+                                content=chunk.text,
+                                seq=seq,
+                                expected_offset=len(accumulated),
+                            )],
+                        )
+                        accumulated += chunk.text
+            except Exception as e:
+                logger.exception("Discord agentic LLM failed")
+                yield RunActEvent(
+                    type="terminal",
+                    error=ErrorInfo(
+                        code="UNAVAILABLE",
+                        message=str(e),
+                        retryable=True,
+                        stage="GENERATE_WITH_MODEL",
+                        trace_id=input.trace_id,
+                    ),
+                )
+                return
+
+            yield RunActEvent(
+                type="terminal",
+                done=True,
+                used_tools=["discord_store", "llm.generate_with_discord_tools"],
+                used_sources=[],
+                used_context_node_ids=[],
+                used_selected_node_contexts=[],
+            )
+            return
+
+        # ── Legacy Assembly path ─────────────────────────────────────────────
         try:
             bundle = await self._assembly.assemble(
                 topic_id=input.topic_id,
@@ -92,13 +180,6 @@ class RunActUsecase:
             ),
         )
 
-        # 2. Send initial upsert (block must exist before append_md)
-        yield RunActEvent(
-            type="patch_ops",
-            ops=[PatchOp(op="upsert", node_id=node_id, content="")],
-        )
-
-        # 3. LLM Generate → stream as text_delta + append_md
         accumulated = ""
         seq = 0
         try:
@@ -106,14 +187,12 @@ class RunActUsecase:
                 if chunk.is_done:
                     break
 
-                # Stream text_delta for live UI
                 yield RunActEvent(
                     type="text_delta",
                     text=chunk.text,
                     is_thought=chunk.is_thought,
                 )
 
-                # Accumulate answer text (not thoughts) as append_md
                 if not chunk.is_thought and chunk.text:
                     seq += 1
                     expected_offset = len(accumulated)
@@ -143,11 +222,10 @@ class RunActUsecase:
             )
             return
 
-        # 4. Terminal done with trace metadata for frontend visibility.
         used_tools = ["assembly", "llm.generate"]
         used_sources: list[SourceRef] = []
-        for node_id in input.context_node_ids:
-            used_sources.append(SourceRef(id=node_id, kind="context_node", label=node_id))
+        for nid in input.context_node_ids:
+            used_sources.append(SourceRef(id=nid, kind="context_node", label=nid))
         for node in input.selected_node_contexts:
             used_sources.append(
                 SourceRef(
