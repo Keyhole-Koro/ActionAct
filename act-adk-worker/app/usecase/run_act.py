@@ -57,7 +57,7 @@ class RunActUsecase:
 
     async def execute(self, input: RunActInput) -> AsyncIterator[RunActEvent]:
         node_id = input.anchor_node_id or f"act-{uuid.uuid4().hex[:8]}"
-        llm_config = input.llm_config or LLMConfig()
+        llm_config = (input.llm_config or LLMConfig()).model_copy(update={"enable_act_tools": True})
 
         # 1. Context Assembly
         try:

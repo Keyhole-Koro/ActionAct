@@ -9,6 +9,7 @@ import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
+import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
 import { firestore } from "@/services/firebase/firestore";
 
@@ -21,6 +22,7 @@ export function AuthGate({ children }: AuthGateProps) {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const setReadOnly = useRunContextStore((s) => s.setReadOnly);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
@@ -46,6 +48,19 @@ export function AuthGate({ children }: AuthGateProps) {
           ).then((s) => s.exists()).catch(() => false));
 
         if (!isMember) {
+          // Check if workspace is public — if so, allow read-only access
+          const isPublic = workspaceId.length > 0 &&
+            (await getDoc(doc(firestore, `workspaces/${workspaceId}`))
+              .then((s) => s.exists() && s.data()?.visibility === 'public')
+              .catch(() => false));
+
+          if (isPublic) {
+            if (cancelled) return;
+            setReadOnly(true);
+            setBootstrapping(false);
+            return;
+          }
+
           const result = await createWorkspace({
             uid: user.uid,
             email: user.email,
@@ -55,6 +70,8 @@ export function AuthGate({ children }: AuthGateProps) {
           router.push(`/workspace/${result.workspaceId}?topicId=${result.topicId}`);
           return;
         }
+
+        setReadOnly(false);
 
         if (cancelled) return;
 

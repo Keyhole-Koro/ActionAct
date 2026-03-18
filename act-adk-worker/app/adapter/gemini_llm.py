@@ -127,7 +127,9 @@ class GeminiLLM:
         # Keep the current user message as the sole user turn.
         contents = [Content(role="user", parts=parts)]
 
-        base_tools: list[Tool] = [_ACT_TOOLS]
+        base_tools: list[Tool] = []
+        if config.enable_act_tools:
+            base_tools.append(_ACT_TOOLS)
         if config.enable_grounding:
             base_tools.append(Tool(googleSearch=GoogleSearch()))
         gen_config = GenerateContentConfig(

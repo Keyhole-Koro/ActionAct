@@ -23,6 +23,8 @@ export async function listUserWorkspaces(uid: string): Promise<WorkspaceData[]> 
         workspaces.push({
             id: workspaceSnap.id,
             name: typeof data.name === "string" && data.name.trim() ? data.name : workspaceSnap.id,
+            visibility: data.visibility === 'public' ? 'public' : 'private',
+            createdBy: typeof data.createdBy === 'string' ? data.createdBy : undefined,
         });
     }
 

@@ -405,7 +405,7 @@ export function GraphCanvas() {
         nodeLastUsedAt,
         nodeUseCount,
     } = useGraphStore();
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId, topicId, isReadOnly } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
@@ -683,6 +683,13 @@ export function GraphCanvas() {
         return resolved;
     }, [persistedGraph.positionedNodes]);
 
+    // Full act node data keyed by id. Used to restore fields stripped by actNodesForLayout
+    // (kind, contentMd, etc.) which are excluded from layout input to avoid streaming thrash.
+    const fullActNodeDataById = useMemo(
+        () => new Map((actNodes as GraphNodeBase[]).map((n) => [n.id, n.data])),
+        [actNodes],
+    );
+
     const layoutAwareDisplayNodes = useMemo(() => {
         const now = Date.now();
         // Half-life for recency decay: 20 minutes
@@ -717,9 +724,14 @@ export function GraphCanvas() {
                 }
             }
 
+            // Act nodes pass through layout with stripped data (to avoid streaming thrash).
+            // Re-merge the full store data so kind, contentMd, etc. are available for rendering.
+            const fullActData = node.data?.nodeSource === 'act' ? fullActNodeDataById.get(node.id) : undefined;
+
             return {
                 ...node,
                 data: {
+                    ...(fullActData ?? {}),
                     ...node.data,
                     layoutMode,
                     radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
@@ -728,7 +740,7 @@ export function GraphCanvas() {
                 },
             };
         });
-    }, [canvasNodes, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [canvasNodes, fullActNodeDataById, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -1073,6 +1085,7 @@ export function GraphCanvas() {
     }, [focusNode, setSelectedNodes]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        if (isReadOnly) return;
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
             return;
@@ -1097,7 +1110,7 @@ export function GraphCanvas() {
         } else {
             addEmptyActNode(flowPosition);
         }
-    }, [addEmptyActNode, addOrUpdateActNode, addQueryActNode, selectedNodeIds, reactFlowInstance]);
+    }, [addEmptyActNode, addOrUpdateActNode, addQueryActNode, selectedNodeIds, reactFlowInstance, isReadOnly]);
 
     const viewSignature = useMemo(
         () => JSON.stringify({
@@ -1405,7 +1418,7 @@ export function GraphCanvas() {
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
-            {(['radial', 'orbit'] as const).map((mode) => {
+            {(['orbit'] as const).map((mode) => {
                 const active = persistedLayoutMode === mode;
                 return (
                     <button
@@ -1419,7 +1432,7 @@ export function GraphCanvas() {
                         ].join(' ')}
                         onClick={() => setLayoutMode(mode)}
                     >
-                        {mode === 'radial' ? 'Radial' : 'Orbit'}
+                        Orbit
                     </button>
                 );
             })}

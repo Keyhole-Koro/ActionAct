@@ -99,6 +99,7 @@ func main() {
 	}
 	inputRecorder := adapter.NewFirestoreInputRecorder(fsClient)
 	workspaceRenamer := adapter.NewFirestoreWorkspaceRenamer(fsClient)
+	workspaceVisibilityUpdater := adapter.NewFirestoreWorkspaceVisibilityUpdater(fsClient)
 	workspaceMemberManager := adapter.NewFirestoreWorkspaceMemberManager(fsClient, authClient)
 	defer inputRecorder.Close()
 
@@ -106,6 +107,7 @@ func main() {
 	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 	uploadUC := usecase.NewUploadUsecase(authVerifier, gcsStorage, inputRecorder, pubsubPublisher)
 	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
+	updateWorkspaceVisibilityUC := usecase.NewUpdateWorkspaceVisibilityUsecase(authVerifier, workspaceVisibilityUpdater)
 	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
 	addWorkspaceMemberUC := usecase.NewAddWorkspaceMemberUsecase(authVerifier, workspaceMemberManager)
 	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL)
@@ -123,6 +125,7 @@ func main() {
 	)
 	uploadHandler := handler.NewUploadHandler(uploadUC)
 	workspaceRenameHandler := handler.NewWorkspaceRenameHandler(renameWorkspaceUC)
+	workspaceVisibilityHandler := handler.NewWorkspaceVisibilityHandler(updateWorkspaceVisibilityUC)
 	workspaceMemberSearchHandler := handler.NewWorkspaceMemberSearchHandler(searchWorkspaceUsersUC)
 	workspaceMemberAddHandler := handler.NewWorkspaceMemberAddHandler(addWorkspaceMemberUC)
 	resolveNodeCandidatesHandler := handler.NewResolveNodeCandidatesHandler(resolveNodeCandidatesUC)
@@ -134,6 +137,7 @@ func main() {
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
 	mux.Handle("/api/upload", uploadHandler)
 	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
+	mux.Handle("/api/workspace/visibility", workspaceVisibilityHandler)
 	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)
 	mux.Handle("/api/workspace/members/add", workspaceMemberAddHandler)
 	mux.Handle("/api/resolve-node-candidates", resolveNodeCandidatesHandler)

@@ -2,20 +2,63 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderKanban, Plus, ArrowRight } from "lucide-react";
+import { FolderKanban, Plus, ArrowRight, Globe } from "lucide-react";
 
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { UserAvatar } from "@/features/layout/components/UserAvatar";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
 import { listUserWorkspaces } from "@/features/workspace/services/list-workspaces";
+import { listPublicWorkspaces } from "@/features/workspace/services/list-public-workspaces";
 import { type WorkspaceData } from "@/features/workspace/services/workspace-service";
+
+function WorkspaceGrid({
+    workspaces,
+    onSelect,
+    showPublicBadge = false,
+}: {
+    workspaces: WorkspaceData[];
+    onSelect: (ws: WorkspaceData) => void;
+    showPublicBadge?: boolean;
+}) {
+    return (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {workspaces.map((ws) => (
+                <button
+                    key={ws.id}
+                    onClick={() => onSelect(ws)}
+                    className="group flex items-center justify-between rounded-lg border bg-card p-4 text-left hover:border-primary/50 hover:bg-accent transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                            <FolderKanban className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-medium">{ws.name}</p>
+                                {showPublicBadge && (
+                                    <Globe className="h-3 w-3 text-muted-foreground" />
+                                )}
+                            </div>
+                            <p className="text-xs text-muted-foreground font-mono truncate max-w-[130px]">
+                                {ws.id}
+                            </p>
+                        </div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+            ))}
+        </div>
+    );
+}
 
 export default function DashboardPage() {
     const { user, loading, isAuthenticated } = useRequireAuth();
     const router = useRouter();
     const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
+    const [publicWorkspaces, setPublicWorkspaces] = useState<WorkspaceData[]>([]);
     const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+    const [loadingPublic, setLoadingPublic] = useState(false);
     const [creating, setCreating] = useState(false);
 
     useEffect(() => {
@@ -25,6 +68,15 @@ export default function DashboardPage() {
             .then(setWorkspaces)
             .catch(console.error)
             .finally(() => setLoadingWorkspaces(false));
+
+        setLoadingPublic(true);
+        listPublicWorkspaces()
+            .then((all) => {
+                // Exclude workspaces the user is already a member of (shown in My Workspaces)
+                setPublicWorkspaces(all);
+            })
+            .catch(console.error)
+            .finally(() => setLoadingPublic(false));
     }, [user]);
 
     const handleSelect = (ws: WorkspaceData) => {
@@ -109,29 +161,23 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {workspaces.map((ws) => (
-                            <button
-                                key={ws.id}
-                                onClick={() => handleSelect(ws)}
-                                className="group flex items-center justify-between rounded-lg border bg-card p-4 text-left hover:border-primary/50 hover:bg-accent transition-colors"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                                        <FolderKanban className="h-4 w-4 text-primary" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium">{ws.name}</p>
-                                        <p className="text-xs text-muted-foreground font-mono truncate max-w-[130px]">
-                                            {ws.id}
-                                        </p>
-                                    </div>
-                                </div>
-                                <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </button>
-                        ))}
-                    </div>
+                    <WorkspaceGrid workspaces={workspaces} onSelect={handleSelect} />
                 )}
+
+                {/* Public Workspaces */}
+                <div className="mt-10">
+                    <div className="mb-4 flex items-center gap-2">
+                        <Globe className="h-4 w-4 text-muted-foreground" />
+                        <h2 className="text-base font-semibold">Public Workspaces</h2>
+                    </div>
+                    {loadingPublic ? (
+                        <div className="text-sm text-muted-foreground">Loading public workspaces...</div>
+                    ) : publicWorkspaces.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No public workspaces available.</p>
+                    ) : (
+                        <WorkspaceGrid workspaces={publicWorkspaces} onSelect={handleSelect} showPublicBadge />
+                    )}
+                </div>
             </div>
         </div>
     );
