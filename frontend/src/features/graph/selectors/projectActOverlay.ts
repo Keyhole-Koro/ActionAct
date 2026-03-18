@@ -17,10 +17,11 @@ const ANCHOR_OFFSET_X = 180;
 const GENERAL_OFFSET_X = 260;
 
 // Mini force simulation parameters
-const SPRING_K    = 0.15;   // attraction toward target
-const REPULSION   = 12000;  // act ↔ act repulsion
-const DAMPING     = 0.60;
-const ITERATIONS  = 80;
+const SPRING_K              = 0.15;   // attraction toward target
+const REPULSION             = 12000;  // act ↔ act repulsion
+const REPULSION_PERSISTED   = 4800;   // act ← persisted repulsion (weaker, one-way)
+const DAMPING               = 0.60;
+const ITERATIONS            = 80;
 
 type SimNode = {
     id: string;
@@ -28,6 +29,11 @@ type SimNode = {
     vx: number; vy: number;
     w: number; h: number;
     tx: number; ty: number;   // target position
+};
+
+type ObstacleNode = {
+    x: number; y: number;
+    w: number; h: number;
 };
 
 export function projectActOverlay({
@@ -86,6 +92,12 @@ export function projectActOverlay({
         return { id: node.id, x: seedX, y: seedY, vx: 0, vy: 0, w, h, tx, ty };
     });
 
+    // Build fixed obstacles from persisted nodes
+    const obstacles: ObstacleNode[] = persistedNodes.map((n) => {
+        const d = getNodeDimensions(n, expandedSet.has(n.id));
+        return { x: n.position.x, y: n.position.y, w: d.width, h: d.height };
+    });
+
     // ── Mini force simulation ─────────────────────────────────────────────────
     for (let iter = 0; iter < ITERATIONS; iter++) {
         // Spring toward target
@@ -101,12 +113,29 @@ export function projectActOverlay({
                 const dx = a.x - b.x, dy = a.y - b.y;
                 const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
                 const minDist = (Math.max(a.w, a.h) + Math.max(b.w, b.h)) * 0.55 + 16;
-                // Only repel when overlapping or very close
                 if (dist < minDist * 1.8) {
                     const mag = REPULSION / (dist * dist);
                     const nx = dx / dist, ny = dy / dist;
                     a.vx += nx * mag; a.vy += ny * mag;
                     b.vx -= nx * mag; b.vy -= ny * mag;
+                }
+            }
+        }
+
+        // One-way repulsion: persisted nodes push act nodes away (persisted nodes don't move)
+        for (const act of simNodes) {
+            for (const obs of obstacles) {
+                // Use center-to-center distance
+                const acx = act.x + act.w / 2, acy = act.y + act.h / 2;
+                const ocx = obs.x + obs.w / 2, ocy = obs.y + obs.h / 2;
+                const dx = acx - ocx, dy = acy - ocy;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+                const minDist = (Math.max(act.w, act.h) + Math.max(obs.w, obs.h)) * 0.55 + 20;
+                if (dist < minDist * 1.5) {
+                    const mag = REPULSION_PERSISTED / (dist * dist);
+                    const nx = dx / dist, ny = dy / dist;
+                    act.vx += nx * mag;
+                    act.vy += ny * mag;
                 }
             }
         }

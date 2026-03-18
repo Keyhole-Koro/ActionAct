@@ -425,6 +425,7 @@ export function GraphCanvas() {
     const pendingRadialFocusNodeIdRef = useRef<string | null>(null);
     const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
     const isShiftMarqueeSelectionRef = useRef(false);
+    const suppressNextSelectionChangeRef = useRef(false);
     const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
     const selectionComposerNodeIdRef = useRef<string | null>(null);
     const [recentClickedNodeIds, setRecentClickedNodeIds] = React.useState<string[]>([]);
@@ -1165,11 +1166,13 @@ export function GraphCanvas() {
     }, [emphasizedDisplayNodes, focusNode]);
 
     const handleSelectionChange = useCallback(({ nodes: changedNodes }: { nodes: Node[] }) => {
-        if (isShiftMarqueeSelectionRef.current) {
+        if (isShiftMarqueeSelectionRef.current || suppressNextSelectionChangeRef.current) {
+            suppressNextSelectionChangeRef.current = false;
             return;
         }
         const ids = changedNodes
             .filter((n) => n.type === 'customTask' || n.type == null)
+            .filter((n) => (n.data as Record<string, unknown>)?.nodeSource !== 'act')
             .map((n) => n.id)
             .sort();
         const current = [...selectedNodeIdsRef.current].sort();
@@ -1580,6 +1583,7 @@ export function GraphCanvas() {
                     }
 
                     shiftMarqueeStartRef.current = null;
+                    suppressNextSelectionChangeRef.current = isShiftMarqueeSelectionRef.current;
                     isShiftMarqueeSelectionRef.current = false;
                 }}
                 onPaneClick={() => {

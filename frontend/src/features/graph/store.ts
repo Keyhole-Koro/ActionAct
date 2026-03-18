@@ -412,6 +412,7 @@ export const useGraphStore = create<GraphState>((set) => ({
         const newNode: Node = {
             id: nodeId,
             type: 'customTask',
+            selected: false,
             position: { x: 200 + (state.actNodes.length * 10), y: 150 + (state.actNodes.length * 100) },
             data: {
                 label: payload.label ?? '',
@@ -453,6 +454,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             actNodes: [...state.actNodes, {
                 id,
                 type: 'customTask',
+                selected: false,
                 position,
                 data: { label: '', nodeSource: 'act', createdBy: 'user', kind: 'act', contentMd: '', isManualPosition: true }
             }],
@@ -470,6 +472,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             actNodes: [...state.actNodes, {
                 id,
                 type: 'customTask',
+                selected: false,
                 position,
                 data: {
                     label: initialLabel,
