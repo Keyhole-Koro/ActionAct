@@ -60,7 +60,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     default: { gradient: 'from-slate-500/10 via-slate-400/5 to-transparent', accent: 'text-slate-500', glow: 'shadow-slate-500/20' },
 };
 
-export function GraphNodeCard({ id, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
+export function GraphNodeCard({ id, type, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
     const updateNodeInternals = useUpdateNodeInternals();
     const showThoughts = useStreamPreferencesStore((state) => state.showThoughts);
     const nodeKind = data.kind;
@@ -96,7 +96,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
         : (isExpanded ? expandedTitleWidth : collapsedTitleWidth);
     const cardMaxWidth = isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH;
     const expandedMaxHeight = isActNode ? GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT : GRAPH_NODE_EXPANDED_MAX_HEIGHT;
-    const { height: cardHeight } = getLayoutDimensionsForNodeType(data.type, isExpanded, data.kind);
+    const { height: cardHeight } = getLayoutDimensionsForNodeType(type, isExpanded, data.kind);
     const inputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
@@ -819,9 +819,9 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                 {(data.detailHtml || data.contentMd) && (
                                     <span className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/50 ${isActNode ? 'px-1 py-0.5' : 'px-1.5 py-0.5'} text-slate-500`}>
                                         {data.detailHtml ? (
-                                            <Code className="h-3 w-3" title="Contains HTML/CSS" />
+                                            <Code className="h-3 w-3" aria-label="Contains HTML/CSS" />
                                         ) : (
-                                            <FileText className="h-3 w-3" title="Contains Markdown" />
+                                            <FileText className="h-3 w-3" aria-label="Contains Markdown" />
                                         )}
                                     </span>
                                 )}

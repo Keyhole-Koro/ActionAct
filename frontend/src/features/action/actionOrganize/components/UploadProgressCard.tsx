@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from "react";
 import { useUploadStore, type UploadTask } from "../store/useUploadStore";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
@@ -38,12 +39,22 @@ function UploadProgressCard({ task }: { task: UploadTask }) {
     const isProcessing = !isDone && !isError;
     const canNavigate = isDone && !!resolvedTopicId;
 
-    function handleCardClick() {
+    const handleCardClick = useCallback(() => {
         if (!canNavigate) return;
         emitAuthContext({ workspaceId, topicId: resolvedTopicId! });
         window.dispatchEvent(new CustomEvent('action:focus-node', { detail: { nodeId: resolvedTopicId } }));
         removeUpload(id);
-    }
+    }, [canNavigate, workspaceId, resolvedTopicId, removeUpload, id]);
+
+    // Auto-navigate on completion
+    useEffect(() => {
+        if (canNavigate) {
+            const timer = setTimeout(() => {
+                handleCardClick();
+            }, 800); // Small delay to let user see "Done"
+            return () => clearTimeout(timer);
+        }
+    }, [canNavigate, handleCardClick]);
 
     return (
         <div
@@ -62,7 +73,7 @@ function UploadProgressCard({ task }: { task: UploadTask }) {
             <div className="flex-1 min-w-0">
                 <p className="truncate text-xs font-medium text-foreground leading-none mb-0.5">{filename}</p>
                 <p className={`text-[10px] leading-none ${isError ? "text-destructive" : isDone ? "text-green-600" : "text-muted-foreground"}`}>
-                    {canNavigate ? "Click to open" : (phaseLabel[status] ?? status)}
+                    {canNavigate ? "Opening..." : (phaseLabel[status] ?? status)}
                 </p>
             </div>
 

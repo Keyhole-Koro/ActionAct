@@ -217,10 +217,10 @@ const SHORTCUTS = [
 
 function KeyboardShortcutsHint() {
     return (
-        <div className="fixed right-0 top-1/3 z-[100] group flex items-start justify-end">
-            {/* Expanded panel — visible on hover */}
+        <div className="fixed right-0 top-1/3 z-[100] group">
+            {/* Expanded panel — absolutely positioned to the left of the trigger, visible on hover */}
             <div className="
-                mr-2 w-64 origin-right scale-95 rounded-2xl border border-slate-200
+                absolute right-full top-0 mr-2 w-64 origin-right scale-95 rounded-2xl border border-slate-200
                 bg-white/98 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)]
                 opacity-0 pointer-events-none
                 transition-all duration-300 ease-out
@@ -1696,7 +1696,7 @@ export function GraphCanvas() {
     }, [focusNode, isRadialLayout, recordNodeUsed, setActiveNode, setSelectedNodes]);
 
     const recentClickedSelector = recentClickedNodeIds.length > 0 ? (
-        <div className="pointer-events-none absolute left-1/2 top-6 z-20 flex w-[min(820px,calc(100%-2rem))] -translate-x-1/2 items-center justify-center gap-1.5">
+        <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex w-[min(820px,calc(100%-2rem))] -translate-x-1/2 items-center justify-center gap-1.5">
             {recentClickedNodeIds.map((nodeId, index) => {
                 const node = referenceableNodeById.get(nodeId);
                 const data = node?.data as Record<string, unknown> | undefined;

@@ -51,6 +51,7 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     radialDepth?: number;
     rootHue?: number;
     activityOpacity?: number;
+    activeRelation?: 'self' | 'descendant' | null;
     actStage?: 'draft' | 'thinking' | 'ready';
     referencedNodes?: ReferencedNodeView[];
     hasChildNodes?: boolean;
