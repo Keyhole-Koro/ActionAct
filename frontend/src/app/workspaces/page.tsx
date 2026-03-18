@@ -1,0 +1,130 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FolderKanban, Plus, ArrowRight } from "lucide-react";
+
+import { LoginButton } from "@/features/auth/components/LoginButton";
+import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
+import { createWorkspace } from "@/features/workspace/services/create-workspace";
+import { listUserWorkspaces } from "@/features/workspace/services/list-workspaces";
+import { type WorkspaceData } from "@/features/workspace/services/workspace-service";
+
+export default function WorkspacesPage() {
+    const { user, loading, isAuthenticated } = useRequireAuth();
+    const router = useRouter();
+    const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
+    const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+    const [creating, setCreating] = useState(false);
+
+    useEffect(() => {
+        if (!user) return;
+        setLoadingWorkspaces(true);
+        listUserWorkspaces(user.uid)
+            .then(setWorkspaces)
+            .catch(console.error)
+            .finally(() => setLoadingWorkspaces(false));
+    }, [user]);
+
+    const handleSelect = (ws: WorkspaceData) => {
+        window.localStorage.setItem("run_context.workspaceId", ws.id);
+        router.push(`/?workspaceId=${ws.id}`);
+    };
+
+    const handleCreate = async () => {
+        if (!user || creating) return;
+        setCreating(true);
+        try {
+            const result = await createWorkspace({
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+            });
+            window.localStorage.setItem("run_context.workspaceId", result.workspaceId);
+            window.localStorage.setItem("run_context.topicId", result.topicId);
+            router.push(`/?workspaceId=${result.workspaceId}`);
+        } catch (error) {
+            console.error("Failed to create workspace", error);
+            setCreating(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center text-sm text-muted-foreground">
+                Loading...
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center">
+                <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border bg-background p-6 text-center">
+                    <h2 className="text-lg font-semibold">Sign in to use Act</h2>
+                    <LoginButton />
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-background">
+            <div className="mx-auto max-w-4xl px-6 py-12">
+                <div className="mb-8 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-semibold">Workspaces</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Select a workspace to open
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => void handleCreate()}
+                        disabled={creating}
+                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                        <Plus className="h-4 w-4" />
+                        {creating ? "Creating..." : "New Workspace"}
+                    </button>
+                </div>
+
+                {loadingWorkspaces ? (
+                    <div className="text-sm text-muted-foreground">Loading workspaces...</div>
+                ) : workspaces.length === 0 ? (
+                    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
+                        <FolderKanban className="h-10 w-10 text-muted-foreground" />
+                        <div>
+                            <p className="font-medium">No workspaces yet</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Create your first workspace to get started
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {workspaces.map((ws) => (
+                            <button
+                                key={ws.id}
+                                onClick={() => handleSelect(ws)}
+                                className="group flex items-center justify-between rounded-lg border bg-card p-4 text-left hover:border-primary/50 hover:bg-accent transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                                        <FolderKanban className="h-4 w-4 text-primary" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium">{ws.name}</p>
+                                        <p className="text-xs text-muted-foreground font-mono truncate max-w-[130px]">
+                                            {ws.id}
+                                        </p>
+                                    </div>
+                                </div>
+                                <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

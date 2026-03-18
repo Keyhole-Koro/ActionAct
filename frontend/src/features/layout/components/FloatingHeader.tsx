@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { workspaceService, type WorkspaceData } from '@/features/workspace/services/workspace-service';
 import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
 import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
-import { FolderKanban } from 'lucide-react';
+import { FolderKanban, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserAvatar } from './UserAvatar';
 
@@ -105,6 +106,13 @@ export function FloatingHeader() {
 
                     <div className="h-5 w-px bg-border/60 mx-1" />
 
+                    <Link
+                        href="/workspaces"
+                        className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent transition-colors"
+                        title="All workspaces"
+                    >
+                        <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Link>
                     <CreateWorkspaceControl />
                     <AddMemberControl workspaceId={workspaceId} />
                 </div>
