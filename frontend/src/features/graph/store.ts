@@ -45,6 +45,7 @@ interface GraphState {
     addOrUpdateActNode: (nodeId: string, payload: {
         label?: string;
         kind?: string;
+        parentId?: string;
         referencedNodeIds?: string[];
         createdBy?: 'user' | 'agent';
         usedContextNodeIds?: string[];
@@ -395,6 +396,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...n.data,
                                 ...(payload.label !== undefined ? { label: payload.label } : {}),
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                                ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                                 ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
                                 ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
@@ -421,6 +423,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 kind: payload.kind ?? 'act',
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',
+                ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                 ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
                 ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
                 ...(payload.usedTools !== undefined ? { usedTools: payload.usedTools } : {}),

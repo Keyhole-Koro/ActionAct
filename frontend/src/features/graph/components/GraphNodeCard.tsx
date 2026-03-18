@@ -30,11 +30,11 @@ import {
     getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
 
-const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; ring: string; topGrad: string }> = {
-    explore:     { bar: 'bg-blue-500',    dot: 'bg-blue-500',    accent: 'text-blue-600',    ring: 'ring-blue-500/35',    topGrad: 'from-blue-400 via-sky-300 to-blue-400' },
-    investigate: { bar: 'bg-emerald-500', dot: 'bg-emerald-500', accent: 'text-emerald-600', ring: 'ring-emerald-500/35', topGrad: 'from-emerald-400 via-teal-300 to-emerald-400' },
-    consult:     { bar: 'bg-amber-500',   dot: 'bg-amber-500',   accent: 'text-amber-600',   ring: 'ring-amber-500/35',   topGrad: 'from-amber-400 via-yellow-300 to-amber-400' },
-    act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
+const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; ring: string; ringActive: string; ringDescendant: string; bgTint: string; topGrad: string }> = {
+    explore:     { bar: 'bg-blue-500',    dot: 'bg-blue-500',    accent: 'text-blue-600',    ring: 'ring-blue-500/35',    ringActive: 'ring-blue-500/80',    ringDescendant: 'ring-blue-400/50',    bgTint: 'bg-blue-50/50',    topGrad: 'from-blue-400 via-sky-300 to-blue-400' },
+    investigate: { bar: 'bg-emerald-500', dot: 'bg-emerald-500', accent: 'text-emerald-600', ring: 'ring-emerald-500/35', ringActive: 'ring-emerald-500/80', ringDescendant: 'ring-emerald-400/50', bgTint: 'bg-emerald-50/50', topGrad: 'from-emerald-400 via-teal-300 to-emerald-400' },
+    consult:     { bar: 'bg-amber-500',   dot: 'bg-amber-500',   accent: 'text-amber-600',   ring: 'ring-amber-500/35',   ringActive: 'ring-amber-500/80',   ringDescendant: 'ring-amber-400/50',   bgTint: 'bg-amber-50/50',   topGrad: 'from-amber-400 via-yellow-300 to-amber-400' },
+    act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  ringActive: 'ring-violet-500/80',  ringDescendant: 'ring-violet-400/50',  bgTint: 'bg-violet-50/50',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
 };
 
 const typeConfig: Record<string, { gradient: string; accent: string; glow: string }> = {
@@ -78,6 +78,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const activityOpacity = isActNode && typeof data.activityOpacity === 'number'
         ? data.activityOpacity
         : undefined;
+    const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
@@ -210,6 +211,14 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                 ? `${atc.dot} animate-pulse`
                 : atc.dot;
 
+        const relationClass = selected
+            ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
+            : activeRelation === 'self'
+                ? `ring-2 ${atc.ringActive} ring-offset-2 ring-offset-background border-transparent shadow-[0_0_16px_-2px_var(--tw-ring-color)] scale-[1.01]`
+                : activeRelation === 'descendant'
+                    ? `ring-1 ${atc.ringDescendant} ring-offset-1 ring-offset-background ${atc.bgTint}`
+                    : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]';
+
         return (
             <div className="relative group">
                 <input
@@ -231,9 +240,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                         isDraftAct
                             ? 'border-slate-200/80 bg-white/95 shadow-[0_2px_8px_-4px_rgba(15,23,42,0.08)]'
                             : 'border-slate-200/60 bg-white/97 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.18)]',
-                        selected
-                            ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
-                            : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]',
+                        relationClass,
                         isExpanded ? 'nowheel' : '',
                     ].join(' ')}
                 >

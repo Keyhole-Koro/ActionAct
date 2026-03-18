@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"google.golang.org/api/option"
 
 	"act-api/gen/act/v1/actv1connect"
 	"act-api/internal/adapter"
@@ -73,7 +74,12 @@ func main() {
 	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
 
 	// ── GCS ──
-	gcsClient, err := storage.NewClient(ctx)
+	var gcsOpts []option.ClientOption
+	if cfg.StorageEmulatorHost != "" {
+		gcsOpts = append(gcsOpts, option.WithEndpoint(cfg.StorageEmulatorHost))
+		gcsOpts = append(gcsOpts, option.WithoutAuthentication())
+	}
+	gcsClient, err := storage.NewClient(ctx, gcsOpts...)
 	if err != nil {
 		slog.Error("gcs client init failed", "err", err)
 		os.Exit(1)
@@ -82,7 +88,12 @@ func main() {
 	defer gcsStorage.Close()
 
 	// ── Pub/Sub ──
-	pubsubClient, err := pubsub.NewClient(ctx, cfg.GCloudProject)
+	var psOpts []option.ClientOption
+	if cfg.PubSubEmulatorHost != "" {
+		psOpts = append(psOpts, option.WithEndpoint(cfg.PubSubEmulatorHost))
+		psOpts = append(psOpts, option.WithoutAuthentication())
+	}
+	pubsubClient, err := pubsub.NewClient(ctx, cfg.GCloudProject, psOpts...)
 	if err != nil {
 		slog.Error("pubsub client init failed", "err", err)
 		os.Exit(1)

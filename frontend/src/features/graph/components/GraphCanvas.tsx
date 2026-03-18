@@ -775,6 +775,32 @@ export function GraphCanvas() {
         [actNodes],
     );
 
+    // Descendants of activeNodeId (via parentId chain) for relation highlighting.
+    const activeDescendantIds = useMemo(() => {
+        if (!activeNodeId) return new Set<string>();
+        const childrenByParent = new Map<string, string[]>();
+        for (const [id, data] of fullActNodeDataById) {
+            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
+            if (parentId) {
+                const arr = childrenByParent.get(parentId) ?? [];
+                arr.push(id);
+                childrenByParent.set(parentId, arr);
+            }
+        }
+        const descendants = new Set<string>();
+        const queue = [activeNodeId];
+        while (queue.length > 0) {
+            const cur = queue.shift()!;
+            for (const child of childrenByParent.get(cur) ?? []) {
+                if (!descendants.has(child)) {
+                    descendants.add(child);
+                    queue.push(child);
+                }
+            }
+        }
+        return descendants;
+    }, [activeNodeId, fullActNodeDataById]);
+
     const layoutAwareDisplayNodes = useMemo(() => {
         const now = Date.now();
         // Half-life for recency decay: 20 minutes
@@ -813,6 +839,15 @@ export function GraphCanvas() {
             // Re-merge the full store data so kind, contentMd, etc. are available for rendering.
             const fullActData = fullActNodeDataById.get(node.id);
 
+            // Relation to activeNodeId: used for visual highlighting of connected act nodes.
+            const activeRelation: 'self' | 'descendant' | null = activeNodeId
+                ? node.id === activeNodeId
+                    ? 'self'
+                    : activeDescendantIds.has(node.id)
+                        ? 'descendant'
+                        : null
+                : null;
+
             return {
                 ...node,
                 data: {
@@ -822,10 +857,11 @@ export function GraphCanvas() {
                     radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
                     rootHue,
                     ...(activityOpacity !== undefined ? { activityOpacity } : {}),
+                    ...(activeRelation !== null ? { activeRelation } : {}),
                 },
             };
         });
-    }, [canvasNodes, fullActNodeDataById, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({

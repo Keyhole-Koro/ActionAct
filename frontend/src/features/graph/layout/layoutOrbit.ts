@@ -1,4 +1,4 @@
-import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force';
+import { forceCollide, forceLink, forceManyBody, forceRadial, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force';
 
 import type { GraphNodeBase } from '@/features/graph/types';
 
@@ -36,7 +36,7 @@ const SECTOR_GAP = 0.05;
 const ACT_SECTOR_MAX_SPREAD = Math.PI / 6; // 30°
 
 // Collision radius per node type (half approximate card width + padding)
-const ACT_COLLISION_RADIUS = 110;
+const ACT_COLLISION_RADIUS = 140;
 const PERSISTED_COLLISION_RADIUS = 75;
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -200,6 +200,14 @@ function runCombinedSimulation(
     const actIds = new Set(actNodes.map((n) => n.id));
     const persistedIds = new Set(homePositions.keys());
 
+    // Target radius for act nodes: just outside the outermost persisted ring.
+    // Adapts automatically when topic children are expanded (which adds outer rings).
+    const maxPersistedRadius = homePositions.size > 0
+        ? Math.max(...[...homePositions.values()].map(({ x, y }) =>
+            Math.sqrt((x - ORBIT_CENTER_X) ** 2 + (y - ORBIT_CENTER_Y) ** 2)))
+        : TOPIC_RING_RADIUS;
+    const actTargetRadius = maxPersistedRadius + 150;
+
     // ── Seed act node positions ───────────────────────────────────────────────
     const actSeedPositions = computeActSeedPositions(actNodes, homePositions, sectorByRootId);
 
@@ -220,15 +228,15 @@ function runCombinedSimulation(
     const links: SimLink[] = [];
 
     for (const node of actNodes) {
-        // Spring toward referenced persisted nodes — strong enough to resist repulsion/collision drift
+        // Loose spring toward referenced persisted nodes — weak so center pull dominates
         const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
         for (const refId of refs) {
             if (simNodeById.has(refId) && !actIds.has(refId)) {
-                links.push({ source: node.id, target: refId, distance: 160, strength: 0.6 });
+                links.push({ source: node.id, target: refId, distance: 200, strength: 0.08 });
             }
         }
 
-        // Suggestion nodes spring toward their parent act node
+        // Suggestion nodes spring toward their parent act node — keep groups together
         const parentId = typeof node.data.parentId === 'string' ? node.data.parentId : undefined;
         if (parentId && simNodeById.has(parentId)) {
             links.push({ source: node.id, target: parentId, distance: 140, strength: 0.6 });
@@ -237,10 +245,10 @@ function runCombinedSimulation(
 
     // ── Run simulation ────────────────────────────────────────────────────────
     const simulation = forceSimulation<SimNode>(allSimNodes)
-        // Repulsion only between act nodes — persisted nodes must not blast act nodes outward
+        // Repulsion between act nodes so they spread out without flying far
         .force('charge', forceManyBody<SimNode>()
-            .strength((d) => actIds.has(d.id) ? -220 : 0)
-            .distanceMax(350))
+            .strength((d) => actIds.has(d.id) ? -300 : 0)
+            .distanceMax(400))
         .force(
             'link',
             forceLink<SimNode, SimLink>(links)
@@ -249,15 +257,19 @@ function runCombinedSimulation(
                 .strength((l) => l.strength),
         )
         // Per-node collision radius: act nodes are larger cards
-        .force('collide', forceCollide<SimNode>((d) => actIds.has(d.id) ? ACT_COLLISION_RADIUS : PERSISTED_COLLISION_RADIUS).iterations(4))
-        // Persisted nodes: strong home spring. Act nodes: weak center pull.
+        .force('collide', forceCollide<SimNode>((d) => actIds.has(d.id) ? ACT_COLLISION_RADIUS : PERSISTED_COLLISION_RADIUS).iterations(6))
+        // Persisted nodes: strong home spring toward their polar position.
         .force('x', forceX<SimNode>((d) => homePositions.get(d.id)?.x ?? ORBIT_CENTER_X)
-            .strength((d) => persistedIds.has(d.id) ? 0.8 : 0.02))
+            .strength((d) => persistedIds.has(d.id) ? 0.8 : 0))
         .force('y', forceY<SimNode>((d) => homePositions.get(d.id)?.y ?? ORBIT_CENTER_Y)
-            .strength((d) => persistedIds.has(d.id) ? 0.8 : 0.02))
+            .strength((d) => persistedIds.has(d.id) ? 0.8 : 0))
+        // Act nodes: pull toward a ring just outside the outermost persisted ring.
+        // actTargetRadius grows automatically as topic children are expanded.
+        .force('radial', forceRadial<SimNode>(actTargetRadius, ORBIT_CENTER_X, ORBIT_CENTER_Y)
+            .strength((d) => actIds.has(d.id) ? 0.5 : 0))
         .stop();
 
-    simulation.tick(80);
+    simulation.tick(120);
 
     const result = new Map<string, { x: number; y: number }>();
     for (const simNode of allSimNodes) {
