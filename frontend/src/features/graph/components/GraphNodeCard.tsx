@@ -30,6 +30,13 @@ import {
     getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
 
+const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; ring: string; topGrad: string }> = {
+    explore:     { bar: 'bg-blue-500',    dot: 'bg-blue-500',    accent: 'text-blue-600',    ring: 'ring-blue-500/35',    topGrad: 'from-blue-400 via-sky-300 to-blue-400' },
+    investigate: { bar: 'bg-emerald-500', dot: 'bg-emerald-500', accent: 'text-emerald-600', ring: 'ring-emerald-500/35', topGrad: 'from-emerald-400 via-teal-300 to-emerald-400' },
+    consult:     { bar: 'bg-amber-500',   dot: 'bg-amber-500',   accent: 'text-amber-600',   ring: 'ring-amber-500/35',   topGrad: 'from-amber-400 via-yellow-300 to-amber-400' },
+    act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
+};
+
 const typeConfig: Record<string, { gradient: string; accent: string; glow: string }> = {
     explore: { gradient: 'from-violet-500/10 via-indigo-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     consult: { gradient: 'from-sky-500/10 via-cyan-500/5 to-transparent', accent: 'text-sky-500', glow: 'shadow-sky-500/20' },
@@ -191,6 +198,283 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                     </button>
                 )}
                 <Handle type="source" position={sourcePosition ?? Position.Bottom} className="opacity-0" />
+            </div>
+        );
+    }
+
+    if (isActNode) {
+        const atc = actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act;
+        const statusDot = isDraftAct
+            ? 'bg-slate-300'
+            : isNodeStreaming
+                ? `${atc.dot} animate-pulse`
+                : atc.dot;
+
+        return (
+            <div className="relative group">
+                <input
+                    ref={mediaInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => void handleMediaFileChange(event)}
+                    accept=".txt,.md,.pdf,.html,.csv,.json,.doc,.docx,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.mp4,.mov"
+                />
+                <div
+                    style={{
+                        width: cardWidth,
+                        minWidth: ACT_NODE_COMPACT_WIDTH,
+                        maxWidth: cardMaxWidth,
+                        ...(activityOpacity !== undefined ? { opacity: activityOpacity } : {}),
+                    }}
+                    className={[
+                        'relative overflow-hidden rounded-[18px] border transition-all duration-300',
+                        isDraftAct
+                            ? 'border-slate-200/80 bg-white/95 shadow-[0_2px_8px_-4px_rgba(15,23,42,0.08)]'
+                            : 'border-slate-200/60 bg-white/97 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.18)]',
+                        selected
+                            ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
+                            : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]',
+                        isExpanded ? 'nowheel' : '',
+                    ].join(' ')}
+                >
+                    {/* Top gradient line — actType colour, visible when ready/expanded */}
+                    {!isDraftAct && (
+                        <div className={`absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r ${atc.topGrad} ${isNodeStreaming ? 'opacity-100' : 'opacity-60'}`}>
+                            {isNodeStreaming && (
+                                <div className="absolute inset-0 h-full w-[200%] -ml-[100%] bg-gradient-to-r from-transparent via-white/70 to-transparent animate-[shimmer_1.2s_linear_infinite]" />
+                            )}
+                        </div>
+                    )}
+
+                    {/* Left accent bar */}
+                    <div className={[
+                        'absolute left-0 top-[14px] bottom-[14px] w-[3px] rounded-r-full',
+                        isDraftAct ? 'bg-slate-200' : atc.bar,
+                        isNodeStreaming ? 'opacity-60' : 'opacity-90',
+                    ].join(' ')} />
+
+                    {/* Branch toggle */}
+                    {hasChildNodes && (
+                        <div className="absolute right-2.5 top-2.5 z-10">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-6 w-6 rounded-full border-slate-200/80 bg-white/90 text-slate-500 shadow-sm backdrop-blur-sm hover:bg-white"
+                                onClick={(event: React.MouseEvent) => {
+                                    event.stopPropagation();
+                                    data.onToggleBranch?.();
+                                }}
+                            >
+                                {branchExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* ── Collapsed header ── */}
+                    {!isExpanded && (
+                        <div className={`relative flex items-center gap-2 pl-5 pr-3.5 py-2.5 ${hasChildNodes ? 'pr-10' : ''}`}>
+                            <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${statusDot}`} />
+                            {isEditing ? (
+                                <input
+                                    ref={inputRef}
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onBlur={commitEdit}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Ask a question..."
+                                    className="flex-1 min-w-0 bg-transparent border-b border-primary outline-none text-[14px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-0.5"
+                                />
+                            ) : (
+                                <h3 className="flex-1 min-w-0 truncate text-[14px] font-semibold leading-snug text-slate-800">
+                                    {data.label || <span className="font-normal italic text-slate-400">Ask a question…</span>}
+                                </h3>
+                            )}
+                            {hasReferences && (
+                                <span className="shrink-0 rounded-full border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-600 tabular-nums">
+                                    {referencedNodes.length}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Expanded header ── */}
+                    {isExpanded && (
+                        <div className={`relative pl-5 pr-3.5 pt-3 pb-2 ${hasChildNodes ? 'pr-10' : ''}`}>
+                            {/* Meta row */}
+                            <div className="mb-1.5 flex items-center gap-1.5">
+                                {nodeKind && nodeKind !== 'act' && (
+                                    <span className={`text-[10px] font-bold uppercase tracking-[0.12em] ${atc.accent}`}>
+                                        {nodeKind}
+                                    </span>
+                                )}
+                                <span className={`h-[6px] w-[6px] rounded-full ${statusDot}`} />
+                                {actStageLabel && (
+                                    <span className={`text-[10px] font-medium ${
+                                        actStage === 'thinking' ? 'text-amber-500' : actStage === 'ready' ? 'text-slate-400' : 'text-slate-300'
+                                    }`}>{actStageLabel}</span>
+                                )}
+                                <div className="ml-auto flex items-center gap-1.5">
+                                    {!isDraftAct && createdBy && (
+                                        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                                            createdBy === 'agent' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                        }`}>
+                                            {createdBy === 'agent' ? <Bot className="h-2.5 w-2.5" /> : <UserRound className="h-2.5 w-2.5" />}
+                                            {createdBy === 'agent' ? 'AI' : 'You'}
+                                        </span>
+                                    )}
+                                    {isNodeStreaming && (
+                                        <span className="flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75" />
+                                            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            {/* Title */}
+                            {isEditing ? (
+                                <input
+                                    ref={inputRef}
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onBlur={commitEdit}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Ask a question..."
+                                    className="w-full bg-transparent border-b-2 border-primary outline-none text-[15px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-1 mt-0.5"
+                                />
+                            ) : (
+                                <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-800">
+                                    {data.label || <span className="font-normal italic text-slate-400">Ask a question…</span>}
+                                </h3>
+                            )}
+                            {/* Referenced nodes */}
+                            {referencedNodes.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                    <span className="text-[10px] font-medium text-slate-400">via</span>
+                                    {referencedNodes.slice(0, 3).map((node) => (
+                                        <button
+                                            key={node.id}
+                                            type="button"
+                                            className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors hover:bg-slate-100"
+                                            onClick={(event: React.MouseEvent) => {
+                                                event.stopPropagation();
+                                                data.onOpenReferencedNode?.(node.id);
+                                            }}
+                                        >
+                                            {node.label}
+                                        </button>
+                                    ))}
+                                    {referencedNodes.length > 3 && (
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
+                                            +{referencedNodes.length - 3}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Expanded content ── */}
+                    {isExpanded && (
+                        <div className={`border-t ${isDraftAct && !hasBodyText ? 'border-transparent' : 'border-slate-100'}`}>
+                            <div
+                                style={{ maxHeight: expandedMaxHeight }}
+                                className={`overflow-y-auto ${isDraftAct ? 'px-5 py-2' : 'px-5 py-3'}`}
+                                onWheel={(event) => { event.stopPropagation(); }}
+                            >
+                                {data.contextSummary && (
+                                    <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+                                        {data.contextSummary}
+                                    </p>
+                                )}
+                                {data.contentMd && (
+                                    <div className="text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+                                        {data.contentMd}
+                                    </div>
+                                )}
+                                {showThoughts && data.thoughtMd && (
+                                    <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                        <div className="text-[12px] whitespace-pre-wrap leading-relaxed text-amber-900/85">
+                                            {data.thoughtMd}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* Run trace */}
+                                {hasRunTrace && (
+                                    <div className="mt-3 rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-2">
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Run Trace</p>
+                                        {usedTools.length > 0 && (
+                                            <p className="mt-1 text-[11px] text-slate-600">tools: {usedTools.join(', ')}</p>
+                                        )}
+                                        {usedContextNodeIds.length > 0 && (
+                                            <p className="mt-1 text-[11px] text-slate-600">nodes: {usedContextNodeIds.join(', ')}</p>
+                                        )}
+                                        {usedSources.length > 0 && (
+                                            <p className="mt-1 text-[11px] text-slate-600">sources: {usedSources.map((s) => s.label || s.id).join(', ')}</p>
+                                        )}
+                                    </div>
+                                )}
+                                {hasChildNodes && !branchExpanded && hiddenChildCount > 0 && (
+                                    <div className="mt-2">
+                                        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
+                                            {hiddenChildCount} child{hiddenChildCount > 1 ? 'ren' : ''} hidden
+                                        </span>
+                                    </div>
+                                )}
+                                {/* Action buttons */}
+                                {(hasActionButtons || actStage === 'draft') && (
+                                    <div className={`flex flex-wrap gap-2 ${hasBodyText || hasRunTrace ? 'mt-3 pt-2.5 border-t border-slate-100' : 'mt-0'}`}>
+                                        {actStage === 'draft' && data.onAddMedia && (
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all nodrag nopan"
+                                                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+                                                onPointerUp={(e: React.PointerEvent) => e.stopPropagation()}
+                                                onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                                                onClick={(e: React.MouseEvent) => { e.stopPropagation(); mediaInputRef.current?.click(); }}
+                                            >
+                                                {isUploadingMedia ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5 mr-1.5" />}
+                                                Add Media
+                                            </Button>
+                                        )}
+                                        {data.actions?.map((action: { label: string; execute: string }, idx: number) => (
+                                            <Button
+                                                key={idx}
+                                                variant="secondary"
+                                                size="sm"
+                                                className={['h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all group/btn', isNodeStreaming ? 'opacity-50 pointer-events-none' : ''].join(' ')}
+                                                onClick={(e: React.MouseEvent) => { e.stopPropagation(); data.onRunAction?.(action.label); }}
+                                            >
+                                                <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 transition-all" />
+                                                {action.label}
+                                            </Button>
+                                        ))}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className={['h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all group/btn', canRetry ? '' : 'opacity-40 pointer-events-none'].join(' ')}
+                                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (canRetry) data.onRunAction?.(retryQuery); }}
+                                        >
+                                            <RotateCcw className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 transition-all" />
+                                            Retry
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Handles */}
+                <Handle type="target" id="target-left" position={targetPosition ?? Position.Left} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="source" id="source-right" position={sourcePosition ?? Position.Right} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="target" id="target-right" position={Position.Right} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="source" id="source-left" position={Position.Left} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="target" id="target-top" position={Position.Top} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+                <Handle type="source" id="source-top" position={Position.Top} style={{ marginTop: -8 }} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+                <Handle type="target" id="target-bottom" position={Position.Bottom} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+                <Handle type="source" id="source-bottom" position={Position.Bottom} style={{ marginTop: 8 }} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
             </div>
         );
     }
@@ -444,6 +728,31 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
                         )}
+                        {/* ── Topic node brief (collapsed only) ── */}
+                        {!isExpanded && !isActNode && nodeKind === 'topic' && (
+                            <div className="mt-2 min-h-[52px] flex flex-col justify-center">
+                                {data.contextSummary ? (
+                                    <p className="line-clamp-3 text-[11px] leading-relaxed text-muted-foreground">
+                                        {data.contextSummary}
+                                    </p>
+                                ) : data.briefGenerating ? (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <span>Generating…</span>
+                                    </div>
+                                ) : data.onGenerateBrief ? (
+                                    <button
+                                        type="button"
+                                        className="nodrag flex w-fit items-center gap-1 rounded-full border border-dashed border-primary/30 px-2.5 py-1 text-[11px] font-medium text-primary/60 transition-colors hover:border-primary/60 hover:text-primary"
+                                        onClick={(e) => { e.stopPropagation(); data.onGenerateBrief?.(); }}
+                                    >
+                                        <span>✦</span>
+                                        <span>Generate brief</span>
+                                    </button>
+                                ) : null}
+                            </div>
+                        )}
+
                         {isExpanded && referencedNodes.length > 0 && (
                             <div className={`flex flex-wrap gap-1.5 ${isActNode ? 'mt-1.5' : 'mt-2'}`}>
                                 <span className={`${isActNode ? 'text-[10px]' : 'text-[11px]'} font-medium text-muted-foreground/70`}>

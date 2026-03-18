@@ -687,9 +687,63 @@ export function GraphCanvas() {
         ],
     );
 
+    // ── Brief generation ──────────────────────────────────────────────────────
+    // Act nodes with kind='brief' that haven't yet produced content are "in progress"
+    const briefGeneratingNodeIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const actNode of actNodes as GraphNodeBase[]) {
+            if (actNode.data?.kind !== 'brief') continue;
+            if (actNode.data?.contentMd) continue; // already complete
+            const refs = actNode.data?.referencedNodeIds;
+            if (Array.isArray(refs) && typeof refs[0] === 'string') ids.add(refs[0]);
+        }
+        return ids;
+    }, [actNodes]);
+
+    const handleGenerateBrief = useCallback((nodeId: string, nodePosition: { x: number; y: number }) => {
+        const actId = addQueryActNode(
+            { x: nodePosition.x + 420, y: nodePosition.y },
+            '',
+            { isManualPosition: true },
+        );
+        addOrUpdateActNode(actId, {
+            referencedNodeIds: [nodeId],
+            kind: 'brief',
+            createdBy: 'user',
+        });
+    }, [addOrUpdateActNode, addQueryActNode]);
+
+    // Write completed brief act content back to the persisted node's contextSummary
+    const appliedBriefActIds = useRef(new Set<string>());
+    useEffect(() => {
+        for (const actNode of actNodes as GraphNodeBase[]) {
+            if (actNode.data?.kind !== 'brief') continue;
+            if (!actNode.data?.contentMd) continue;
+            if (appliedBriefActIds.current.has(actNode.id)) continue;
+            const refs = actNode.data?.referencedNodeIds;
+            const targetNodeId = Array.isArray(refs) && typeof refs[0] === 'string' ? refs[0] : null;
+            if (!targetNodeId || !workspaceId || !topicId) continue;
+            appliedBriefActIds.current.add(actNode.id);
+            void organizeService.updateNodeSummary(workspaceId, topicId, targetNodeId, actNode.data.contentMd);
+        }
+    }, [actNodes, workspaceId, topicId]);
+
     const canvasNodes = useMemo(
-        () => [...displayNodes, ...selectionProjection.nodes],
-        [displayNodes, selectionProjection.nodes],
+        () => [
+            ...displayNodes.map((node) => {
+                if (node.data.nodeSource !== 'persisted' || node.data.kind !== 'topic') return node;
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        briefGenerating: briefGeneratingNodeIds.has(node.id),
+                        onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
+                    },
+                };
+            }),
+            ...selectionProjection.nodes,
+        ],
+        [briefGeneratingNodeIds, displayNodes, handleGenerateBrief, selectionProjection.nodes],
     );
 
     // Computed early so both layoutAwareDisplayNodes and displayEdges can share it.
@@ -757,7 +811,7 @@ export function GraphCanvas() {
 
             // Act nodes pass through layout with stripped data (to avoid streaming thrash).
             // Re-merge the full store data so kind, contentMd, etc. are available for rendering.
-            const fullActData = node.data?.nodeSource === 'act' ? fullActNodeDataById.get(node.id) : undefined;
+            const fullActData = fullActNodeDataById.get(node.id);
 
             return {
                 ...node,
@@ -798,13 +852,19 @@ export function GraphCanvas() {
                 ...node.data,
                 layoutMode: 'radial' as const,
                 radialDepth: radialOverviewGraph.depthById.get(node.id) ?? 0,
+                ...(node.data.nodeSource === 'persisted' && node.data.kind === 'topic' ? {
+                    briefGenerating: briefGeneratingNodeIds.has(node.id),
+                    onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
+                } : {}),
             },
         })),
         [
+            briefGeneratingNodeIds,
             commands,
             editingNodeId,
             expandedBranchNodeIds,
             expandedNodeIds,
+            handleGenerateBrief,
             radialOverviewGraph.childrenByParent,
             radialOverviewGraph.depthById,
             radialOverviewGraph.positionedNodes,

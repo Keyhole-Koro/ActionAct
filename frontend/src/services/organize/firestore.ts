@@ -259,6 +259,12 @@ export const firestoreOrganizeService: OrganizePort = {
     });
   },
 
+  updateNodeSummary: async (workspaceId, topicId, nodeId, contextSummary) => {
+    await updateDoc(topicNodeDoc(workspaceId, topicId, nodeId), {
+      contextSummary,
+    });
+  },
+
   deleteNode: async (workspaceId, topicId, nodeId) => {
     await deleteDoc(topicNodeDoc(workspaceId, topicId, nodeId));
   },
