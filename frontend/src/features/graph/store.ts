@@ -386,12 +386,10 @@ export const useGraphStore = create<GraphState>((set) => ({
             return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
         });
 
-        // Collapse branch expansions for unused nodes
-        const nextExpandedBranchNodeIds = state.expandedBranchNodeIds.filter((nodeId) => {
-            if (isProtected(nodeId)) return true;
-            const lastUsed = state.nodeLastUsedAt[nodeId];
-            return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
-        });
+        // Keep persisted branch visibility stable. Auto-collapse is limited to
+        // node detail surfaces so derived canvas elements like tree edges do
+        // not disappear after an inactivity timeout.
+        const nextExpandedBranchNodeIds = state.expandedBranchNodeIds;
 
         if (
             nextExpandedNodeIds.length === state.expandedNodeIds.length &&

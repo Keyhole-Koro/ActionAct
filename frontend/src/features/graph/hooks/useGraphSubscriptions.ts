@@ -24,6 +24,12 @@ export function useGraphSubscriptions({
     }, [setPersistedGraph]);
 
     useEffect(() => {
+        if (!effectiveWorkspaceId) {
+            persistedNodeCountRef.current = 0;
+            setPersistedGraphRef.current([], []);
+            return;
+        }
+
         const unsubscribe = organizeService.subscribeTree(effectiveWorkspaceId, (topicNodes) => {
             const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
                 id: node.id,
@@ -65,6 +71,11 @@ export function useGraphSubscriptions({
     }, [effectiveWorkspaceId]);
 
     useEffect(() => {
+        if (!effectiveWorkspaceId) {
+            setActGraph([], []);
+            return;
+        }
+
         const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, (draftNodes) => {
             const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,

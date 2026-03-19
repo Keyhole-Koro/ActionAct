@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 import {
     Background,
+    Edge,
     MiniMap,
     Node,
     ReactFlow,
@@ -32,7 +33,7 @@ import { GraphNodeCardWithBoundary } from './graphCanvas/GraphNodeCardWithBounda
 import { KeyboardShortcutsHint, NavControl } from './graphCanvas/GraphCanvasControls';
 import { RecentClickedSelector } from './graphCanvas/RecentClickedSelector';
 import { getDisplayNodeDimensions, readClientPoint } from './graphCanvas/graphCanvasUtils';
-import type { GraphNodeBase, GraphNodeRender } from '../types';
+import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
 
 import { useGraphSubscriptions } from '../hooks/useGraphSubscriptions';
 import { useLocalGraphState } from '../hooks/useLocalGraphState';
@@ -141,8 +142,8 @@ export function GraphCanvas() {
         persistedParentById,
         persistedRootIdByNode,
     } = useGraphLayout({
-        persistedNodes,
-        persistedEdges,
+        persistedNodes: persistedNodes as Node<PersistedNodeData>[],
+        persistedEdges: persistedEdges as Edge[],
         actNodes,
         actEdges,
         expandedNodeIds,
