@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file act/v1/act.proto.
  */
 export const file_act_v1_act: GenFile = /*@__PURE__*/
-  fileDesc("ChBhY3QvdjEvYWN0LnByb3RvEgZhY3QudjEizgIKDVJ1bkFjdFJlcXVlc3QSEAoIdG9waWNfaWQYASABKAkSFAoMd29ya3NwYWNlX2lkGAIgASgJEhIKCnJlcXVlc3RfaWQYAyABKAkSIQoIYWN0X3R5cGUYBCABKA4yDy5hY3QudjEuQWN0VHlwZRIUCgx1c2VyX21lc3NhZ2UYBSABKAkSFgoOYW5jaG9yX25vZGVfaWQYBiABKAkSGAoQY29udGV4dF9ub2RlX2lkcxgHIAMoCRIlCgpsbG1fY29uZmlnGAggASgLMhEuYWN0LnYxLkxMTUNvbmZpZxILCgN1aWQYCSABKAkSJQoKdXNlcl9tZWRpYRgKIAMoCzIRLmFjdC52MS5NZWRpYURhdGESOwoWc2VsZWN0ZWRfbm9kZV9jb250ZXh0cxgLIAMoCzIbLmFjdC52MS5TZWxlY3RlZE5vZGVDb250ZXh0IpkBChNTZWxlY3RlZE5vZGVDb250ZXh0Eg8KB25vZGVfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDAoEa2luZBgDIAEoCRIXCg9jb250ZXh0X3N1bW1hcnkYBCABKAkSEgoKY29udGVudF9tZBgFIAEoCRISCgp0aG91Z2h0X21kGAYgASgJEhMKC2RldGFpbF9odG1sGAcgASgJIiwKCU1lZGlhRGF0YRIRCgltaW1lX3R5cGUYASABKAkSDAoEZGF0YRgCIAEoDCJNCglMTE1Db25maWcSDQoFbW9kZWwYASABKAkSGAoQZW5hYmxlX2dyb3VuZGluZxgCIAEoCBIXCg9lbmFibGVfdGhpbmtpbmcYAyABKAgi0QEKC1J1bkFjdEV2ZW50EicKCnRleHRfZGVsdGEYASABKAsyES5hY3QudjEuVGV4dERlbHRhSAASJQoJcGF0Y2hfb3BzGAIgASgLMhAuYWN0LnYxLlBhdGNoT3BzSAASJAoIdGVybWluYWwYAyABKAsyEC5hY3QudjEuVGVybWluYWxIABIvCg5hY3Rpb25fdHJpZ2dlchgFIAEoCzIVLmFjdC52MS5BY3Rpb25UcmlnZ2VySAASEgoKaXNfdGhvdWdodBgEIAEoCEIHCgVldmVudCIZCglUZXh0RGVsdGESDAoEdGV4dBgBIAEoCSIoCghQYXRjaE9wcxIcCgNvcHMYASADKAsyDy5hY3QudjEuUGF0Y2hPcCKNAQoHUGF0Y2hPcBIKCgJvcBgBIAEoCRIPCgdub2RlX2lkGAIgASgJEg8KB2NvbnRlbnQYAyABKAkSCwoDc2VxGAQgASgEEhcKD2V4cGVjdGVkX29mZnNldBgFIAEoDRIMCgRraW5kGAYgASgJEhEKCXBhcmVudF9pZBgHIAEoCRINCgVsYWJlbBgIIAEoCSI1Cg1BY3Rpb25UcmlnZ2VyEg4KBmFjdGlvbhgBIAEoCRIUCgxwYXlsb2FkX2pzb24YAiABKAkiQQoJU291cmNlUmVmEgoKAmlkGAEgASgJEgwKBGtpbmQYAiABKAkSDQoFbGFiZWwYAyABKAkSCwoDdXJpGAQgASgJItgBCghUZXJtaW5hbBIMCgRkb25lGAEgASgIEiAKBWVycm9yGAIgASgLMhEuYWN0LnYxLkVycm9ySW5mbxIdChV1c2VkX2NvbnRleHRfbm9kZV9pZHMYAyADKAkSQAobdXNlZF9zZWxlY3RlZF9ub2RlX2NvbnRleHRzGAQgAygLMhsuYWN0LnYxLlNlbGVjdGVkTm9kZUNvbnRleHQSEgoKdXNlZF90b29scxgFIAMoCRInCgx1c2VkX3NvdXJjZXMYBiADKAsyES5hY3QudjEuU291cmNlUmVmInYKCUVycm9ySW5mbxIMCgRjb2RlGAEgASgJEg8KB21lc3NhZ2UYAiABKAkSEQoJcmV0cnlhYmxlGAMgASgIEg0KBXN0YWdlGAQgASgJEhAKCHRyYWNlX2lkGAUgASgJEhYKDnJldHJ5X2FmdGVyX21zGAYgASgDKmkKB0FjdFR5cGUSGAoUQUNUX1RZUEVfVU5TUEVDSUZJRUQQABIUChBBQ1RfVFlQRV9FWFBMT1JFEAESFAoQQUNUX1RZUEVfQ09OU1VMVBACEhgKFEFDVF9UWVBFX0lOVkVTVElHQVRFEAMyRgoKQWN0U2VydmljZRI4CgZSdW5BY3QSFS5hY3QudjEuUnVuQWN0UmVxdWVzdBoTLmFjdC52MS5SdW5BY3RFdmVudCIAMAFCGloYYWN0LWFwaS9nZW4vYWN0L3YxO2FjdHYxYgZwcm90bzM");
+  fileDesc("ChBhY3QvdjEvYWN0LnByb3RvEgZhY3QudjEi5AIKDVJ1bkFjdFJlcXVlc3QSEAoIdG9waWNfaWQYASABKAkSFAoMd29ya3NwYWNlX2lkGAIgASgJEhIKCnJlcXVlc3RfaWQYAyABKAkSIQoIYWN0X3R5cGUYBCABKA4yDy5hY3QudjEuQWN0VHlwZRIUCgx1c2VyX21lc3NhZ2UYBSABKAkSFgoOYW5jaG9yX25vZGVfaWQYBiABKAkSGAoQY29udGV4dF9ub2RlX2lkcxgHIAMoCRIlCgpsbG1fY29uZmlnGAggASgLMhEuYWN0LnYxLkxMTUNvbmZpZxILCgN1aWQYCSABKAkSOwoWc2VsZWN0ZWRfbm9kZV9jb250ZXh0cxgLIAMoCzIbLmFjdC52MS5TZWxlY3RlZE5vZGVDb250ZXh0EikKD3VzZXJfbWVkaWFfcmVmcxgMIAMoCzIQLmFjdC52MS5NZWRpYVJlZkoECAoQC1IKdXNlcl9tZWRpYSKZAQoTU2VsZWN0ZWROb2RlQ29udGV4dBIPCgdub2RlX2lkGAEgASgJEg0KBWxhYmVsGAIgASgJEgwKBGtpbmQYAyABKAkSFwoPY29udGV4dF9zdW1tYXJ5GAQgASgJEhIKCmNvbnRlbnRfbWQYBSABKAkSEgoKdGhvdWdodF9tZBgGIAEoCRITCgtkZXRhaWxfaHRtbBgHIAEoCSJJCghNZWRpYVJlZhIRCgltaW1lX3R5cGUYASABKAkSFgoOZ2NzX29iamVjdF9rZXkYAiABKAkSEgoKc2l6ZV9ieXRlcxgDIAEoAyJNCglMTE1Db25maWcSDQoFbW9kZWwYASABKAkSGAoQZW5hYmxlX2dyb3VuZGluZxgCIAEoCBIXCg9lbmFibGVfdGhpbmtpbmcYAyABKAgi0QEKC1J1bkFjdEV2ZW50EicKCnRleHRfZGVsdGEYASABKAsyES5hY3QudjEuVGV4dERlbHRhSAASJQoJcGF0Y2hfb3BzGAIgASgLMhAuYWN0LnYxLlBhdGNoT3BzSAASJAoIdGVybWluYWwYAyABKAsyEC5hY3QudjEuVGVybWluYWxIABIvCg5hY3Rpb25fdHJpZ2dlchgFIAEoCzIVLmFjdC52MS5BY3Rpb25UcmlnZ2VySAASEgoKaXNfdGhvdWdodBgEIAEoCEIHCgVldmVudCIZCglUZXh0RGVsdGESDAoEdGV4dBgBIAEoCSIoCghQYXRjaE9wcxIcCgNvcHMYASADKAsyDy5hY3QudjEuUGF0Y2hPcCKNAQoHUGF0Y2hPcBIKCgJvcBgBIAEoCRIPCgdub2RlX2lkGAIgASgJEg8KB2NvbnRlbnQYAyABKAkSCwoDc2VxGAQgASgEEhcKD2V4cGVjdGVkX29mZnNldBgFIAEoDRIMCgRraW5kGAYgASgJEhEKCXBhcmVudF9pZBgHIAEoCRINCgVsYWJlbBgIIAEoCSI1Cg1BY3Rpb25UcmlnZ2VyEg4KBmFjdGlvbhgBIAEoCRIUCgxwYXlsb2FkX2pzb24YAiABKAkiQQoJU291cmNlUmVmEgoKAmlkGAEgASgJEgwKBGtpbmQYAiABKAkSDQoFbGFiZWwYAyABKAkSCwoDdXJpGAQgASgJItgBCghUZXJtaW5hbBIMCgRkb25lGAEgASgIEiAKBWVycm9yGAIgASgLMhEuYWN0LnYxLkVycm9ySW5mbxIdChV1c2VkX2NvbnRleHRfbm9kZV9pZHMYAyADKAkSQAobdXNlZF9zZWxlY3RlZF9ub2RlX2NvbnRleHRzGAQgAygLMhsuYWN0LnYxLlNlbGVjdGVkTm9kZUNvbnRleHQSEgoKdXNlZF90b29scxgFIAMoCRInCgx1c2VkX3NvdXJjZXMYBiADKAsyES5hY3QudjEuU291cmNlUmVmInYKCUVycm9ySW5mbxIMCgRjb2RlGAEgASgJEg8KB21lc3NhZ2UYAiABKAkSEQoJcmV0cnlhYmxlGAMgASgIEg0KBXN0YWdlGAQgASgJEhAKCHRyYWNlX2lkGAUgASgJEhYKDnJldHJ5X2FmdGVyX21zGAYgASgDKmkKB0FjdFR5cGUSGAoUQUNUX1RZUEVfVU5TUEVDSUZJRUQQABIUChBBQ1RfVFlQRV9FWFBMT1JFEAESFAoQQUNUX1RZUEVfQ09OU1VMVBACEhgKFEFDVF9UWVBFX0lOVkVTVElHQVRFEAMyRgoKQWN0U2VydmljZRI4CgZSdW5BY3QSFS5hY3QudjEuUnVuQWN0UmVxdWVzdBoTLmFjdC52MS5SdW5BY3RFdmVudCIAMAFCGloYYWN0LWFwaS9nZW4vYWN0L3YxO2FjdHYxYgZwcm90bzM");
 
 /**
  * RunActRequest は RunAct の入力契約。
@@ -83,18 +83,18 @@ export type RunActRequest = Message<"act.v1.RunActRequest"> & {
   uid: string;
 
   /**
-   * インラインメディア（画像、ファイル等）
-   *
-   * @generated from field: repeated act.v1.MediaData user_media = 10;
-   */
-  userMedia: MediaData[];
-
-  /**
    * frontend が送る選択ノードの内容スナップショット
    *
    * @generated from field: repeated act.v1.SelectedNodeContext selected_node_contexts = 11;
    */
   selectedNodeContexts: SelectedNodeContext[];
+
+  /**
+   * GCS に事前アップロード済みファイルの参照。
+   *
+   * @generated from field: repeated act.v1.MediaRef user_media_refs = 12;
+   */
+  userMediaRefs: MediaRef[];
 };
 
 /**
@@ -152,25 +152,34 @@ export const SelectedNodeContextSchema: GenMessage<SelectedNodeContext> = /*@__P
   messageDesc(file_act_v1_act, 1);
 
 /**
- * @generated from message act.v1.MediaData
+ * MediaRef references a file already uploaded to GCS via /api/upload/presign.
+ *
+ * @generated from message act.v1.MediaRef
  */
-export type MediaData = Message<"act.v1.MediaData"> & {
+export type MediaRef = Message<"act.v1.MediaRef"> & {
   /**
    * @generated from field: string mime_type = 1;
    */
   mimeType: string;
 
   /**
-   * @generated from field: bytes data = 2;
+   * Object path within the bucket (e.g. "mind/inputs/in_abc123.raw").
+   *
+   * @generated from field: string gcs_object_key = 2;
    */
-  data: Uint8Array;
+  gcsObjectKey: string;
+
+  /**
+   * @generated from field: int64 size_bytes = 3;
+   */
+  sizeBytes: bigint;
 };
 
 /**
- * Describes the message act.v1.MediaData.
- * Use `create(MediaDataSchema)` to create a new message.
+ * Describes the message act.v1.MediaRef.
+ * Use `create(MediaRefSchema)` to create a new message.
  */
-export const MediaDataSchema: GenMessage<MediaData> = /*@__PURE__*/
+export const MediaRefSchema: GenMessage<MediaRef> = /*@__PURE__*/
   messageDesc(file_act_v1_act, 2);
 
 /**

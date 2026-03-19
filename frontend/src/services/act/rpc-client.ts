@@ -216,7 +216,7 @@ export function createRpcActService(): ActPort {
             requestId: options?.requestId ?? null,
             actType: options?.actType ?? "explore",
             userMessage: queryWithLanguagePreference,
-            userMediaCount: options?.userMedia?.length ?? 0,
+            userMediaRefsCount: options?.userMediaRefs?.length ?? 0,
             anchorNodeId: options?.anchorNodeId ?? "",
             contextNodeIds: options?.contextNodeIds ?? [],
             selectedNodeContextsCount: options?.selectedNodeContexts?.length ?? 0,
@@ -234,7 +234,11 @@ export function createRpcActService(): ActPort {
               requestId: options?.requestId ?? uuidv4(),
               actType: mapActType(options?.actType),
               userMessage: queryWithLanguagePreference,
-              userMedia: options?.userMedia ?? [],
+              userMediaRefs: (options?.userMediaRefs ?? []).map((r) => ({
+                mimeType: r.mimeType,
+                gcsObjectKey: r.gcsObjectKey,
+                sizeBytes: BigInt(r.sizeBytes),
+              })),
               anchorNodeId: options?.anchorNodeId ?? "",
               contextNodeIds: options?.contextNodeIds ?? [],
               selectedNodeContexts: (options?.selectedNodeContexts ?? []).map((ctx) => ({

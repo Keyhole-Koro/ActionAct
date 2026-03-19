@@ -60,8 +60,11 @@ export function useGraphCommands({ workspaceId }: Params) {
             });
             return;
         }
-        startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
-    }, [frontendToolClient, recordNodeUsed, setPendingClarification, setSelectedNodes]);
+        const { frontendNodeId } = startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
+        setActiveNode(frontendNodeId);
+        expandNode(frontendNodeId);
+        recordNodeUsed(frontendNodeId);
+    }, [expandNode, frontendToolClient, recordNodeUsed, setActiveNode, setPendingClarification, setSelectedNodes]);
 
     const commitActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
         const trimmed = rawLabel.trim();

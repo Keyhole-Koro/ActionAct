@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import AsyncIterator
 
@@ -88,6 +87,19 @@ def _build_system_instruction(bundle: PromptBundle) -> str | None:
     return "\n\n".join(system_parts)
 
 
+def _download_from_gcs(gcs_uri: str) -> bytes:
+    """Download a GCS object as bytes.
+
+    Respects STORAGE_EMULATOR_HOST if set (local dev with fake-gcs-server).
+    """
+    from google.cloud import storage  # type: ignore[import-untyped]
+
+    without_prefix = gcs_uri.removeprefix("gs://")
+    bucket_name, _, blob_name = without_prefix.partition("/")
+    client = storage.Client()
+    return client.bucket(bucket_name).blob(blob_name).download_as_bytes()
+
+
 class GeminiLLM:
     """Calls Gemini via the google-genai SDK with streaming."""
 
@@ -116,10 +128,15 @@ class GeminiLLM:
             
         for media in bundle.user_media:
             try:
-                data = base64.b64decode(media.data_base64)
-                parts.append(Part.from_bytes(data=data, mime_type=media.mime_type))
+                if self._backend == "vertex":
+                    # Vertex AI supports gs:// URIs natively — no download needed.
+                    parts.append(Part.from_uri(file_uri=media.gcs_uri, mime_type=media.mime_type))
+                else:
+                    # Developer API requires raw bytes — download from GCS.
+                    data = _download_from_gcs(media.gcs_uri)
+                    parts.append(Part.from_bytes(data=data, mime_type=media.mime_type))
             except Exception as e:
-                logger.warning("Failed to decode user media", exc_info=e)
+                logger.warning("Failed to attach user media", extra={"gcs_uri": media.gcs_uri}, exc_info=e)
 
         if not parts:
             parts.append(Part.from_text(text="[empty message]"))

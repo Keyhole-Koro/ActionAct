@@ -71,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer actRunRecorder.Close()
-	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
+	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, cfg.GCSBucket, actRunRecorder, idempotencyGate)
 
 	// ── GCS ──
 	var gcsOpts []option.ClientOption
@@ -123,6 +123,7 @@ func main() {
 	// ── Usecase layer ──
 	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 	uploadUC := usecase.NewUploadUsecase(authVerifier, gcsStorage, inputRecorder, pubsubPublisher)
+	presignUC := usecase.NewPresignUsecase(authVerifier, gcsStorage, cfg.UploadProxyOrigin)
 	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
 	updateWorkspaceVisibilityUC := usecase.NewUpdateWorkspaceVisibilityUsecase(authVerifier, workspaceVisibilityUpdater)
 	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
@@ -141,6 +142,7 @@ func main() {
 		cfg.CSRFTTLSeconds,
 	)
 	uploadHandler := handler.NewUploadHandler(uploadUC)
+	presignHandler := handler.NewPresignHandler(presignUC, gcsStorage)
 	workspaceRenameHandler := handler.NewWorkspaceRenameHandler(renameWorkspaceUC)
 	workspaceVisibilityHandler := handler.NewWorkspaceVisibilityHandler(updateWorkspaceVisibilityUC)
 	workspaceMemberSearchHandler := handler.NewWorkspaceMemberSearchHandler(searchWorkspaceUsersUC)
@@ -153,6 +155,7 @@ func main() {
 	mux.Handle(path, connectHandler)
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
 	uploadHandler.Register(mux)
+	presignHandler.Register(mux)
 	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
 	mux.Handle("/api/workspace/visibility", workspaceVisibilityHandler)
 	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)
@@ -189,7 +192,7 @@ func withCORS(next http.Handler, allowedOrigins []string) http.Handler {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, Connect-Protocol-Version, Connect-Timeout-Ms")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, PUT, OPTIONS")
 			w.Header().Set("Access-Control-Max-Age", "600")
 		}
 

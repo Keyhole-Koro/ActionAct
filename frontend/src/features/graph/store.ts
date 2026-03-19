@@ -50,6 +50,7 @@ interface GraphState {
     addOrUpdateActNode: (nodeId: string, payload: {
         label?: string;
         kind?: string;
+        hasStartedRun?: boolean;
         parentId?: string;
         referencedNodeIds?: string[];
         createdBy?: 'user' | 'agent';
@@ -421,6 +422,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...n.data,
                                 ...(payload.label !== undefined ? { label: payload.label } : {}),
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                                ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                                 ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                                 ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
@@ -450,6 +452,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 createdBy: payload.createdBy ?? 'agent',
                 ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
                 kind: payload.kind ?? 'act',
+                ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',
                 ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),

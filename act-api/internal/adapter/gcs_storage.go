@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/storage"
 )
@@ -19,6 +20,11 @@ type GCSStorage struct {
 // NewGCSStorage creates a GCSStorage backed by the given bucket.
 func NewGCSStorage(client *storage.Client, bucketName string) *GCSStorage {
 	return &GCSStorage{client: client, bucketName: bucketName}
+}
+
+// BucketName returns the configured bucket name.
+func (s *GCSStorage) BucketName() string {
+	return s.bucketName
 }
 
 // Upload writes data to GCS at the specified objectPath and returns the full
@@ -81,6 +87,41 @@ func (s *GCSStorage) Download(ctx context.Context, gcsURI string) ([]byte, error
 		return nil, fmt.Errorf("read gcs object: %w", err)
 	}
 	return data, nil
+}
+
+// PresignedPutURL returns a V4-signed PUT URL that allows a client to upload
+// directly to GCS without going through act-api.  The URL expires after ttl.
+// Only valid when not using the GCS emulator; call UploadStream for dev.
+func (s *GCSStorage) PresignedPutURL(objectPath string, mimeType string, ttl time.Duration) (string, error) {
+	url, err := s.client.Bucket(s.bucketName).SignedURL(objectPath, &storage.SignedURLOptions{
+		Method:      "PUT",
+		ContentType: mimeType,
+		Expires:     time.Now().Add(ttl),
+		Scheme:      storage.SigningSchemeV4,
+	})
+	if err != nil {
+		return "", fmt.Errorf("sign url: %w", err)
+	}
+	return url, nil
+}
+
+// UploadStream writes the content of r to GCS at objectPath without buffering
+// the entire body in memory.  Used by the local-dev proxy endpoint.
+func (s *GCSStorage) UploadStream(ctx context.Context, objectPath string, r io.Reader, contentType string) (gcsURI string, err error) {
+	obj := s.client.Bucket(s.bucketName).Object(objectPath)
+	w := obj.NewWriter(ctx)
+	w.ContentType = contentType
+	w.ChunkSize = 0 // disable resumable upload; use single-shot (required for fake-gcs-server)
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(w, h), r); err != nil {
+		_ = w.Close()
+		return "", fmt.Errorf("gcs stream write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("gcs stream close: %w", err)
+	}
+	return fmt.Sprintf("gs://%s/%s", s.bucketName, objectPath), nil
 }
 
 // Close releases the underlying storage client.

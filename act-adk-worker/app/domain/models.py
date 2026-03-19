@@ -18,7 +18,8 @@ class LLMConfig(BaseModel):
 
 class WorkerMedia(BaseModel):
     mime_type: str
-    data_base64: str
+    gcs_uri: str          # gs://bucket/object/path
+    size_bytes: int = 0
 
 
 class SelectedNodeContext(BaseModel):

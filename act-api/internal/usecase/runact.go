@@ -148,11 +148,12 @@ func (uc *RunActUsecase) Execute(
 		"act_type", msg.GetActType(),
 	)
 
-	var userMedia []domain.MediaData
-	for _, m := range msg.GetUserMedia() {
-		userMedia = append(userMedia, domain.MediaData{
-			MimeType: m.GetMimeType(),
-			Data:     m.GetData(),
+	var userMediaRefs []domain.MediaRef
+	for _, m := range msg.GetUserMediaRefs() {
+		userMediaRefs = append(userMediaRefs, domain.MediaRef{
+			MimeType:     m.GetMimeType(),
+			GCSObjectKey: m.GetGcsObjectKey(),
+			SizeBytes:    m.GetSizeBytes(),
 		})
 	}
 
@@ -177,7 +178,7 @@ func (uc *RunActUsecase) Execute(
 		TopicID:              msg.GetTopicId(),
 		WorkspaceID:          msg.GetWorkspaceId(),
 		UserMessage:          msg.GetUserMessage(),
-		UserMedia:            userMedia,
+		UserMediaRefs:        userMediaRefs,
 		ActType:              msg.GetActType().String(),
 		AnchorID:             msg.GetAnchorNodeId(),
 		ContextIDs:           msg.GetContextNodeIds(),

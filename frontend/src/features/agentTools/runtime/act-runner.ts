@@ -23,6 +23,7 @@ export type StartActRunParams = {
 
 export type StartActRunResult = {
   requestId: string;
+  frontendNodeId: string;
   cancel: () => void;
 };
 
@@ -131,6 +132,15 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
       referencedNodeIds,
     });
   }
+  graphStore.addOrUpdateActNode(frontendRootNodeId, {
+    hasStartedRun: true,
+    ...(existingFrontendRootNode ? {} : {
+      label: query,
+      kind: "act",
+      createdBy: "agent" as const,
+      referencedNodeIds,
+    }),
+  });
   graphStore.addStreamingNode(frontendRootNodeId);
 
   const touchedNodeIds = new Set<string>();
@@ -298,5 +308,5 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
       : undefined,
   );
 
-  return { requestId, cancel };
+  return { requestId, frontendNodeId: frontendRootNodeId, cancel };
 }

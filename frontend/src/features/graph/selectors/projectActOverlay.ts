@@ -46,6 +46,10 @@ function buildActKey(actNodes: GraphNodeBase[]): string {
     }).join('|');
 }
 
+function isRenderableCoordinate(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
+}
+
 export function projectActOverlay({
     actNodes,
     persistedNodes,
@@ -286,6 +290,18 @@ export function projectActOverlay({
 
     // ── Emit positioned nodes ─────────────────────────────────────────────────
     const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
+        const preserveExistingPosition =
+            node.data?.overlayPositioned === true
+            && isRenderableCoordinate(node.position?.x)
+            && isRenderableCoordinate(node.position?.y);
+
+        if (preserveExistingPosition) {
+            return {
+                ...node,
+                data: { ...node.data, overlayPositioned: true },
+            };
+        }
+
         const rootId = rootOfNode.get(node.id);
         const nodeBaseX = rootId != null ? (baseXPerRoot.get(rootId) ?? globalBaseX) : globalBaseX;
         return {

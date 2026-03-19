@@ -52,7 +52,8 @@ export interface StreamActOptions {
     anchorNodeId?: string;
     contextNodeIds?: string[];
     selectedNodeContexts?: SelectedNodeContext[];
-    userMedia?: { mimeType: string; data: Uint8Array }[];
+    /** GCS references for files uploaded via /api/upload/presign. */
+    userMediaRefs?: { mimeType: string; gcsObjectKey: string; sizeBytes: number }[];
     requestId?: string;
     includeThoughts?: boolean;
     workspaceId?: string;

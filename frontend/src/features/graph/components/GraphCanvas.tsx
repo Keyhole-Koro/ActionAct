@@ -379,7 +379,9 @@ export function GraphCanvas() {
 
                     const nodeKind = node.data?.kind as string | undefined;
                     const actStage = node.data?.actStage as string | undefined;
-                    if ((nodeKind === 'suggestion' || actStage === 'draft') && !isStreaming) {
+                    const hasStartedRun = node.data?.hasStartedRun === true;
+                    const canAutoRunFromClick = nodeKind === 'suggestion' || (actStage === 'draft' && !hasStartedRun);
+                    if (canAutoRunFromClick && !isStreaming) {
                         const query = ((node.data?.contentMd as string | undefined) || (node.data?.label as string | undefined) || '').trim();
                         if (query) {
                             void commands.runActFromNode(node.id, query);

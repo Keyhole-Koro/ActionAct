@@ -11,6 +11,34 @@ interface RecentClickedSelectorProps {
     onSelectNode: (nodeId: string) => void;
 }
 
+function firstMeaningfulLine(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const lines = value
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^#+\s*/, '').trim())
+        .filter((line) => line.length > 0);
+    return lines.length > 0 ? lines[0] : null;
+}
+
+function resolveRecentNodeLabel(nodeId: string, data: Record<string, unknown> | undefined): string {
+    const rawLabel = typeof data?.label === 'string' ? data.label.trim() : '';
+    if (rawLabel.length > 0 && rawLabel !== nodeId) {
+        return rawLabel;
+    }
+
+    const fallbackFromSummary = firstMeaningfulLine(data?.contextSummary);
+    if (fallbackFromSummary) {
+        return fallbackFromSummary;
+    }
+
+    const fallbackFromContent = firstMeaningfulLine(data?.contentMd);
+    if (fallbackFromContent) {
+        return fallbackFromContent;
+    }
+
+    return 'Untitled node';
+}
+
 export function RecentClickedSelector({
     recentClickedNodeIds,
     referenceableNodeById,
@@ -23,10 +51,11 @@ export function RecentClickedSelector({
         <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex w-[min(820px,calc(100%-2rem))] -translate-x-1/2 items-center justify-center gap-1.5">
             {recentClickedNodeIds.map((nodeId, index) => {
                 const node = referenceableNodeById.get(nodeId);
+                if (!node) {
+                    return null;
+                }
                 const data = node?.data as Record<string, unknown> | undefined;
-                const label = typeof data?.label === 'string' && data.label.trim().length > 0
-                    ? data.label.trim()
-                    : nodeId;
+                const label = resolveRecentNodeLabel(nodeId, data);
                 const isActive = activeNodeId === nodeId;
 
                 return (
