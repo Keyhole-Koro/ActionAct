@@ -168,7 +168,7 @@ export function layoutPersistedForce({
     }
 
     // ── Run simulation synchronously ─────────────────────────────────────────
-    const simulation = forceSimulation<SimNode>(simNodes)
+    const simulation = (forceSimulation<SimNode>(simNodes) as any)
         .velocityDecay(0.45) // Higher decay = more friction, less jumping
         .force(
             'charge',

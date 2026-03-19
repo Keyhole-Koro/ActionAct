@@ -4,13 +4,13 @@ import React, { useRef, useState } from 'react';
 import { Send, Plus, X, Loader2, FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGraphStore } from '@/features/graph/store';
-import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
+import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
 
 export function AskForm() {
-    const { startStream } = useAgentInteractionStore();
+    const { startStream } = useActStream();
     const { isStreaming } = useGraphStore();
     const { isReadOnly } = useRunContextStore();
     const [query, setQuery] = useState('');

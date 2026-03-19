@@ -21,6 +21,31 @@ const SIBLING_GAP = 24;
 // Vertical gap between separate trees
 const TREE_GAP = 48;
 
+// Module-level cache: return the same array reference when the effective layout
+// inputs haven't changed. This prevents downstream useMemo hooks from
+// invalidating when persistedGraph.positionedNodes gets a new reference but
+// identical values — which happens when deferredExpandedBranchNodeIds resolves
+// at streaming end and triggers a redundant persistedGraph recomputation.
+let _overlayCache: {
+    actKey: string;
+    maxPersistedRight: number;
+    expandedKey: string;
+    result: GraphNodeBase[];
+} | null = null;
+
+function buildActKey(actNodes: GraphNodeBase[]): string {
+    return actNodes.map((n) => {
+        const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
+        const refs = Array.isArray(n.data?.referencedNodeIds)
+            ? (n.data.referencedNodeIds as unknown[]).filter((v): v is string => typeof v === 'string').join('+')
+            : '';
+        const manual = n.data?.isManualPosition === true
+            ? `@${Math.round(n.position.x)},${Math.round(n.position.y)}`
+            : '';
+        return `${n.id}:${parentId}:${refs}${manual}`;
+    }).join('|');
+}
+
 export function projectActOverlay({
     actNodes,
     persistedNodes,
@@ -35,6 +60,21 @@ export function projectActOverlay({
         const d = getNodeDimensions(n, expandedSet.has(n.id));
         return Math.max(max, n.position.x + d.width);
     }, 0);
+
+    // Cache check: if the effective layout inputs are unchanged, reuse the
+    // previous result array. This keeps positionedActNodes referentially stable
+    // when persistedGraph.positionedNodes gets a new reference but identical
+    // values — avoiding spurious downstream useMemo invalidations.
+    const actKey = buildActKey(actNodes);
+    const expandedKey = expandedNodeIds.slice().sort().join(',');
+    if (
+        _overlayCache !== null
+        && _overlayCache.actKey === actKey
+        && _overlayCache.maxPersistedRight === maxPersistedRight
+        && _overlayCache.expandedKey === expandedKey
+    ) {
+        return _overlayCache.result;
+    }
 
     // Separate manually-positioned nodes from those that need layout
     const fixedNodes: GraphNodeBase[] = [];
@@ -224,7 +264,9 @@ export function projectActOverlay({
         data: { ...node.data, overlayPositioned: true },
     }));
 
-    return [...positionedFloat, ...fixedNodes];
+    const result = [...positionedFloat, ...fixedNodes];
+    _overlayCache = { actKey, maxPersistedRight, expandedKey, result };
+    return result;
 }
 
 function getNodeDimensions(node: GraphNodeBase, isExpanded: boolean) {

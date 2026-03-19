@@ -53,6 +53,16 @@ export function RadialOverview({
     const viewportAnimationRef = useRef<number | null>(null);
     const viewportTargetRef = useRef<{ left: number; top: number } | null>(null);
 
+    // Cancel any in-flight RAF loop when the component unmounts.
+    useEffect(() => {
+        return () => {
+            if (viewportAnimationRef.current !== null) {
+                cancelAnimationFrame(viewportAnimationRef.current);
+                viewportAnimationRef.current = null;
+            }
+        };
+    }, []);
+
     const persistedNodes = useMemo(
         () => nodes.filter((node) => node.data?.nodeSource === 'persisted'),
         [nodes],

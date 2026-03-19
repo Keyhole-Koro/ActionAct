@@ -20,6 +20,7 @@ type ClusterSeed = {
             id: string;
             label: string;
             summary: string;
+            detailHtml?: string;
         }>;
     }>;
 };

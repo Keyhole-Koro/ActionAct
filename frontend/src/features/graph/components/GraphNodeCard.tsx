@@ -98,13 +98,32 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const isActNode = data.kind === 'act';
     const isDraftAct = isActNode && actStage === 'draft';
     const nodeDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
+    const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
+
+    const atc = createdBy === 'user'
+        ? (authorUid ? uidToAuthorPalette(authorUid) : AUTHOR_PALETTES[0])
+        : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
+
+    const statusDot = isDraftAct
+        ? 'bg-slate-300'
+        : isNodeStreaming
+            ? `${atc.dot} animate-pulse`
+            : atc.dot;
+
+    const relationClass = selected
+        ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
+        : activeRelation === 'self'
+            ? `ring-2 ${atc.ringActive} ring-offset-2 ring-offset-background border-transparent shadow-[0_0_16px_-2px_var(--tw-ring-color)] scale-[1.01]`
+            : activeRelation === 'descendant'
+                ? `ring-1 ${atc.ringDescendant} ring-offset-1 ring-offset-background ${atc.bgTint}`
+                : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]';
+
     const rootHue = typeof data.rootHue === 'number' ? data.rootHue : 210;
     const depthBgColor = isActNode ? undefined
         : `hsl(${rootHue}, ${Math.max(40 - nodeDepth * 10, 6)}%, ${Math.min(92 + nodeDepth * 2, 98.5)}%)`;
     const activityOpacity = isActNode && typeof data.activityOpacity === 'number'
         ? data.activityOpacity
         : undefined;
-    const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
@@ -248,23 +267,6 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     }
 
     if (isActNode) {
-        const atc = createdBy === 'user'
-            ? (authorUid ? uidToAuthorPalette(authorUid) : AUTHOR_PALETTES[0])
-            : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
-        const statusDot = isDraftAct
-            ? 'bg-slate-300'
-            : isNodeStreaming
-                ? `${atc.dot} animate-pulse`
-                : atc.dot;
-
-        const relationClass = selected
-            ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
-            : activeRelation === 'self'
-                ? `ring-2 ${atc.ringActive} ring-offset-2 ring-offset-background border-transparent shadow-[0_0_16px_-2px_var(--tw-ring-color)] scale-[1.01]`
-                : activeRelation === 'descendant'
-                    ? `ring-1 ${atc.ringDescendant} ring-offset-1 ring-offset-background ${atc.bgTint}`
-                    : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]';
-
         return (
             <div className="relative group">
                 <input

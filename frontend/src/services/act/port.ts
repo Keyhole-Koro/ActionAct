@@ -4,6 +4,7 @@ export interface PatchOp {
     data?: Partial<{
         label: string;
         kind: string;
+        topicId: string;
         parentId: string;
         contentMd: string;
         seq: bigint;

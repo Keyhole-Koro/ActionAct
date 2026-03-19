@@ -113,6 +113,7 @@ export function buildDisplayNodes({
     onOpenDetails,
     onOpenReferencedNode,
     onCommitLabel,
+    onUpdateLabel,
     onRunAction,
     onAddMedia,
 }: BuildDisplayNodesParams): GraphNodeRender[] {

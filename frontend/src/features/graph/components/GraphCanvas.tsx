@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Search, Trash2, Keyboard, HelpCircle } from 'lucide-react';
 import {
@@ -28,6 +28,7 @@ import { getAuth } from 'firebase/auth';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
 import { presenceService, type PresenceUser } from '@/services/presence/firestore';
+import { upsertActNodeDraft, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
 import {
     CAMERA_CONFIG,
     createSingleNodeFocusOptions,
@@ -468,6 +469,12 @@ export function GraphCanvas() {
         return 'orbit' as const;
     }, [searchParams]);
 
+    const setLayoutMode = useCallback((mode: 'radial' | 'orbit') => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('layout', mode);
+        router.push(`${pathname}?${params.toString()}`);
+    }, [pathname, router, searchParams]);
+
     const effectiveWorkspaceId = useMemo(() => (usePersistedGraphMock ? 'ws-mock-public' : workspaceId), [usePersistedGraphMock, workspaceId]);
     const effectiveTopicId = usePersistedGraphMock ? 'topic-mock-1' : undefined;
 
@@ -629,16 +636,14 @@ export function GraphCanvas() {
         },
     } as GraphNodeBase)), [actNodesStructuralKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const deferredExpandedBranchNodeIds = useDeferredValue(expandedBranchNodeIds);
-
     const persistedGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
             persistedEdges,
             persistedLayoutMode,
-            deferredExpandedBranchNodeIds,
+            expandedBranchNodeIds,
         ),
-        [deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [expandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
 
@@ -820,17 +825,21 @@ export function GraphCanvas() {
     }, [actNodes]);
 
     const handleGenerateBrief = useCallback((nodeId: string, nodePosition: { x: number; y: number }) => {
+        if (!effectiveWorkspaceId) return;
+        const myUid = getAuth().currentUser?.uid;
+
         const actId = addQueryActNode(
             { x: nodePosition.x + 420, y: nodePosition.y },
             '',
             { isManualPosition: true },
         );
-        addOrUpdateActNode(actId, {
+        void upsertActNodeDraft(effectiveWorkspaceId, actId, {
             referencedNodeIds: [nodeId],
             kind: 'brief',
             createdBy: 'user',
+            authorUid: myUid,
         });
-    }, [addOrUpdateActNode, addQueryActNode]);
+    }, [addQueryActNode, effectiveWorkspaceId]);
 
     // Write completed brief act content back to the persisted node's contextSummary
     const appliedBriefActIds = useRef(new Set<string>());
@@ -1069,6 +1078,9 @@ export function GraphCanvas() {
     );
 
     useEffect(() => {
+        if (!effectiveWorkspaceId) return;
+        const myUid = getAuth().currentUser?.uid;
+
         const composerId = selectionComposerNodeIdRef.current;
         if (composerId && !actNodes.some((node) => node.id === composerId)) {
             selectionComposerNodeIdRef.current = null;
@@ -1091,7 +1103,7 @@ export function GraphCanvas() {
             ].some((value) => typeof value === 'string' && value.trim().length > 0);
 
             if (composerNode && !hasLabel && !hasResolvedContent) {
-                removeActNode(currentComposerId);
+                void removeActNodeAndDraft(effectiveWorkspaceId, currentComposerId);
             }
             selectionComposerNodeIdRef.current = null;
             return;
@@ -1122,7 +1134,12 @@ export function GraphCanvas() {
                 ? composerNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string').sort()
                 : [];
             if (!sameSortedIds(currentReferenced, contextNodeIds)) {
-                addOrUpdateActNode(currentComposerId, { referencedNodeIds: contextNodeIds, kind: 'act', createdBy: 'user' });
+                void upsertActNodeDraft(effectiveWorkspaceId, currentComposerId, {
+                    referencedNodeIds: contextNodeIds,
+                    kind: 'act',
+                    createdBy: 'user',
+                    authorUid: myUid ?? undefined,
+                });
             }
             return;
         }
@@ -1139,8 +1156,13 @@ export function GraphCanvas() {
         const averageY = contextNodes.reduce((sum, node) => sum + node.position.y, 0) / contextNodes.length;
         const composerNodeId = addQueryActNode({ x: maxRightX + 220, y: averageY }, '');
         selectionComposerNodeIdRef.current = composerNodeId;
-        addOrUpdateActNode(composerNodeId, { referencedNodeIds: contextNodeIds, kind: 'act', createdBy: 'user' });
-    }, [actNodes, addOrUpdateActNode, addQueryActNode, regularGraphNodes, removeActNode, selectedNodeIds]);
+        void upsertActNodeDraft(effectiveWorkspaceId, composerNodeId, {
+            referencedNodeIds: contextNodeIds,
+            kind: 'act',
+            createdBy: 'user',
+            authorUid: myUid ?? undefined,
+        });
+    }, [actNodes, addQueryActNode, effectiveWorkspaceId, regularGraphNodes, selectedNodeIds]);
 
     const normalizedDisplayNodes = useMemo(() => {
         if (layoutAwareDisplayNodes.length === 0) return layoutAwareDisplayNodes;
@@ -1620,9 +1642,18 @@ export function GraphCanvas() {
 
         const averageX = selectedNodes.reduce((sum, node) => sum + node.position.x, 0) / selectedNodes.length;
         const maxY = selectedNodes.reduce((max, node) => Math.max(max, node.position.y), selectedNodes[0].position.y);
-        addQueryActNode({ x: averageX, y: maxY + 240 }, event.key);
+        const newNodeId = addQueryActNode({ x: averageX, y: maxY + 240 }, event.key);
+        if (effectiveWorkspaceId) {
+            const myUid = getAuth().currentUser?.uid;
+            void upsertActNodeDraft(effectiveWorkspaceId, newNodeId, {
+                kind: 'act',
+                createdBy: 'user',
+                authorUid: myUid ?? undefined,
+                label: event.key,
+            });
+        }
         event.preventDefault();
-    }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
+    }, [addQueryActNode, effectiveWorkspaceId, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
 
     const handleKeyNavigation = useCallback((event: KeyboardEvent) => {
         if (event.key === 'Escape') {

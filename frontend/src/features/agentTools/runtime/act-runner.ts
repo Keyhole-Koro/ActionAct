@@ -8,6 +8,7 @@ import { actDraftService } from "@/services/actDraft/firestore";
 import { useGraphStore } from "@/features/graph/store";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
+import { uniqueNodeIds } from "@/features/agentTools/utils";
 import type { PatchOp, StreamActOptions } from "@/services/act/port";
 
 const MAX_TRIGGER_DEPTH = 3;
@@ -27,19 +28,6 @@ export type StartActRunResult = {
 
 const GROUNDING_HINT_PATTERN = /\b(latest|current|today|news|price|pricing|version|release|official|source|reference|references|citation|citations|compare|comparison|docs?|documentation)\b|最新|現在|今日|ニュース|価格|料金|相場|バージョン|リリース|公式|出典|ソース|参考|比較|ドキュメント/u;
 
-function uniqueNodeIds(nodeIds: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  nodeIds.forEach((nodeId) => {
-    const value = nodeId.trim();
-    if (!value || seen.has(value)) {
-      return;
-    }
-    seen.add(value);
-    ordered.push(value);
-  });
-  return ordered;
-}
 
 function compactText(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") {
