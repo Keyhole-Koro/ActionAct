@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file act/v1/act.proto.
  */
 export const file_act_v1_act: GenFile = /*@__PURE__*/
-  fileDesc("ChBhY3QvdjEvYWN0LnByb3RvEgZhY3QudjEizgIKDVJ1bkFjdFJlcXVlc3QSEAoIdG9waWNfaWQYASABKAkSFAoMd29ya3NwYWNlX2lkGAIgASgJEhIKCnJlcXVlc3RfaWQYAyABKAkSIQoIYWN0X3R5cGUYBCABKA4yDy5hY3QudjEuQWN0VHlwZRIUCgx1c2VyX21lc3NhZ2UYBSABKAkSFgoOYW5jaG9yX25vZGVfaWQYBiABKAkSGAoQY29udGV4dF9ub2RlX2lkcxgHIAMoCRIlCgpsbG1fY29uZmlnGAggASgLMhEuYWN0LnYxLkxMTUNvbmZpZxILCgN1aWQYCSABKAkSJQoKdXNlcl9tZWRpYRgKIAMoCzIRLmFjdC52MS5NZWRpYURhdGESOwoWc2VsZWN0ZWRfbm9kZV9jb250ZXh0cxgLIAMoCzIbLmFjdC52MS5TZWxlY3RlZE5vZGVDb250ZXh0IpkBChNTZWxlY3RlZE5vZGVDb250ZXh0Eg8KB25vZGVfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDAoEa2luZBgDIAEoCRIXCg9jb250ZXh0X3N1bW1hcnkYBCABKAkSEgoKY29udGVudF9tZBgFIAEoCRISCgp0aG91Z2h0X21kGAYgASgJEhMKC2RldGFpbF9odG1sGAcgASgJIiwKCU1lZGlhRGF0YRIRCgltaW1lX3R5cGUYASABKAkSDAoEZGF0YRgCIAEoDCJNCglMTE1Db25maWcSDQoFbW9kZWwYASABKAkSGAoQZW5hYmxlX2dyb3VuZGluZxgCIAEoCBIXCg9lbmFibGVfdGhpbmtpbmcYAyABKAgioAEKC1J1bkFjdEV2ZW50EicKCnRleHRfZGVsdGEYASABKAsyES5hY3QudjEuVGV4dERlbHRhSAASJQoJcGF0Y2hfb3BzGAIgASgLMhAuYWN0LnYxLlBhdGNoT3BzSAASJAoIdGVybWluYWwYAyABKAsyEC5hY3QudjEuVGVybWluYWxIABISCgppc190aG91Z2h0GAQgASgIQgcKBWV2ZW50IhkKCVRleHREZWx0YRIMCgR0ZXh0GAEgASgJIigKCFBhdGNoT3BzEhwKA29wcxgBIAMoCzIPLmFjdC52MS5QYXRjaE9wIl0KB1BhdGNoT3ASCgoCb3AYASABKAkSDwoHbm9kZV9pZBgCIAEoCRIPCgdjb250ZW50GAMgASgJEgsKA3NlcRgEIAEoBBIXCg9leHBlY3RlZF9vZmZzZXQYBSABKA0iQQoJU291cmNlUmVmEgoKAmlkGAEgASgJEgwKBGtpbmQYAiABKAkSDQoFbGFiZWwYAyABKAkSCwoDdXJpGAQgASgJItgBCghUZXJtaW5hbBIMCgRkb25lGAEgASgIEiAKBWVycm9yGAIgASgLMhEuYWN0LnYxLkVycm9ySW5mbxIdChV1c2VkX2NvbnRleHRfbm9kZV9pZHMYAyADKAkSQAobdXNlZF9zZWxlY3RlZF9ub2RlX2NvbnRleHRzGAQgAygLMhsuYWN0LnYxLlNlbGVjdGVkTm9kZUNvbnRleHQSEgoKdXNlZF90b29scxgFIAMoCRInCgx1c2VkX3NvdXJjZXMYBiADKAsyES5hY3QudjEuU291cmNlUmVmInYKCUVycm9ySW5mbxIMCgRjb2RlGAEgASgJEg8KB21lc3NhZ2UYAiABKAkSEQoJcmV0cnlhYmxlGAMgASgIEg0KBXN0YWdlGAQgASgJEhAKCHRyYWNlX2lkGAUgASgJEhYKDnJldHJ5X2FmdGVyX21zGAYgASgDKmkKB0FjdFR5cGUSGAoUQUNUX1RZUEVfVU5TUEVDSUZJRUQQABIUChBBQ1RfVFlQRV9FWFBMT1JFEAESFAoQQUNUX1RZUEVfQ09OU1VMVBACEhgKFEFDVF9UWVBFX0lOVkVTVElHQVRFEAMyRgoKQWN0U2VydmljZRI4CgZSdW5BY3QSFS5hY3QudjEuUnVuQWN0UmVxdWVzdBoTLmFjdC52MS5SdW5BY3RFdmVudCIAMAFCGloYYWN0LWFwaS9nZW4vYWN0L3YxO2FjdHYxYgZwcm90bzM");
+  fileDesc("ChBhY3QvdjEvYWN0LnByb3RvEgZhY3QudjEizgIKDVJ1bkFjdFJlcXVlc3QSEAoIdG9waWNfaWQYASABKAkSFAoMd29ya3NwYWNlX2lkGAIgASgJEhIKCnJlcXVlc3RfaWQYAyABKAkSIQoIYWN0X3R5cGUYBCABKA4yDy5hY3QudjEuQWN0VHlwZRIUCgx1c2VyX21lc3NhZ2UYBSABKAkSFgoOYW5jaG9yX25vZGVfaWQYBiABKAkSGAoQY29udGV4dF9ub2RlX2lkcxgHIAMoCRIlCgpsbG1fY29uZmlnGAggASgLMhEuYWN0LnYxLkxMTUNvbmZpZxILCgN1aWQYCSABKAkSJQoKdXNlcl9tZWRpYRgKIAMoCzIRLmFjdC52MS5NZWRpYURhdGESOwoWc2VsZWN0ZWRfbm9kZV9jb250ZXh0cxgLIAMoCzIbLmFjdC52MS5TZWxlY3RlZE5vZGVDb250ZXh0IpkBChNTZWxlY3RlZE5vZGVDb250ZXh0Eg8KB25vZGVfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDAoEa2luZBgDIAEoCRIXCg9jb250ZXh0X3N1bW1hcnkYBCABKAkSEgoKY29udGVudF9tZBgFIAEoCRISCgp0aG91Z2h0X21kGAYgASgJEhMKC2RldGFpbF9odG1sGAcgASgJIiwKCU1lZGlhRGF0YRIRCgltaW1lX3R5cGUYASABKAkSDAoEZGF0YRgCIAEoDCJNCglMTE1Db25maWcSDQoFbW9kZWwYASABKAkSGAoQZW5hYmxlX2dyb3VuZGluZxgCIAEoCBIXCg9lbmFibGVfdGhpbmtpbmcYAyABKAgi0QEKC1J1bkFjdEV2ZW50EicKCnRleHRfZGVsdGEYASABKAsyES5hY3QudjEuVGV4dERlbHRhSAASJQoJcGF0Y2hfb3BzGAIgASgLMhAuYWN0LnYxLlBhdGNoT3BzSAASJAoIdGVybWluYWwYAyABKAsyEC5hY3QudjEuVGVybWluYWxIABIvCg5hY3Rpb25fdHJpZ2dlchgFIAEoCzIVLmFjdC52MS5BY3Rpb25UcmlnZ2VySAASEgoKaXNfdGhvdWdodBgEIAEoCEIHCgVldmVudCIZCglUZXh0RGVsdGESDAoEdGV4dBgBIAEoCSIoCghQYXRjaE9wcxIcCgNvcHMYASADKAsyDy5hY3QudjEuUGF0Y2hPcCKNAQoHUGF0Y2hPcBIKCgJvcBgBIAEoCRIPCgdub2RlX2lkGAIgASgJEg8KB2NvbnRlbnQYAyABKAkSCwoDc2VxGAQgASgEEhcKD2V4cGVjdGVkX29mZnNldBgFIAEoDRIMCgRraW5kGAYgASgJEhEKCXBhcmVudF9pZBgHIAEoCRINCgVsYWJlbBgIIAEoCSI1Cg1BY3Rpb25UcmlnZ2VyEg4KBmFjdGlvbhgBIAEoCRIUCgxwYXlsb2FkX2pzb24YAiABKAkiQQoJU291cmNlUmVmEgoKAmlkGAEgASgJEgwKBGtpbmQYAiABKAkSDQoFbGFiZWwYAyABKAkSCwoDdXJpGAQgASgJItgBCghUZXJtaW5hbBIMCgRkb25lGAEgASgIEiAKBWVycm9yGAIgASgLMhEuYWN0LnYxLkVycm9ySW5mbxIdChV1c2VkX2NvbnRleHRfbm9kZV9pZHMYAyADKAkSQAobdXNlZF9zZWxlY3RlZF9ub2RlX2NvbnRleHRzGAQgAygLMhsuYWN0LnYxLlNlbGVjdGVkTm9kZUNvbnRleHQSEgoKdXNlZF90b29scxgFIAMoCRInCgx1c2VkX3NvdXJjZXMYBiADKAsyES5hY3QudjEuU291cmNlUmVmInYKCUVycm9ySW5mbxIMCgRjb2RlGAEgASgJEg8KB21lc3NhZ2UYAiABKAkSEQoJcmV0cnlhYmxlGAMgASgIEg0KBXN0YWdlGAQgASgJEhAKCHRyYWNlX2lkGAUgASgJEhYKDnJldHJ5X2FmdGVyX21zGAYgASgDKmkKB0FjdFR5cGUSGAoUQUNUX1RZUEVfVU5TUEVDSUZJRUQQABIUChBBQ1RfVFlQRV9FWFBMT1JFEAESFAoQQUNUX1RZUEVfQ09OU1VMVBACEhgKFEFDVF9UWVBFX0lOVkVTVElHQVRFEAMyRgoKQWN0U2VydmljZRI4CgZSdW5BY3QSFS5hY3QudjEuUnVuQWN0UmVxdWVzdBoTLmFjdC52MS5SdW5BY3RFdmVudCIAMAFCGloYYWN0LWFwaS9nZW4vYWN0L3YxO2FjdHYxYgZwcm90bzM");
 
 /**
  * RunActRequest は RunAct の入力契約。
@@ -202,7 +202,7 @@ export const LLMConfigSchema: GenMessage<LLMConfig> = /*@__PURE__*/
 
 /**
  * RunActEvent はサーバーストリームのレスポンス。
- * text_delta or patch_ops or terminal のいずれかを持つ。
+ * text_delta or patch_ops or terminal or action_trigger のいずれかを持つ。
  *
  * @generated from message act.v1.RunActEvent
  */
@@ -228,6 +228,12 @@ export type RunActEvent = Message<"act.v1.RunActEvent"> & {
      */
     value: Terminal;
     case: "terminal";
+  } | {
+    /**
+     * @generated from field: act.v1.ActionTrigger action_trigger = 5;
+     */
+    value: ActionTrigger;
+    case: "actionTrigger";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -313,6 +319,27 @@ export type PatchOp = Message<"act.v1.PatchOp"> & {
    * @generated from field: uint32 expected_offset = 5;
    */
   expectedOffset: number;
+
+  /**
+   * ノードの種別。upsert 時に使用（例: "act", "suggestion"）。
+   *
+   * @generated from field: string kind = 6;
+   */
+  kind: string;
+
+  /**
+   * 親ノード ID。子ノード生成時に使用。
+   *
+   * @generated from field: string parent_id = 7;
+   */
+  parentId: string;
+
+  /**
+   * ノードのラベル。upsert 時に使用。
+   *
+   * @generated from field: string label = 8;
+   */
+  label: string;
 };
 
 /**
@@ -321,6 +348,34 @@ export type PatchOp = Message<"act.v1.PatchOp"> & {
  */
 export const PatchOpSchema: GenMessage<PatchOp> = /*@__PURE__*/
   messageDesc(file_act_v1_act, 7);
+
+/**
+ * LLM がフロントへ送るアクション命令。
+ *
+ * @generated from message act.v1.ActionTrigger
+ */
+export type ActionTrigger = Message<"act.v1.ActionTrigger"> & {
+  /**
+   * アクション種別: "start_act"
+   *
+   * @generated from field: string action = 1;
+   */
+  action: string;
+
+  /**
+   * アクション引数（JSON シリアライズ済み）
+   *
+   * @generated from field: string payload_json = 2;
+   */
+  payloadJson: string;
+};
+
+/**
+ * Describes the message act.v1.ActionTrigger.
+ * Use `create(ActionTriggerSchema)` to create a new message.
+ */
+export const ActionTriggerSchema: GenMessage<ActionTrigger> = /*@__PURE__*/
+  messageDesc(file_act_v1_act, 8);
 
 /**
  * @generated from message act.v1.SourceRef
@@ -352,7 +407,7 @@ export type SourceRef = Message<"act.v1.SourceRef"> & {
  * Use `create(SourceRefSchema)` to create a new message.
  */
 export const SourceRefSchema: GenMessage<SourceRef> = /*@__PURE__*/
-  messageDesc(file_act_v1_act, 8);
+  messageDesc(file_act_v1_act, 9);
 
 /**
  * @generated from message act.v1.Terminal
@@ -394,7 +449,7 @@ export type Terminal = Message<"act.v1.Terminal"> & {
  * Use `create(TerminalSchema)` to create a new message.
  */
 export const TerminalSchema: GenMessage<Terminal> = /*@__PURE__*/
-  messageDesc(file_act_v1_act, 9);
+  messageDesc(file_act_v1_act, 10);
 
 /**
  * @generated from message act.v1.ErrorInfo
@@ -436,7 +491,7 @@ export type ErrorInfo = Message<"act.v1.ErrorInfo"> & {
  * Use `create(ErrorInfoSchema)` to create a new message.
  */
 export const ErrorInfoSchema: GenMessage<ErrorInfo> = /*@__PURE__*/
-  messageDesc(file_act_v1_act, 10);
+  messageDesc(file_act_v1_act, 11);
 
 /**
  * @generated from enum act.v1.ActType

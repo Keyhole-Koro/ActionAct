@@ -11,6 +11,7 @@ import {
   createClarificationSelectionGroupFromCandidates,
 } from "@/features/agentTools/runtime/browser-candidate-agent";
 import { createDirectFrontendToolClient } from "@/features/agentTools/runtime/frontend-tool-client";
+import { uniqueNodeIds, isLikelyJapanese } from "@/features/agentTools/utils";
 import { useGraphStore } from "@/features/graph/store";
 
 type PendingActRun = {
@@ -32,24 +33,6 @@ type ActClarificationState = {
 };
 
 const frontendToolClient = createDirectFrontendToolClient();
-
-function uniqueNodeIds(nodeIds: string[]) {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  nodeIds.forEach((nodeId) => {
-    const normalized = nodeId.trim();
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    ordered.push(normalized);
-  });
-  return ordered;
-}
-
-function isLikelyJapanese(text: string) {
-  return /[\u3040-\u30ff\u4e00-\u9fff]/u.test(text);
-}
 
 export const useActClarificationStore = create<ActClarificationState>((set, get) => ({
   clarification: null,

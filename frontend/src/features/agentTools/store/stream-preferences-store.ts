@@ -10,8 +10,9 @@ interface StreamPreferencesState {
   useWebGroundingOverride: boolean | null;
   modelProfile: ModelProfile;
   autoRouteEdgeHandles: boolean;
+  collapseThresholdMinutes: number;
   setPreferences: (
-    patch: Partial<Pick<StreamPreferencesState, "showThoughts" | "includeThoughts" | "useWebGroundingOverride" | "modelProfile" | "autoRouteEdgeHandles">>,
+    patch: Partial<Pick<StreamPreferencesState, "showThoughts" | "includeThoughts" | "useWebGroundingOverride" | "modelProfile" | "autoRouteEdgeHandles" | "collapseThresholdMinutes">>,
   ) => void;
 }
 
@@ -21,5 +22,6 @@ export const useStreamPreferencesStore = create<StreamPreferencesState>((set) =>
   useWebGroundingOverride: null,
   modelProfile: "flash",
   autoRouteEdgeHandles: true,
+  collapseThresholdMinutes: 5,
   setPreferences: (patch) => set((state) => ({ ...state, ...patch })),
 }));

@@ -54,8 +54,8 @@ func (r *FirestoreActRunRecorder) AppendEvent(ctx context.Context, input domain.
 				"content": op.GetContent(),
 			}
 			if op.GetSeq() > 0 {
-				payloadOp["seq"] = op.GetSeq()
-				payloadOp["expectedOffset"] = op.GetExpectedOffset()
+				payloadOp["seq"] = int64(op.GetSeq())
+				payloadOp["expectedOffset"] = int64(op.GetExpectedOffset())
 			}
 			ops = append(ops, payloadOp)
 		}
@@ -104,21 +104,18 @@ func (r *FirestoreActRunRecorder) Finish(ctx context.Context, input domain.RunAc
 func (r *FirestoreActRunRecorder) Close() error {
 	return r.client.Close()
 }
-
 func (r *FirestoreActRunRecorder) runDoc(input domain.RunActInput) *firestore.DocumentRef {
 	return r.client.Doc(fmt.Sprintf(
-		"workspaces/%s/topics/%s/actRuns/%s",
+		"workspaces/%s/actRuns/%s",
 		input.WorkspaceID,
-		input.TopicID,
 		input.TraceID,
 	))
 }
 
 func (r *FirestoreActRunRecorder) eventDoc(input domain.RunActInput, seq int) *firestore.DocumentRef {
 	return r.client.Doc(fmt.Sprintf(
-		"workspaces/%s/topics/%s/actRuns/%s/events/%s",
+		"workspaces/%s/actRuns/%s/events/%s",
 		input.WorkspaceID,
-		input.TopicID,
 		input.TraceID,
 		zeroPadSeq(seq),
 	))

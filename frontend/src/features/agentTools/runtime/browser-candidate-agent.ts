@@ -3,6 +3,7 @@
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { resolveNodeCandidates } from "@/features/agentTools/services/node-candidate-service";
 import type { FrontendToolClient } from "@/features/agentTools/runtime/frontend-tool-client";
+import { uniqueNodeIds, isLikelyJapanese } from "@/features/agentTools/utils";
 
 type TitledNodeCandidate = {
   nodeId: string;
@@ -20,24 +21,6 @@ type DirectCandidate = {
   label: string;
   reason?: string | null;
 };
-
-function uniqueNodeIds(nodeIds: string[]) {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  nodeIds.forEach((nodeId) => {
-    const normalized = nodeId.trim();
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    ordered.push(normalized);
-  });
-  return ordered;
-}
-
-function isLikelyJapanese(text: string): boolean {
-  return /[\u3040-\u30ff\u3400-\u9fff]/u.test(text);
-}
 
 function chooseSelectionGroupCopy(query: string, instruction: string) {
   if (isLikelyJapanese(query)) {
@@ -162,7 +145,7 @@ export async function createClarificationSelectionGroup(
   const runContext = useRunContextStore.getState();
   const resolved = await resolveNodeCandidates({
     workspaceId: runContext.workspaceId,
-    topicId: runContext.topicId,
+    topicId: '',
     userMessage: params.query,
     nodes: visibleGraphNodes,
     activeNodeId,

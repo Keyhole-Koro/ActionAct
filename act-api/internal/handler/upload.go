@@ -11,7 +11,7 @@ import (
 
 const maxUploadSize = 50 << 20 // 50 MB
 
-// UploadHandler serves POST /api/upload for multipart file uploads.
+// UploadHandler serves file uploads and downloads.
 type UploadHandler struct {
 	uc *usecase.UploadUsecase
 }
@@ -21,8 +21,14 @@ func NewUploadHandler(uc *usecase.UploadUsecase) *UploadHandler {
 	return &UploadHandler{uc: uc}
 }
 
-// ServeHTTP handles the multipart upload request.
-func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// Register routes this handler to the given mux.
+func (h *UploadHandler) Register(mux *http.ServeMux) {
+	mux.Handle("/api/upload", http.HandlerFunc(h.ServeUpload))
+	mux.Handle("/api/workspaces/", http.HandlerFunc(h.ServeDownload))
+}
+
+// ServeUpload handles POST /api/upload.
+func (h *UploadHandler) ServeUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -42,7 +48,6 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "workspace_id is required", http.StatusBadRequest)
 		return
 	}
-
 
 	// Required: file
 	file, header, err := r.FormFile("file")
@@ -81,4 +86,35 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"topic_id": result.TopicID,
 		"status":   result.Status,
 	})
+}
+
+// ServeDownload handles GET /api/workspaces/{workspaceId}/inputs/{inputId}/raw.
+func (h *UploadHandler) ServeDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Path: /api/workspaces/{workspaceId}/inputs/{inputId}/raw
+	// We'll use a simple split for now since act-api uses standard ServeMux.
+	parts := PathParts(r.URL.Path)
+	if len(parts) < 6 || parts[2] != "inputs" || parts[4] != "raw" {
+		http.NotFound(w, r)
+		return
+	}
+	workspaceID := parts[1]
+	inputID := parts[3]
+
+	authHeader := r.Header.Get("Authorization")
+	result, err := h.uc.DownloadInput(r.Context(), authHeader, workspaceID, inputID)
+	if err != nil {
+		slog.Error("download failed", "err", err, "workspaceId", workspaceID, "inputId", inputID)
+		http.Error(w, "download failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", result.ContentType)
+	w.Header().Set("Content-Disposition", "inline; filename=\""+result.Filename+"\"")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Content)
 }

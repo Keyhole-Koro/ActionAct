@@ -61,7 +61,36 @@ const CLUSTER_SEEDS: ClusterSeed[] = [
                 summary: 'Demand guarantees shape supplier confidence.',
                 claims: [
                     { id: 'green-steel-buying', label: 'Green steel procurement de-risks first plants', summary: 'Long-term offtake matters more than pilot grants.' },
-                    { id: 'fleet-electrification', label: 'Public fleet conversion stabilizes charging demand', summary: 'Municipal and state fleets create predictable load profiles.' },
+                    { 
+                        id: 'fleet-electrification', 
+                        label: 'Public fleet conversion stabilizes charging demand', 
+                        summary: 'Municipal and state fleets create predictable load profiles.',
+                        detailHtml: `
+                            <style>
+                                .chart-container { font-family: sans-serif; padding: 10px; background: #f8fafc; border-radius: 8px; }
+                                .chart-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #1e293b; }
+                                .bar-row { display: flex; align-items: center; margin-bottom: 8px; gap: 10px; }
+                                .bar-label { width: 80px; font-size: 11px; color: #64748b; }
+                                .bar-track { flex: 1; background: #e2e8f0; height: 12px; border-radius: 4px; overflow: hidden; }
+                                .bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 4px; }
+                                .bar-value { width: 30px; font-size: 11px; font-weight: bold; color: #334155; }
+                            </style>
+                            <div class="chart-container">
+                                <div class="chart-title">Demand Stability Forecast</div>
+                                <div class="bar-row">
+                                    <div class="bar-label">Public</div>
+                                    <div class="bar-track"><div class="bar-fill" style="width: 85%"></div></div>
+                                    <div class="bar-value">85%</div>
+                                </div>
+                                <div class="bar-row">
+                                    <div class="bar-label">Private</div>
+                                    <div class="bar-track"><div class="bar-fill" style="width: 42%; background: #94a3b8;"></div></div>
+                                    <div class="bar-value">42%</div>
+                                </div>
+                                <p style="font-size: 10px; color: #94a3b8; margin-top: 10px;">* Predicted utilization consistency over 24h cycle</p>
+                            </div>
+                        `
+                    },
                     { id: 'retrofit-standards', label: 'Retrofit standards create installer pull', summary: 'Building codes create recurring demand instead of one-off incentives.' },
                 ],
             },

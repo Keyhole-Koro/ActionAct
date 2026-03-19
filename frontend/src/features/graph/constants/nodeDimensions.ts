@@ -1,11 +1,12 @@
 export const GRAPH_NODE_COLLAPSED_WIDTH = 340;
 export const GRAPH_NODE_EXPANDED_WIDTH = 520;
 export const GRAPH_NODE_LAYOUT_HEIGHT = 180;
+export const GRAPH_TOPIC_NODE_HEIGHT = 240;
 export const GRAPH_NODE_EXPANDED_MAX_HEIGHT = 288;
 export const GRAPH_NODE_EXPANDED_LAYOUT_HEIGHT = GRAPH_NODE_LAYOUT_HEIGHT + GRAPH_NODE_EXPANDED_MAX_HEIGHT;
 
 export const GRAPH_ACT_NODE_COLLAPSED_WIDTH = 264;
-export const GRAPH_ACT_NODE_EXPANDED_WIDTH = 392;
+export const GRAPH_ACT_NODE_EXPANDED_WIDTH = 520;
 export const GRAPH_ACT_NODE_HEIGHT = 116;
 export const GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT = 220;
 export const GRAPH_ACT_NODE_EXPANDED_LAYOUT_HEIGHT = GRAPH_ACT_NODE_HEIGHT + GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT;
@@ -67,6 +68,14 @@ export function getLayoutDimensionsForNodeType(nodeType?: string, isExpanded = f
         return {
             width: isExpanded ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_ACT_NODE_COLLAPSED_WIDTH,
             height: isExpanded ? GRAPH_ACT_NODE_EXPANDED_LAYOUT_HEIGHT : GRAPH_ACT_NODE_HEIGHT,
+        };
+    }
+
+    // Only collapsed root topic nodes get the increased height
+    if (nodeKind === 'topic' && !isExpanded) {
+        return {
+            width: GRAPH_NODE_COLLAPSED_WIDTH,
+            height: GRAPH_TOPIC_NODE_HEIGHT,
         };
     }
 

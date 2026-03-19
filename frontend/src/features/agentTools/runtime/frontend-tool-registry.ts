@@ -587,7 +587,6 @@ const toolDefinitions: ToolDefinition[] = [
       const query = requiredString(parsed, "user_message");
       const actType = requiredString(parsed, "act_type") as "explore" | "consult" | "investigate";
       const workspaceId = requiredString(parsed, "workspace_id");
-      const topicId = requiredString(parsed, "topic_id");
       const explicitContextNodeIds = optionalStringArray(parsed, "context_node_ids") ?? [];
       if (explicitContextNodeIds.length > 0) {
         ensureNodesExist(explicitContextNodeIds);
@@ -608,7 +607,6 @@ const toolDefinitions: ToolDefinition[] = [
         targetNodeId: null,
         query,
         workspaceId,
-        topicId,
         options: { actType, contextNodeIds: prepared.contextNodeIds },
       });
       return { request_id: requestId, accepted: true, stream_state: "running", clarification: null };

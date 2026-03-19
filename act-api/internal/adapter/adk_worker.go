@@ -104,6 +104,7 @@ type workerEvent struct {
 	UsedSelectedNodeContexts []workerUsedSelectedNodeContext `json:"used_selected_node_contexts,omitempty"`
 	UsedTools                []string                        `json:"used_tools,omitempty"`
 	UsedSources              []workerSourceRef               `json:"used_sources,omitempty"`
+	ActionTriggers           []workerActionTrigger           `json:"action_triggers,omitempty"`
 }
 
 type workerPatch struct {
@@ -112,6 +113,14 @@ type workerPatch struct {
 	Content        string `json:"content"`
 	Seq            uint64 `json:"seq,omitempty"`
 	ExpectedOffset uint32 `json:"expected_offset,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	ParentID       string `json:"parent_id,omitempty"`
+	Label          string `json:"label,omitempty"`
+}
+
+type workerActionTrigger struct {
+	Action      string `json:"action"`
+	PayloadJSON string `json:"payload_json"`
 }
 
 type workerError struct {
@@ -251,7 +260,16 @@ func toProtoEvent(evt workerEvent) (*actv1.RunActEvent, bool, error) {
 	case "patch_ops":
 		ops := make([]*actv1.PatchOp, len(evt.Ops))
 		for i, op := range evt.Ops {
-			ops[i] = &actv1.PatchOp{Op: op.Op, NodeId: op.NodeID, Content: op.Content, Seq: op.Seq, ExpectedOffset: op.ExpectedOffset}
+			ops[i] = &actv1.PatchOp{
+				Op:             op.Op,
+				NodeId:         op.NodeID,
+				Content:        op.Content,
+				Seq:            op.Seq,
+				ExpectedOffset: op.ExpectedOffset,
+				Kind:           op.Kind,
+				ParentId:       op.ParentID,
+				Label:          op.Label,
+			}
 		}
 		return &actv1.RunActEvent{Event: &actv1.RunActEvent_PatchOps{PatchOps: &actv1.PatchOps{Ops: ops}}}, false, nil
 
@@ -295,6 +313,16 @@ func toProtoEvent(evt workerEvent) (*actv1.RunActEvent, bool, error) {
 			t.UsedSources = mapped
 		}
 		return &actv1.RunActEvent{Event: &actv1.RunActEvent_Terminal{Terminal: t}}, true, nil
+
+	case "action_trigger":
+		triggers := make([]*actv1.ActionTrigger, 0, len(evt.ActionTriggers))
+		for _, t := range evt.ActionTriggers {
+			triggers = append(triggers, &actv1.ActionTrigger{Action: t.Action, PayloadJson: t.PayloadJSON})
+		}
+		if len(triggers) == 0 {
+			return nil, false, fmt.Errorf("action_trigger event has no triggers")
+		}
+		return &actv1.RunActEvent{Event: &actv1.RunActEvent_ActionTrigger{ActionTrigger: triggers[0]}}, false, nil
 
 	default:
 		return nil, false, fmt.Errorf("unknown event type: %q", evt.Type)

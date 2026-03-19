@@ -71,26 +71,29 @@ class FirestoreAssembly:
         user_message: str,
         user_media: list[WorkerMedia],
     ) -> PromptBundle:
-        topic_path = f"workspaces/{workspace_id}/topics/{topic_id}"
-        topic_doc = self._read_doc(topic_path)
-        if not topic_doc:
-            raise RuntimeError(f"Missing topic document: {topic_path}")
+        workspace_path = f"workspaces/{workspace_id}"
+        
+        # We no longer look for a specific topic_doc as topics are merged into workspace.
+        # But we can look for workspace metadata if needed.
+        workspace_doc = self._read_doc(workspace_path) or {}
 
         selected_node_ids = self._dedupe_ids(context_node_ids, anchor_node_id)[:30]
-        all_nodes = self._read_nodes(topic_path)
+        all_nodes = self._read_nodes(workspace_path)
         node_by_id = {node.node_id: node for node in all_nodes}
 
         focus_nodes = self._select_focus_nodes(selected_node_ids, all_nodes, node_by_id)
         focus_node_ids = [node.node_id for node in focus_nodes]
-        neighbor_edges = self._read_edges(topic_path)
+        neighbor_edges = self._read_edges(workspace_path)
         neighbor_nodes = self._select_neighbor_nodes(focus_node_ids, neighbor_edges, node_by_id)
-        evidences = self._read_evidence(topic_path, focus_node_ids)
-        outline_doc = self._read_latest_outline(topic_path, topic_doc)
-        draft_doc = self._read_latest_draft(topic_path, topic_doc)
-        act_runs = self._read_recent_act_runs(topic_path)
+        evidences = self._read_evidence(workspace_path, focus_node_ids)
+        
+        # Versions are now typically tracked at workspace level or in the latest docs directly
+        outline_doc = self._read_latest_outline(workspace_path, workspace_doc)
+        draft_doc = self._read_latest_draft(workspace_path, workspace_doc)
+        act_runs = self._read_recent_act_runs(workspace_path)
 
         context_blocks = self._render_context_blocks(
-            topic_doc=topic_doc,
+            workspace_doc=workspace_doc,
             outline_doc=outline_doc,
             draft_doc=draft_doc,
             focus_nodes=focus_nodes,
@@ -117,8 +120,8 @@ class FirestoreAssembly:
         data = snapshot.to_dict() or {}
         return data
 
-    def _read_nodes(self, topic_path: str) -> list[_NodeRecord]:
-        docs = self._get_client().collection(f"{topic_path}/nodes").stream()
+    def _read_nodes(self, workspace_path: str) -> list[_NodeRecord]:
+        docs = self._get_client().collection(f"{workspace_path}/nodes").stream()
         nodes: list[_NodeRecord] = []
         for doc in docs:
             data = doc.to_dict() or {}
@@ -147,8 +150,8 @@ class FirestoreAssembly:
         nodes.sort(key=lambda node: (-node.updated_at, node.title, node.node_id))
         return nodes
 
-    def _read_edges(self, topic_path: str) -> list[dict[str, Any]]:
-        docs = self._get_client().collection(f"{topic_path}/edges").stream()
+    def _read_edges(self, workspace_path: str) -> list[dict[str, Any]]:
+        docs = self._get_client().collection(f"{workspace_path}/edges").stream()
         edges: list[dict[str, Any]] = []
         for doc in docs:
             data = doc.to_dict() or {}
@@ -173,10 +176,10 @@ class FirestoreAssembly:
         )
         return edges
 
-    def _read_evidence(self, topic_path: str, focus_node_ids: list[str]) -> list[dict[str, Any]]:
+    def _read_evidence(self, workspace_path: str, focus_node_ids: list[str]) -> list[dict[str, Any]]:
         evidences: list[dict[str, Any]] = []
         for node_id in focus_node_ids:
-            docs = self._get_client().collection(f"{topic_path}/nodes/{node_id}/evidence").stream()
+            docs = self._get_client().collection(f"{workspace_path}/nodes/{node_id}/evidence").stream()
             node_evidence: list[dict[str, Any]] = []
             for doc in docs:
                 data = doc.to_dict() or {}
@@ -206,20 +209,20 @@ class FirestoreAssembly:
         )
         return evidences[:5]
 
-    def _read_latest_outline(self, topic_path: str, topic_doc: dict[str, Any]) -> dict[str, Any] | None:
-        version = topic_doc.get("latestOutlineVersion") or topic_doc.get("latest_outline_version")
+    def _read_latest_outline(self, workspace_path: str, workspace_doc: dict[str, Any]) -> dict[str, Any] | None:
+        version = workspace_doc.get("latestOutlineVersion") or workspace_doc.get("latest_outline_version")
         if version is None:
             return None
-        return self._read_doc(f"{topic_path}/outlines/{version}")
+        return self._read_doc(f"{workspace_path}/outlines/{version}")
 
-    def _read_latest_draft(self, topic_path: str, topic_doc: dict[str, Any]) -> dict[str, Any] | None:
-        version = topic_doc.get("latestDraftVersion") or topic_doc.get("latest_draft_version")
+    def _read_latest_draft(self, workspace_path: str, workspace_doc: dict[str, Any]) -> dict[str, Any] | None:
+        version = workspace_doc.get("latestDraftVersion") or workspace_doc.get("latest_draft_version")
         if version is None:
             return None
-        return self._read_doc(f"{topic_path}/drafts/{version}")
+        return self._read_doc(f"{workspace_path}/drafts/{version}")
 
-    def _read_recent_act_runs(self, topic_path: str) -> list[dict[str, Any]]:
-        docs = self._get_client().collection(f"{topic_path}/actRuns").stream()
+    def _read_recent_act_runs(self, workspace_path: str) -> list[dict[str, Any]]:
+        docs = self._get_client().collection(f"{workspace_path}/actRuns").stream()
         runs: list[dict[str, Any]] = []
         for doc in docs:
             data = doc.to_dict() or {}
@@ -304,7 +307,7 @@ class FirestoreAssembly:
 
     def _render_context_blocks(
         self,
-        topic_doc: dict[str, Any],
+        workspace_doc: dict[str, Any],
         outline_doc: dict[str, Any] | None,
         draft_doc: dict[str, Any] | None,
         focus_nodes: list[_NodeRecord],
@@ -315,18 +318,12 @@ class FirestoreAssembly:
     ) -> list[str]:
         blocks: list[str] = []
 
-        topic_title = str(topic_doc.get("title") or topic_doc.get("topicId") or "Untitled topic").strip()
-        topic_status = str(topic_doc.get("status") or "unknown").strip()
-        latest_outline = topic_doc.get("latestOutlineVersion") or topic_doc.get("latest_outline_version")
-        latest_draft = topic_doc.get("latestDraftVersion") or topic_doc.get("latest_draft_version")
+        workspace_name = str(workspace_doc.get("name") or workspace_doc.get("workspaceId") or "Untitled workspace").strip()
         blocks.append(
             "\n".join(
                 [
-                    "## Topic",
-                    f"- title: {topic_title}",
-                    f"- status: {topic_status}",
-                    f"- latestOutlineVersion: {latest_outline if latest_outline is not None else 'none'}",
-                    f"- latestDraftVersion: {latest_draft if latest_draft is not None else 'none'}",
+                    "## Workspace",
+                    f"- name: {workspace_name}",
                 ]
             )
         )

@@ -1,6 +1,7 @@
 "use client";
 
 import { v4 as uuidv4 } from "uuid";
+import { getAuth } from "firebase/auth";
 
 import { actService } from "@/services/act";
 import { actDraftService } from "@/services/actDraft/firestore";
@@ -9,12 +10,14 @@ import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
 import type { PatchOp, StreamActOptions } from "@/services/act/port";
 
+const MAX_TRIGGER_DEPTH = 3;
+
 export type StartActRunParams = {
   targetNodeId: string | null;
   query: string;
   workspaceId?: string;
-  topicId?: string;
   options?: StreamActOptions & { clear?: boolean };
+  triggerDepth?: number;
 };
 
 export type StartActRunResult = {
@@ -101,10 +104,11 @@ function shouldAutoEnableGrounding(query: string, actType: StreamActOptions["act
   return actType === "investigate";
 }
 
-export function startActRun({ targetNodeId, query, workspaceId, topicId, options }: StartActRunParams): StartActRunResult {
+export function startActRun({ targetNodeId, query, workspaceId, options, triggerDepth = 0 }: StartActRunParams): StartActRunResult {
   const graphStore = useGraphStore.getState();
   const runContext = useRunContextStore.getState();
   const preferences = useStreamPreferencesStore.getState();
+  const currentUserUid = getAuth().currentUser?.uid;
   const requestId = options?.requestId ?? uuidv4();
   const isExistingActTarget = targetNodeId ? graphStore.actNodes.some((node) => node.id === targetNodeId) : false;
   const frontendRootNodeId = isExistingActTarget && targetNodeId ? targetNodeId : `act-${requestId}`;
@@ -113,7 +117,6 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
     backendToFrontendNodeIds.set(targetNodeId, frontendRootNodeId);
   }
   const effectiveWorkspaceId = workspaceId ?? runContext.workspaceId;
-  const effectiveTopicId = topicId ?? runContext.topicId;
   const selectedNodeIds = graphStore.selectedNodeIds;
   const referencedNodeIds = uniqueNodeIds([
     ...(targetNodeId ? [targetNodeId] : []),
@@ -126,12 +129,11 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
   );
   const existingFrontendRootNode = graphStore.actNodes.find((node) => node.id === frontendRootNodeId);
 
-  if (effectiveWorkspaceId !== runContext.workspaceId || effectiveTopicId !== runContext.topicId) {
-    runContext.setContext(effectiveWorkspaceId, effectiveTopicId);
+  if (effectiveWorkspaceId !== runContext.workspaceId) {
+    runContext.setContext(effectiveWorkspaceId);
   }
   if (typeof window !== "undefined") {
     window.localStorage.setItem("run_context.workspaceId", effectiveWorkspaceId);
-    window.localStorage.setItem("run_context.topicId", effectiveTopicId);
   }
 
   graphStore.setStreamRunning(true);
@@ -155,14 +157,16 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
         if (!node) {
           return;
         }
-        await actDraftService.saveDraftSnapshot(effectiveWorkspaceId, effectiveTopicId, nodeId, {
+        await actDraftService.saveDraftSnapshot(effectiveWorkspaceId, nodeId, {
           title: typeof node.data?.label === "string" ? node.data.label : query,
           kind: typeof node.data?.kind === "string" ? node.data.kind : "act",
           createdBy: node.data?.createdBy === "user" ? "user" : "agent",
+          authorUid: typeof node.data?.authorUid === "string" ? node.data.authorUid : undefined,
           contentMd: typeof node.data?.contentMd === "string" ? node.data.contentMd : "",
           referencedNodeIds: Array.isArray(node.data?.referencedNodeIds)
             ? node.data.referencedNodeIds.filter((value): value is string => typeof value === "string")
             : referencedNodeIds,
+          parentId: typeof node.data?.parentId === "string" ? node.data.parentId : undefined,
         });
       }),
     );
@@ -188,12 +192,17 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
 
       if (patch.type === "upsert" && patch.data) {
         const existingNode = useGraphStore.getState().actNodes.find((node) => node.id === normalizedNodeId);
+        const resolvedParentId = patch.data.parentId
+          ? resolveFrontendNodeId(patch.data.parentId)
+          : undefined;
+        const resolvedCreatedBy = patch.data.createdBy ?? (existingNode ? undefined : "agent");
         useGraphStore.getState().addOrUpdateActNode(normalizedNodeId, {
           label:
             patch.data.label ??
             (existingNode ? undefined : query),
           kind: patch.data.kind ?? "act",
-          createdBy: patch.data.createdBy ?? (existingNode ? undefined : "agent"),
+          createdBy: resolvedCreatedBy,
+          ...(resolvedCreatedBy === 'user' && currentUserUid ? { authorUid: currentUserUid } : {}),
           referencedNodeIds:
             patch.data.referencedNodeIds ??
             (existingNode
@@ -203,7 +212,12 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
           usedSelectedNodeContexts: patch.data.usedSelectedNodeContexts,
           usedTools: patch.data.usedTools,
           usedSources: patch.data.usedSources,
+          ...(resolvedParentId ? { parentId: resolvedParentId } : {}),
+          ...(patch.data.contentMd ? { contentMd: patch.data.contentMd } : {}),
         });
+        if (resolvedParentId) {
+          useGraphStore.getState().expandBranchNode(resolvedParentId);
+        }
         return;
       }
 
@@ -273,6 +287,27 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       includeThoughts: options?.includeThoughts ?? preferences.includeThoughts,
       modelProfile: options?.modelProfile ?? preferences.modelProfile,
     },
+    triggerDepth < MAX_TRIGGER_DEPTH
+      ? (trigger) => {
+          if (trigger.action === "start_act") {
+            try {
+              const payload = JSON.parse(trigger.payloadJson) as Record<string, unknown>;
+              const triggerQuery = typeof payload.user_message === "string" ? payload.user_message : "";
+              const anchorNodeId = typeof payload.anchor_node_id === "string" ? payload.anchor_node_id : undefined;
+              if (triggerQuery) {
+                startActRun({
+                  targetNodeId: anchorNodeId ? resolveFrontendNodeId(anchorNodeId) : null,
+                  query: triggerQuery,
+                  workspaceId: effectiveWorkspaceId,
+                  triggerDepth: triggerDepth + 1,
+                });
+              }
+            } catch {
+              console.warn("[RunAct] Failed to parse start_act payload", trigger.payloadJson);
+            }
+          }
+        }
+      : undefined,
   );
 
   return { requestId, cancel };

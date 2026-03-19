@@ -14,10 +14,9 @@ import { organizeService } from '@/services/organize';
 
 type Params = {
     workspaceId: string;
-    topicId: string;
 };
 
-export function useGraphCommands({ workspaceId, topicId }: Params) {
+export function useGraphCommands({ workspaceId }: Params) {
     const {
         actNodes,
         setActiveNode,
@@ -77,7 +76,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
             : [];
 
         if (!trimmed) {
-            await removeActNodeAndDraft(workspaceId, topicId, nodeId);
+            await removeActNodeAndDraft(workspaceId, nodeId);
             return;
         }
 
@@ -106,11 +105,11 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
                 options: { clear: false, contextNodeIds: prepared.contextNodeIds },
             });
         }
-    }, [actNodes, frontendToolClient, setPendingClarification, setSelectedNodes, topicId, updateActNodeLabel, workspaceId]);
+    }, [actNodes, frontendToolClient, setPendingClarification, setSelectedNodes, updateActNodeLabel, workspaceId]);
 
     const clearAct = useCallback(async () => {
-        await clearAllActNodes(workspaceId, topicId);
-    }, [topicId, workspaceId]);
+        await clearAllActNodes(workspaceId);
+    }, [workspaceId]);
 
     const addMediaContext = useCallback(async (_nodeId: string, file: File) => {
         const result = await organizeService.uploadInput(workspaceId, file);

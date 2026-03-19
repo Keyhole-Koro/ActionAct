@@ -1,5 +1,6 @@
 import type { GraphNodeBase } from '@/features/graph/types';
 import {
+    GRAPH_ACT_NODE_HEIGHT,
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
     getLayoutDimensionsForNodeType,
@@ -11,161 +12,233 @@ type ProjectActOverlayParams = {
     expandedNodeIds: string[];
 };
 
-const SIDECAR_OFFSET_X = 220;
-const SIDECAR_STACK_GAP_Y = 28;
-const GENERAL_LANE_OFFSET_X = 320;
-const GENERAL_LANE_START_Y = 140;
-const GENERAL_LANE_GAP_Y = 36;
-const COLLISION_GAP = 12;
-
-type Rect = { x: number; y: number; width: number; height: number };
-
-function hasStablePosition(node: GraphNodeBase) {
-    return Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y);
-}
-
-/**
- * Returns the first Y >= preferredY at which a rect of (x, width, height) does not
- * overlap any rectangle in `occupied` (with an additional gap on all sides).
- * Only scans downward to avoid unbounded search.
- */
-function findFreeY(
-    x: number,
-    width: number,
-    height: number,
-    occupied: Rect[],
-    preferredY: number,
-    gap: number,
-): number {
-    let candidateY = preferredY;
-    for (let iter = 0; iter < 200; iter++) {
-        const blocking = occupied.find(
-            (o) =>
-                x < o.x + o.width + gap &&
-                x + width + gap > o.x &&
-                candidateY < o.y + o.height + gap &&
-                candidateY + height + gap > o.y,
-        );
-        if (!blocking) {
-            return candidateY;
-        }
-        candidateY = blocking.y + blocking.height + gap;
-    }
-    return candidateY;
-}
+// X distance from the rightmost persisted node to the root column (depth=0)
+const GLOBAL_X_OFFSET = 220;
+// Horizontal gap between depth levels (depth=0, depth=1, depth=2, …)
+const COLUMN_GAP = 320;
+// Vertical gap between sibling subtrees within a tree
+const SIBLING_GAP = 24;
+// Vertical gap between separate trees
+const TREE_GAP = 48;
 
 export function projectActOverlay({
     actNodes,
     persistedNodes,
     expandedNodeIds,
 }: ProjectActOverlayParams): GraphNodeBase[] {
-    if (actNodes.length === 0) {
-        return [];
-    }
+    if (actNodes.length === 0) return [];
 
-    const persistedById = new Map(persistedNodes.map((node) => [node.id, node]));
+    const persistedById = new Map(persistedNodes.map((n) => [n.id, n]));
     const expandedSet = new Set(expandedNodeIds);
-    const maxPersistedRight = persistedNodes.reduce((max, node) => {
-        const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-        return Math.max(max, node.position.x + dimensions.width);
+
+    const maxPersistedRight = persistedNodes.reduce((max, n) => {
+        const d = getNodeDimensions(n, expandedSet.has(n.id));
+        return Math.max(max, n.position.x + d.width);
     }, 0);
 
-    const referencedBuckets = new Map<string, GraphNodeBase[]>();
+    // Separate manually-positioned nodes from those that need layout
     const fixedNodes: GraphNodeBase[] = [];
-    const generalLaneNodes: GraphNodeBase[] = [];
+    const floatNodes: GraphNodeBase[] = [];
 
     for (const node of actNodes) {
-        // Preserve existing coordinates to avoid jitter while streaming/thinking updates arrive.
-        if (node.data?.isManualPosition === true || hasStablePosition(node)) {
+        if (node.data?.isManualPosition === true) {
             fixedNodes.push(node);
-            continue;
+        } else {
+            floatNodes.push(node);
         }
-
-        const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
-            ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
-            : [];
-        const anchorId = referencedNodeIds.find((nodeId) => persistedById.has(nodeId));
-
-        if (!anchorId) {
-            generalLaneNodes.push(node);
-            continue;
-        }
-
-        const bucket = referencedBuckets.get(anchorId) ?? [];
-        bucket.push(node);
-        referencedBuckets.set(anchorId, bucket);
     }
 
-    // Build occupied rects from persisted nodes and already-fixed act nodes so that
-    // newly placed nodes can avoid overlapping them.
-    const occupiedRects: Rect[] = [
-        ...persistedNodes.map((node) => {
-            const d = getNodeDimensions(node, expandedSet.has(node.id));
-            return { x: node.position.x, y: node.position.y, width: d.width, height: d.height };
-        }),
-        ...fixedNodes.map((node) => {
-            const d = getNodeDimensions(node, expandedSet.has(node.id));
-            return { x: node.position.x, y: node.position.y, width: d.width, height: d.height };
-        }),
-    ];
+    if (floatNodes.length === 0) return fixedNodes;
 
-    const positionedReferenced = [...referencedBuckets.entries()].flatMap(([anchorId, nodes]) => {
-        const anchor = persistedById.get(anchorId);
-        if (!anchor) {
-            return nodes;
+    const floatIds = new Set(floatNodes.map((n) => n.id));
+    const nodeById = new Map(floatNodes.map((n) => [n.id, n]));
+
+    // Build parent→children map (only among float nodes)
+    const childrenMap = new Map<string, string[]>();
+    for (const node of floatNodes) {
+        const parentId =
+            typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
+        if (parentId && floatIds.has(parentId)) {
+            const arr = childrenMap.get(parentId) ?? [];
+            arr.push(node.id);
+            childrenMap.set(parentId, arr);
+        }
+    }
+
+    // Roots: float nodes with no float-node parent
+    const roots = floatNodes.filter((n) => {
+        const parentId =
+            typeof n.data?.parentId === 'string' ? n.data.parentId : undefined;
+        return !parentId || !floatIds.has(parentId);
+    });
+
+    // ── Depth assignment (BFS from each root, resets to 0 per tree) ──────────
+    // X = baseX + depth * COLUMN_GAP — depth is independent per tree
+    const depthMap = new Map<string, number>();
+
+    for (const root of roots) {
+        const queue = [root.id];
+        depthMap.set(root.id, 0);
+        let qi = 0;
+        while (qi < queue.length) {
+            const nodeId = queue[qi++];
+            const depth = depthMap.get(nodeId)!;
+            for (const childId of childrenMap.get(nodeId) ?? []) {
+                if (!depthMap.has(childId)) {
+                    depthMap.set(childId, depth + 1);
+                    queue.push(childId);
+                }
+            }
+        }
+    }
+
+    // ── Subtree height (post-order) ───────────────────────────────────────────
+    // subtreeHeight(n) = max(ownHeight, sum(children subtreeHeights) + gaps)
+    const subtreeHeightCache = new Map<string, number>();
+
+    const subtreeHeight = (nodeId: string): number => {
+        const cached = subtreeHeightCache.get(nodeId);
+        if (cached !== undefined) return cached;
+        const node = nodeById.get(nodeId);
+        const own = node ? getNodeDimensions(node, expandedSet.has(nodeId)).height : GRAPH_ACT_NODE_HEIGHT;
+        const children = childrenMap.get(nodeId) ?? [];
+        if (children.length === 0) {
+            subtreeHeightCache.set(nodeId, own);
+            return own;
+        }
+        const childTotal = children.reduce((s, c) => s + subtreeHeight(c), 0)
+            + SIBLING_GAP * (children.length - 1);
+        const result = Math.max(own, childTotal);
+        subtreeHeightCache.set(nodeId, result);
+        return result;
+    };
+
+    for (const root of roots) subtreeHeight(root.id);
+
+    // ── Y position (top-down): place children sequentially, center parent ─────
+    const posYMap = new Map<string, number>();
+
+    const assignY = (nodeId: string, subtreeTop: number): void => {
+        const node = nodeById.get(nodeId);
+        const own = node ? getNodeDimensions(node, expandedSet.has(nodeId)).height : GRAPH_ACT_NODE_HEIGHT;
+        const children = childrenMap.get(nodeId) ?? [];
+
+        if (children.length === 0) {
+            posYMap.set(nodeId, subtreeTop);
+            return;
         }
 
-        const anchorDimensions = getNodeDimensions(anchor, expandedSet.has(anchor.id));
-        const baseX = anchor.position.x + anchorDimensions.width + SIDECAR_OFFSET_X;
-        const anchorCenterY = anchor.position.y + (anchorDimensions.height / 2);
+        // Place children sequentially from subtreeTop
+        let cursor = subtreeTop;
+        for (const childId of children) {
+            assignY(childId, cursor);
+            cursor += subtreeHeight(childId) + SIBLING_GAP;
+        }
 
-        const totalHeight = nodes.reduce((sum, node, index) => {
-            const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-            return sum + dimensions.height + (index > 0 ? SIDECAR_STACK_GAP_Y : 0);
-        }, 0);
+        // Center this node vertically within its children's combined span
+        const firstChildY = posYMap.get(children[0])!;
+        const lastChild = children[children.length - 1];
+        const lastChildNode = nodeById.get(lastChild);
+        const lastChildH = lastChildNode
+            ? getNodeDimensions(lastChildNode, expandedSet.has(lastChild)).height
+            : GRAPH_ACT_NODE_HEIGHT;
+        const lastChildY = posYMap.get(lastChild)!;
+        posYMap.set(nodeId, (firstChildY + lastChildY + lastChildH) / 2 - own / 2);
+    };
 
-        const groupWidth = Math.max(...nodes.map((n) => getNodeDimensions(n, expandedSet.has(n.id)).width));
-        const desiredStartY = anchorCenterY - totalHeight / 2;
-        let currentY = findFreeY(baseX, groupWidth, totalHeight, occupiedRects, desiredStartY, COLLISION_GAP);
+    // ── Anchor Y per root ─────────────────────────────────────────────────────
+    const anchorYPerRoot = new Map<string, number>();
+    let fallbackY = 200;
+    for (const root of roots) {
+        const referencedIds: string[] = Array.isArray(root.data?.referencedNodeIds)
+            ? (root.data.referencedNodeIds as unknown[]).filter(
+                  (v): v is string => typeof v === 'string',
+              )
+            : [];
+        const anchor = referencedIds.map((id) => persistedById.get(id)).find(Boolean);
+        if (anchor) {
+            const ad = getNodeDimensions(anchor, expandedSet.has(anchor.id));
+            anchorYPerRoot.set(root.id, anchor.position.y + ad.height / 2);
+        } else {
+            anchorYPerRoot.set(root.id, fallbackY);
+            fallbackY += subtreeHeight(root.id) + TREE_GAP;
+        }
+    }
 
-        return nodes.map((node) => {
-            const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-            const positionedNode: GraphNodeBase = {
-                ...node,
-                position: { x: baseX, y: currentY },
-            };
-            occupiedRects.push({ x: baseX, y: currentY, width: dimensions.width, height: dimensions.height });
-            currentY += dimensions.height + SIDECAR_STACK_GAP_Y;
-            return positionedNode;
-        });
-    });
+    // ── Sort roots by anchor Y, then resolve overlaps ─────────────────────────
+    const sortedRoots = [...roots].sort(
+        (a, b) => (anchorYPerRoot.get(a.id) ?? 0) - (anchorYPerRoot.get(b.id) ?? 0),
+    );
 
-    const generalLaneX = maxPersistedRight + GENERAL_LANE_OFFSET_X;
-    let nextGeneralLaneY = GENERAL_LANE_START_Y;
-    const positionedGeneralLane = generalLaneNodes.map((node) => {
-        const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-        const y = findFreeY(generalLaneX, dimensions.width, dimensions.height, occupiedRects, nextGeneralLaneY, COLLISION_GAP);
-        nextGeneralLaneY = y + dimensions.height + GENERAL_LANE_GAP_Y;
-        const positionedNode: GraphNodeBase = { ...node, position: { x: generalLaneX, y } };
-        occupiedRects.push({ x: generalLaneX, y, width: dimensions.width, height: dimensions.height });
-        return positionedNode;
-    });
+    // Ideal tree origin Y: root node's top-left so its center aligns with anchor
+    const idealOriginY = (rootId: string): number => {
+        const anchorY = anchorYPerRoot.get(rootId) ?? 200;
+        const node = nodeById.get(rootId);
+        const rootH = node ? getNodeDimensions(node, expandedSet.has(rootId)).height : GRAPH_ACT_NODE_HEIGHT;
+        return anchorY - rootH / 2;
+    };
 
-    return [...positionedReferenced, ...positionedGeneralLane, ...fixedNodes];
+    const treeOriginY = new Map<string, number>();
+    for (const root of sortedRoots) treeOriginY.set(root.id, idealOriginY(root.id));
+
+    // 3 iterations of forward+backward relaxation to resolve overlaps
+    for (let iter = 0; iter < 3; iter++) {
+        // Forward: push down if overlapping tree above
+        let prevBottom = -Infinity;
+        for (const root of sortedRoots) {
+            const y = Math.max(treeOriginY.get(root.id)!, prevBottom + TREE_GAP);
+            treeOriginY.set(root.id, y);
+            prevBottom = y + subtreeHeight(root.id);
+        }
+        // Backward: pull toward ideal, constrained by tree below
+        let nextTop = Infinity;
+        for (let i = sortedRoots.length - 1; i >= 0; i--) {
+            const root = sortedRoots[i];
+            const maxAllowed = nextTop - TREE_GAP - subtreeHeight(root.id);
+            treeOriginY.set(root.id, Math.min(idealOriginY(root.id), maxAllowed));
+            nextTop = treeOriginY.get(root.id)!;
+        }
+    }
+    // Final forward pass
+    let finalPrevBottom = -Infinity;
+    for (const root of sortedRoots) {
+        const y = Math.max(treeOriginY.get(root.id)!, finalPrevBottom + TREE_GAP);
+        treeOriginY.set(root.id, y);
+        finalPrevBottom = y + subtreeHeight(root.id);
+    }
+
+    // ── Run assignY for each tree from its resolved origin ────────────────────
+    for (const root of sortedRoots) {
+        assignY(root.id, treeOriginY.get(root.id) ?? 0);
+    }
+
+    // ── Emit positioned nodes ─────────────────────────────────────────────────
+    const baseX = maxPersistedRight + GLOBAL_X_OFFSET;
+
+    const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => ({
+        ...node,
+        position: {
+            x: baseX + (depthMap.get(node.id) ?? 0) * COLUMN_GAP,
+            y: posYMap.get(node.id) ?? 0,
+        },
+        data: { ...node.data, overlayPositioned: true },
+    }));
+
+    return [...positionedFloat, ...fixedNodes];
 }
 
 function getNodeDimensions(node: GraphNodeBase, isExpanded: boolean) {
-    const nodeData = (node.data ?? {}) as Record<string, unknown>;
-    const nodeKind = typeof nodeData.kind === 'string' ? nodeData.kind : undefined;
-    const label = typeof nodeData.label === 'string' ? nodeData.label : undefined;
-    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
-
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const kind = typeof data.kind === 'string' ? data.kind : undefined;
+    const label = typeof data.label === 'string' ? data.label : undefined;
+    const layout = getLayoutDimensionsForNodeType(node.type, isExpanded, kind);
     return {
-        width: node.type === 'customTask'
-            ? (isExpanded
-                ? getExpandedNodeWidth(label, nodeKind)
-                : getCollapsedNodeWidth(label, nodeKind, false))
-            : layoutDimensions.width,
-        height: layoutDimensions.height,
+        width:
+            node.type === 'customTask'
+                ? isExpanded
+                    ? getExpandedNodeWidth(label, kind)
+                    : getCollapsedNodeWidth(label, kind, false)
+                : layout.width,
+        height: layout.height,
     };
 }

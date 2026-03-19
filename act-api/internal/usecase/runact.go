@@ -203,7 +203,6 @@ func validateRequest(msg *actv1.RunActRequest) error {
 		field string
 		value string
 	}{
-		{"topic_id", msg.GetTopicId()},
 		{"workspace_id", msg.GetWorkspaceId()},
 		{"request_id", msg.GetRequestId()},
 		{"user_message", msg.GetUserMessage()},

@@ -14,6 +14,8 @@ type Config struct {
 	GCloudProject     string
 	GCSBucket         string
 	PubSubTopic       string
+	StorageEmulatorHost string
+	PubSubEmulatorHost  string
 	SIDStrict         bool
 	SIDTTLSeconds     int
 	CSRFTTLSeconds    int
@@ -26,7 +28,8 @@ func MustLoad() *Config {
 	if pubsubTopic == "" {
 		pubsubTopic = "mind-events"
 	}
-	return &Config{
+
+	cfg := &Config{
 		Port:              mustEnv("PORT"),
 		RedisAddr:         mustEnv("REDIS_ADDR"),
 		RedisDB:           mustIntEnv("REDIS_DB"),
@@ -34,12 +37,20 @@ func MustLoad() *Config {
 		GCloudProject:     mustEnv("GOOGLE_CLOUD_PROJECT"),
 		GCSBucket:         mustEnv("GCS_BUCKET"),
 		PubSubTopic:       pubsubTopic,
+		StorageEmulatorHost: os.Getenv("STORAGE_EMULATOR_HOST"),
+		PubSubEmulatorHost:  os.Getenv("PUBSUB_EMULATOR_HOST"),
 		SIDStrict:         mustBoolEnv("SID_STRICT"),
 		SIDTTLSeconds:     mustIntEnv("SID_TTL_SECONDS"),
 		CSRFTTLSeconds:    mustIntEnv("CSRF_TTL_SECONDS"),
 		SIDReqTTLSeconds:  mustIntEnv("SID_REQ_TTL_SECONDS"),
 		SIDLockTTLSeconds: mustIntEnv("SID_LOCK_TTL_SECONDS"),
 	}
+
+	fmt.Printf("[CONFIG DEBUG] STORAGE_EMULATOR_HOST: %q\n", cfg.StorageEmulatorHost)
+	fmt.Printf("[CONFIG DEBUG] PUBSUB_EMULATOR_HOST: %q\n", cfg.PubSubEmulatorHost)
+	fmt.Printf("[CONFIG DEBUG] GCS_BUCKET: %q\n", cfg.GCSBucket)
+
+	return cfg
 }
 
 func mustEnv(key string) string {

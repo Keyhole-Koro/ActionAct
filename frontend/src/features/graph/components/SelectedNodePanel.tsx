@@ -2,12 +2,8 @@
 
 import React from 'react';
 
+import { truncate } from '@/lib/string';
 import { useGraphStore } from '@/features/graph/store';
-
-function truncate(text: string, max: number): string {
-    if (text.length <= max) return text;
-    return text.slice(0, max).trimEnd() + '…';
-}
 
 function kindLabel(kind: string): string {
     if (kind === 'act') return 'act';
@@ -29,7 +25,7 @@ export function SelectedNodePanel() {
     if (selectedNodes.length === 0) return null;
 
     return (
-        <div className="absolute bottom-4 left-4 z-20 w-[256px] overflow-hidden rounded-xl border border-slate-200/80 bg-white/92 shadow-md backdrop-blur-sm">
+        <div className="absolute bottom-52 left-4 z-20 w-[256px] overflow-hidden rounded-xl border border-slate-200/80 bg-white/92 shadow-md backdrop-blur-sm">
             <div className="border-b border-slate-100 px-3 py-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                     {selectedNodes.length === 1 ? '1 node selected' : `${selectedNodes.length} nodes selected`}

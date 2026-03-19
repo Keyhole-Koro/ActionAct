@@ -118,6 +118,7 @@ async def test_firestore_assembly_builds_context_from_outline_nodes_and_evidence
         workspace_id="ws",
         anchor_node_id="root",
         context_node_ids=["root"],
+        selected_node_contexts=[],
         user_message="Explain this",
     )
 

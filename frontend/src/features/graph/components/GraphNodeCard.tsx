@@ -1,18 +1,25 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { Handle, Position, NodeProps, useUpdateNodeInternals, NodeResizeControl } from '@xyflow/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
     Play,
-    RotateCcw,
     ChevronRight,
     ChevronDown,
     Bot,
     UserRound,
     FileUp,
     Loader2,
+    Code,
+    FileText,
+    ExternalLink,
+    Wrench,
+    Network,
+    Globe,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
@@ -25,7 +32,35 @@ import {
     NODE_COLLAPSED_BASE_WIDTH,
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
+    getLayoutDimensionsForNodeType,
 } from '../constants/nodeDimensions';
+
+const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; ring: string; ringActive: string; ringDescendant: string; bgTint: string; topGrad: string }> = {
+    explore:     { bar: 'bg-blue-500',    dot: 'bg-blue-500',    accent: 'text-blue-600',    ring: 'ring-blue-500/35',    ringActive: 'ring-blue-500/80',    ringDescendant: 'ring-blue-400/50',    bgTint: 'bg-blue-50/50',    topGrad: 'from-blue-400 via-sky-300 to-blue-400' },
+    investigate: { bar: 'bg-emerald-500', dot: 'bg-emerald-500', accent: 'text-emerald-600', ring: 'ring-emerald-500/35', ringActive: 'ring-emerald-500/80', ringDescendant: 'ring-emerald-400/50', bgTint: 'bg-emerald-50/50', topGrad: 'from-emerald-400 via-teal-300 to-emerald-400' },
+    consult:     { bar: 'bg-amber-500',   dot: 'bg-amber-500',   accent: 'text-amber-600',   ring: 'ring-amber-500/35',   ringActive: 'ring-amber-500/80',   ringDescendant: 'ring-amber-400/50',   bgTint: 'bg-amber-50/50',   topGrad: 'from-amber-400 via-yellow-300 to-amber-400' },
+    act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  ringActive: 'ring-violet-500/80',  ringDescendant: 'ring-violet-400/50',  bgTint: 'bg-violet-50/50',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
+};
+
+// Per-author color palette for user-created act nodes
+const AUTHOR_PALETTES = [
+    { bar: 'bg-slate-400',   dot: 'bg-slate-400',   accent: 'text-slate-500',   ring: 'ring-slate-400/35',   ringActive: 'ring-slate-400/70',   ringDescendant: 'ring-slate-300/50',   bgTint: 'bg-slate-50/50',   topGrad: 'from-slate-300 via-slate-200 to-slate-300' },
+    { bar: 'bg-rose-400',    dot: 'bg-rose-400',    accent: 'text-rose-500',    ring: 'ring-rose-400/35',    ringActive: 'ring-rose-400/70',    ringDescendant: 'ring-rose-300/50',    bgTint: 'bg-rose-50/50',    topGrad: 'from-rose-300 via-pink-200 to-rose-300' },
+    { bar: 'bg-amber-400',   dot: 'bg-amber-400',   accent: 'text-amber-500',   ring: 'ring-amber-400/35',   ringActive: 'ring-amber-400/70',   ringDescendant: 'ring-amber-300/50',   bgTint: 'bg-amber-50/50',   topGrad: 'from-amber-300 via-yellow-200 to-amber-300' },
+    { bar: 'bg-teal-400',    dot: 'bg-teal-400',    accent: 'text-teal-500',    ring: 'ring-teal-400/35',    ringActive: 'ring-teal-400/70',    ringDescendant: 'ring-teal-300/50',    bgTint: 'bg-teal-50/50',    topGrad: 'from-teal-300 via-emerald-200 to-teal-300' },
+    { bar: 'bg-indigo-400',  dot: 'bg-indigo-400',  accent: 'text-indigo-500',  ring: 'ring-indigo-400/35',  ringActive: 'ring-indigo-400/70',  ringDescendant: 'ring-indigo-300/50',  bgTint: 'bg-indigo-50/50',  topGrad: 'from-indigo-300 via-violet-200 to-indigo-300' },
+    { bar: 'bg-fuchsia-400', dot: 'bg-fuchsia-400', accent: 'text-fuchsia-500', ring: 'ring-fuchsia-400/35', ringActive: 'ring-fuchsia-400/70', ringDescendant: 'ring-fuchsia-300/50', bgTint: 'bg-fuchsia-50/50', topGrad: 'from-fuchsia-300 via-pink-200 to-fuchsia-300' },
+    { bar: 'bg-cyan-400',    dot: 'bg-cyan-400',    accent: 'text-cyan-500',    ring: 'ring-cyan-400/35',    ringActive: 'ring-cyan-400/70',    ringDescendant: 'ring-cyan-300/50',    bgTint: 'bg-cyan-50/50',    topGrad: 'from-cyan-300 via-sky-200 to-cyan-300' },
+    { bar: 'bg-orange-400',  dot: 'bg-orange-400',  accent: 'text-orange-500',  ring: 'ring-orange-400/35',  ringActive: 'ring-orange-400/70',  ringDescendant: 'ring-orange-300/50',  bgTint: 'bg-orange-50/50',  topGrad: 'from-orange-300 via-amber-200 to-orange-300' },
+];
+
+function uidToAuthorPalette(uid: string) {
+    let hash = 0;
+    for (let i = 0; i < uid.length; i++) {
+        hash = uid.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AUTHOR_PALETTES[Math.abs(hash) % AUTHOR_PALETTES.length];
+}
 
 const typeConfig: Record<string, { gradient: string; accent: string; glow: string }> = {
     explore: { gradient: 'from-violet-500/10 via-indigo-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
@@ -33,6 +68,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     investigate: { gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent', accent: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
     note: { gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent', accent: 'text-amber-500', glow: 'shadow-amber-500/20' },
     act: { gradient: 'from-blue-500/10 via-indigo-500/5 to-transparent', accent: 'text-blue-500', glow: 'shadow-blue-500/20' },
+    suggestion: { gradient: 'from-violet-500/10 via-purple-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     topic: { gradient: 'from-blue-500/20 via-cyan-500/10 to-transparent', accent: 'text-blue-600', glow: 'shadow-blue-500/25' },
     cluster: { gradient: 'from-teal-500/20 via-emerald-500/10 to-transparent', accent: 'text-teal-600', glow: 'shadow-teal-500/25' },
     subcluster: { gradient: 'from-orange-500/20 via-amber-500/10 to-transparent', accent: 'text-orange-600', glow: 'shadow-orange-500/25' },
@@ -40,7 +76,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     default: { gradient: 'from-slate-500/10 via-slate-400/5 to-transparent', accent: 'text-slate-500', glow: 'shadow-slate-500/20' },
 };
 
-export function GraphNodeCard({ id, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
+export function GraphNodeCard({ id, type, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
     const updateNodeInternals = useUpdateNodeInternals();
     const showThoughts = useStreamPreferencesStore((state) => state.showThoughts);
     const nodeKind = data.kind;
@@ -49,6 +85,7 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const isExpanded = data.isExpanded === true;
     const isNodeStreaming = data.isStreaming === true;
     const createdBy = data.createdBy;
+    const authorUid = typeof data.authorUid === 'string' ? data.authorUid : undefined;
     const referencedNodes = Array.isArray(data.referencedNodes) ? data.referencedNodes : [];
     const hasChildNodes = data.hasChildNodes === true;
     const branchExpanded = data.branchExpanded === true;
@@ -60,14 +97,26 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const isActNode = data.kind === 'act';
     const isDraftAct = isActNode && actStage === 'draft';
+    const nodeDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
+    const rootHue = typeof data.rootHue === 'number' ? data.rootHue : 210;
+    const depthBgColor = isActNode ? undefined
+        : `hsl(${rootHue}, ${Math.max(40 - nodeDepth * 10, 6)}%, ${Math.min(92 + nodeDepth * 2, 98.5)}%)`;
+    const activityOpacity = isActNode && typeof data.activityOpacity === 'number'
+        ? data.activityOpacity
+        : undefined;
+    const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
-    const cardWidth = isActNode
+    const [liveResizeWidth, setLiveResizeWidth] = React.useState<number | null>(null);
+    const [liveResizeHeight, setLiveResizeHeight] = React.useState<number | null>(null);
+    const cardWidth = liveResizeWidth ?? data.customWidth ?? (isActNode
         ? (isExpanded ? expandedTitleWidth : collapsedTitleWidth)
-        : (isExpanded ? expandedTitleWidth : collapsedTitleWidth);
-    const cardMaxWidth = isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH;
+        : (isExpanded ? expandedTitleWidth : collapsedTitleWidth));
+    const cardExplicitHeight = liveResizeHeight ?? data.customHeight ?? undefined;
+    const cardMaxWidth = data.customWidth ?? (isActNode ? GRAPH_ACT_NODE_EXPANDED_WIDTH : GRAPH_NODE_EXPANDED_WIDTH);
     const expandedMaxHeight = isActNode ? GRAPH_ACT_NODE_EXPANED_MAX_HEIGHT : GRAPH_NODE_EXPANDED_MAX_HEIGHT;
+    const { height: cardHeight } = getLayoutDimensionsForNodeType(type, isExpanded, data.kind);
     const inputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
@@ -75,12 +124,21 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
     const hasBodyText = Boolean(data.contextSummary || data.contentMd || hasThoughtText);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
     const hasReferences = referencedNodes.length > 0;
+    const childActNodes = Array.isArray(data.childActNodes) ? data.childActNodes : [];
+    const parentActNode = data.parentActNode ?? null;
     const usedContextNodeIds = Array.isArray(data.usedContextNodeIds) ? data.usedContextNodeIds : [];
     const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
     const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
     const hasRunTrace = usedContextNodeIds.length > 0 || usedTools.length > 0 || usedSources.length > 0;
-    const retryQuery = typeof data.label === 'string' ? data.label.trim() : '';
-    const canRetry = isActNode && retryQuery.length > 0 && typeof data.onRunAction === 'function' && !isNodeStreaming;
+    const [runTraceOpen, setRunTraceOpen] = useState(false);
+    const nodeContextLabelMap = React.useMemo(() => {
+        const map: Record<string, string> = {};
+        const ctxs = Array.isArray(data.usedSelectedNodeContexts) ? data.usedSelectedNodeContexts : [];
+        for (const ctx of ctxs) {
+            if (ctx.nodeId && ctx.label) map[ctx.nodeId] = ctx.label;
+        }
+        return map;
+    }, [data.usedSelectedNodeContexts]);
     const actStageLabel = actStage === 'thinking'
         ? 'Thinking'
         : actStage === 'ready'
@@ -152,6 +210,445 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
             }
         }
     }, [data]);
+
+    if (data.kind === 'suggestion') {
+        const suggestionQuery = typeof data.contentMd === 'string' ? data.contentMd : '';
+        const canExplore = suggestionQuery.length > 0 && typeof data.onRunAction === 'function' && !isNodeStreaming;
+        return (
+            <div
+                className={`nodrag group relative flex min-w-[140px] max-w-[260px] cursor-default flex-col gap-1 rounded-xl border border-dashed border-violet-300/60 bg-gradient-to-br ${cfg.gradient} px-3 py-2.5 shadow-sm transition-all hover:border-violet-400/80 hover:shadow-md`}
+                style={{ backdropFilter: 'blur(4px)' }}
+            >
+                <Handle type="target" position={targetPosition ?? Position.Top} className="opacity-0" />
+                <div className="flex items-start gap-1.5">
+                    <span className="mt-0.5 text-violet-400">✦</span>
+                    <span className="flex-1 text-[12px] font-medium leading-snug text-slate-700">{data.label || suggestionQuery}</span>
+                </div>
+                {canExplore && (
+                    <button
+                        className="nodrag mt-1 flex items-center gap-1 self-end rounded-full border border-violet-200 bg-white/80 px-2.5 py-0.5 text-[11px] font-medium text-violet-600 shadow-sm transition-all hover:bg-violet-50 hover:shadow"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            data.onRunAction?.(suggestionQuery);
+                        }}
+                    >
+                        <span>▶</span>
+                        <span>深掘り</span>
+                    </button>
+                )}
+                <Handle type="source" position={sourcePosition ?? Position.Bottom} className="opacity-0" />
+            </div>
+        );
+    }
+
+    if (isActNode) {
+        const atc = createdBy === 'user'
+            ? (authorUid ? uidToAuthorPalette(authorUid) : AUTHOR_PALETTES[0])
+            : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
+        const statusDot = isDraftAct
+            ? 'bg-slate-300'
+            : isNodeStreaming
+                ? `${atc.dot} animate-pulse`
+                : atc.dot;
+
+        const relationClass = selected
+            ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
+            : activeRelation === 'self'
+                ? `ring-2 ${atc.ringActive} ring-offset-2 ring-offset-background border-transparent shadow-[0_0_16px_-2px_var(--tw-ring-color)] scale-[1.01]`
+                : activeRelation === 'descendant'
+                    ? `ring-1 ${atc.ringDescendant} ring-offset-1 ring-offset-background ${atc.bgTint}`
+                    : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]';
+
+        return (
+            <div className="relative group">
+                <input
+                    ref={mediaInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => void handleMediaFileChange(event)}
+                    accept=".txt,.md,.pdf,.html,.csv,.json,.doc,.docx,.png,.jpg,.jpeg,.webp,.mp3,.wav,.m4a,.mp4,.mov"
+                />
+                <div
+                    style={{
+                        width: cardWidth,
+                        minWidth: ACT_NODE_COMPACT_WIDTH,
+                        maxWidth: cardMaxWidth,
+                        ...(cardExplicitHeight !== undefined ? { height: cardExplicitHeight, overflow: 'hidden' } : {}),
+                        ...(activityOpacity !== undefined ? { opacity: activityOpacity } : {}),
+                    }}
+                    className={[
+                        'relative overflow-hidden rounded-[18px] border transition-all duration-300',
+                        isDraftAct
+                            ? 'border-slate-200/80 bg-white/95 shadow-[0_2px_8px_-4px_rgba(15,23,42,0.08)]'
+                            : 'border-slate-200/60 bg-white/97 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.18)]',
+                        relationClass,
+                        isExpanded ? 'nowheel' : '',
+                    ].join(' ')}
+                >
+                    {/* Top gradient line — actType colour, visible when ready/expanded */}
+                    {!isDraftAct && (
+                        <div className={`absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r ${atc.topGrad} ${isNodeStreaming ? 'opacity-100' : 'opacity-60'}`}>
+                            {isNodeStreaming && (
+                                <div className="absolute inset-0 h-full w-[200%] -ml-[100%] bg-gradient-to-r from-transparent via-white/70 to-transparent animate-[shimmer_1.2s_linear_infinite]" />
+                            )}
+                        </div>
+                    )}
+
+                    {/* Left accent bar */}
+                    <div className={[
+                        'absolute left-0 top-[14px] bottom-[14px] w-[3px] rounded-r-full',
+                        isDraftAct ? 'bg-slate-200' : atc.bar,
+                        isNodeStreaming ? 'opacity-60' : 'opacity-90',
+                    ].join(' ')} />
+
+                    {/* Branch toggle */}
+                    {hasChildNodes && (
+                        <div className="absolute right-2.5 top-2.5 z-10">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-6 w-6 rounded-full border-slate-200/80 bg-white/90 text-slate-500 shadow-sm backdrop-blur-sm hover:bg-white"
+                                onClick={(event: React.MouseEvent) => {
+                                    event.stopPropagation();
+                                    data.onToggleBranch?.();
+                                }}
+                            >
+                                {branchExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* ── Collapsed header ── */}
+                    {!isExpanded && (
+                        <div className={`relative flex flex-col gap-1 pl-5 pr-3.5 py-2.5 ${hasChildNodes ? 'pr-10' : ''}`}>
+                            <div className="flex items-center gap-2">
+                                <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${statusDot}`} />
+                                {isEditing ? (
+                                    <input
+                                        ref={inputRef}
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onBlur={commitEdit}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="Ask a question..."
+                                        className="flex-1 min-w-0 bg-transparent border-b border-primary outline-none text-[14px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-0.5"
+                                    />
+                                ) : (
+                                    <h3 className="flex-1 min-w-0 truncate text-[14px] font-semibold leading-snug text-slate-800">
+                                        {data.label || <span className="font-normal italic text-slate-400">Ask a question…</span>}
+                                    </h3>
+                                )}
+                                {hasReferences && (
+                                    <span className="shrink-0 rounded-full border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-600 tabular-nums">
+                                        {referencedNodes.length}
+                                    </span>
+                                )}
+                            </div>
+                            {actStage === 'ready' && data.contentMd && (
+                                <p className="ml-4 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                                    {data.contentMd.slice(0, 120)}
+                                </p>
+                            )}
+                            {childActNodes.length > 0 && (
+                                <div className="ml-4 flex items-center gap-1">
+                                    <ChevronRight className="h-2.5 w-2.5 text-slate-400" />
+                                    <span className="text-[10px] font-medium text-slate-400">
+                                        {childActNodes.length}件の派生
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Expanded header ── */}
+                    {isExpanded && (
+                        <div className={`relative pl-5 pr-3.5 pt-3 pb-2 ${hasChildNodes ? 'pr-10' : ''}`}>
+                            {/* Meta row */}
+                            <div className="mb-1.5 flex items-center gap-1.5">
+                                {nodeKind && nodeKind !== 'act' && (
+                                    <span className={`text-[10px] font-bold uppercase tracking-[0.12em] ${atc.accent}`}>
+                                        {nodeKind}
+                                    </span>
+                                )}
+                                <span className={`h-[6px] w-[6px] rounded-full ${statusDot}`} />
+                                {actStageLabel && (
+                                    <span className={`text-[10px] font-medium ${
+                                        actStage === 'thinking' ? 'text-amber-500' : actStage === 'ready' ? 'text-slate-400' : 'text-slate-300'
+                                    }`}>{actStageLabel}</span>
+                                )}
+                                <div className="ml-auto flex items-center gap-1.5">
+                                    {!isDraftAct && createdBy && (
+                                        createdBy === 'agent' ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                                                <Bot className="h-2.5 w-2.5" />
+                                                AI
+                                            </span>
+                                        ) : (
+                                            <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${atc.accent} border-current/20 ${atc.bgTint}`}>
+                                                <span className={`h-2 w-2 rounded-full ${atc.dot}`} />
+                                                You
+                                            </span>
+                                        )
+                                    )}
+                                    {isNodeStreaming && (
+                                        <span className="flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75" />
+                                            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            {/* Parent breadcrumb */}
+                            {parentActNode && (
+                                <button
+                                    type="button"
+                                    className="nodrag mb-1.5 flex items-center gap-1 self-start rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                    onClick={(e) => { e.stopPropagation(); data.onNavigateToNode?.(parentActNode.id); }}
+                                >
+                                    <ChevronRight className="h-2.5 w-2.5 rotate-180 opacity-60" />
+                                    <span className="max-w-[180px] truncate">{parentActNode.label}</span>
+                                </button>
+                            )}
+                            {/* Title */}
+                            {isEditing ? (
+                                <input
+                                    ref={inputRef}
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onBlur={commitEdit}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Ask a question..."
+                                    className="w-full bg-transparent border-b-2 border-primary outline-none text-[15px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-1 mt-0.5"
+                                />
+                            ) : (
+                                <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-800">
+                                    {data.label || <span className="font-normal italic text-slate-400">Ask a question…</span>}
+                                </h3>
+                            )}
+                            {/* Referenced nodes */}
+                            {referencedNodes.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                    <span className="text-[9px] font-medium text-slate-300">via</span>
+                                    {referencedNodes.slice(0, 3).map((node) => (
+                                        <button
+                                            key={node.id}
+                                            type="button"
+                                            className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600 transition-colors hover:bg-slate-100"
+                                            onClick={(event: React.MouseEvent) => {
+                                                event.stopPropagation();
+                                                data.onOpenReferencedNode?.(node.id);
+                                            }}
+                                        >
+                                            {node.label}
+                                        </button>
+                                    ))}
+                                    {referencedNodes.length > 3 && (
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
+                                            +{referencedNodes.length - 3}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            {/* Child act nodes */}
+                            {childActNodes.length > 0 && (
+                                <div className="mt-2 flex flex-col gap-1">
+                                    <span className="text-[10px] font-medium text-slate-400">派生した問い</span>
+                                    <div className="flex flex-wrap gap-1">
+                                        {childActNodes.slice(0, 4).map((child) => (
+                                            <button
+                                                key={child.id}
+                                                type="button"
+                                                className="nodrag flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                                                onClick={(e) => { e.stopPropagation(); data.onNavigateToNode?.(child.id); }}
+                                            >
+                                                <span className="max-w-[140px] truncate">{child.label}</span>
+                                                <ChevronRight className="h-2.5 w-2.5 shrink-0 opacity-50" />
+                                            </button>
+                                        ))}
+                                        {childActNodes.length > 4 && (
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400">
+                                                +{childActNodes.length - 4}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── Expanded content ── */}
+                    {isExpanded && (
+                        <div className={`border-t ${isDraftAct && !hasBodyText ? 'border-transparent' : 'border-slate-100'}`}>
+                            <div
+                                style={{ maxHeight: expandedMaxHeight }}
+                                className={`overflow-y-auto ${isDraftAct ? 'px-5 py-2' : 'px-5 py-3'}`}
+                                onWheel={(event) => { event.stopPropagation(); }}
+                            >
+                                {data.contextSummary && (
+                                    <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+                                        {data.contextSummary}
+                                    </p>
+                                )}
+                                {data.contentMd && (
+                                    <div className="prose prose-sm max-w-none text-slate-700 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:text-[13px] [&_p]:leading-relaxed [&_li]:text-[13px] [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_h1]:font-bold [&_h2]:font-semibold [&_h3]:font-semibold [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px] [&_pre]:bg-slate-100 [&_pre]:rounded-md [&_pre]:p-2.5 [&_pre]:overflow-x-auto [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-500 [&_a]:text-blue-600 [&_a]:underline [&_table]:text-[12px] [&_th]:font-semibold [&_th]:text-left [&_th]:py-1 [&_td]:py-1">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {data.contentMd}
+                                        </ReactMarkdown>
+                                    </div>
+                                )}
+                                {data.detailHtml && !data.contentMd && (
+                                    <div
+                                        className="text-[13px] leading-relaxed text-slate-700 [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_h1]:font-bold [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                                        dangerouslySetInnerHTML={{ __html: data.detailHtml }}
+                                    />
+                                )}
+                                {showThoughts && data.thoughtMd && (
+                                    <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                        <div className="text-[12px] whitespace-pre-wrap leading-relaxed text-amber-900/85">
+                                            {data.thoughtMd}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* Run trace — collapsible */}
+                                {hasRunTrace && (
+                                    <div className="mt-3 rounded-md border border-slate-200/80 bg-slate-50/70">
+                                        <button
+                                            type="button"
+                                            className="nodrag flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left"
+                                            onClick={(e) => { e.stopPropagation(); setRunTraceOpen((v) => !v); }}
+                                        >
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Run Trace</span>
+                                            <ChevronDown className={`ml-auto h-3 w-3 text-slate-400 transition-transform duration-200 ${runTraceOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {runTraceOpen && (
+                                            <div className="border-t border-slate-200/80 px-2.5 pb-2 pt-1.5 flex flex-col gap-1.5">
+                                                {usedTools.length > 0 && (
+                                                    <div className="flex flex-wrap items-start gap-1">
+                                                        <Wrench className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {usedTools.map((tool) => (
+                                                                <span key={tool} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                                                                    {tool}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {usedContextNodeIds.length > 0 && (
+                                                    <div className="flex flex-wrap items-start gap-1">
+                                                        <Network className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {usedContextNodeIds.map((nid) => (
+                                                                <span key={nid} className="rounded border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] text-teal-700">
+                                                                    {nodeContextLabelMap[nid] ?? nid}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {usedSources.length > 0 && (
+                                                    <div className="flex flex-wrap items-start gap-1">
+                                                        <Globe className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {usedSources.map((s) => (
+                                                                s.uri ? (
+                                                                    <a
+                                                                        key={s.id}
+                                                                        href={s.uri}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="nodrag flex items-center gap-0.5 rounded border border-blue-200/80 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700 hover:bg-blue-100 transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        {s.label || s.id}
+                                                                        <ExternalLink className="h-2.5 w-2.5 opacity-70" />
+                                                                    </a>
+                                                                ) : (
+                                                                    <span key={s.id} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                                                                        {s.label || s.id}
+                                                                    </span>
+                                                                )
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                {hasChildNodes && !branchExpanded && hiddenChildCount > 0 && (
+                                    <div className="mt-2">
+                                        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
+                                            {hiddenChildCount} child{hiddenChildCount > 1 ? 'ren' : ''} hidden
+                                        </span>
+                                    </div>
+                                )}
+                                {/* Action buttons */}
+                                {(hasActionButtons || actStage === 'draft') && (
+                                    <div className={`flex flex-wrap gap-2 ${hasBodyText || hasRunTrace ? 'mt-3 pt-2.5 border-t border-slate-100' : 'mt-0'}`}>
+                                        {actStage === 'draft' && data.onAddMedia && (
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all nodrag nopan"
+                                                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+                                                onPointerUp={(e: React.PointerEvent) => e.stopPropagation()}
+                                                onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                                                onClick={(e: React.MouseEvent) => { e.stopPropagation(); mediaInputRef.current?.click(); }}
+                                            >
+                                                {isUploadingMedia ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5 mr-1.5" />}
+                                                Add Media
+                                            </Button>
+                                        )}
+                                        {data.actions?.map((action: { label: string; execute: string }, idx: number) => (
+                                            <Button
+                                                key={idx}
+                                                variant="secondary"
+                                                size="sm"
+                                                className={['h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all group/btn', isNodeStreaming ? 'opacity-50 pointer-events-none' : ''].join(' ')}
+                                                onClick={(e: React.MouseEvent) => { e.stopPropagation(); data.onRunAction?.(action.label); }}
+                                            >
+                                                <Play className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 transition-all" />
+                                                {action.label}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Resize handle — bottom-right, only when expanded */}
+                {isExpanded && data.onResize && (
+                    <NodeResizeControl
+                        position="bottom-right"
+                        minWidth={200}
+                        maxWidth={800}
+                        minHeight={80}
+                        onResize={(_, params) => { setLiveResizeWidth(params.width); setLiveResizeHeight(params.height); }}
+                        onResizeEnd={(_, params) => { setLiveResizeWidth(null); setLiveResizeHeight(null); data.onResize!(params.width, params.height); }}
+                        style={{ background: 'transparent', border: 'none', width: 16, height: 16, right: 2, bottom: 2, cursor: 'se-resize' }}
+                    >
+                        <svg width="10" height="10" viewBox="0 0 10 10" className="absolute bottom-0 right-0 text-slate-300 hover:text-slate-500 transition-colors cursor-se-resize">
+                            <path d="M9 1L1 9M9 5L5 9M9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                    </NodeResizeControl>
+                )}
+
+                {/* Handles */}
+                <Handle type="target" id="target-left" position={targetPosition ?? Position.Left} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="source" id="source-right" position={sourcePosition ?? Position.Right} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="target" id="target-right" position={Position.Right} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="source" id="source-left" position={Position.Left} isConnectable={isConnectable} className="!w-2.5 !h-2.5 !bg-slate-700 !border-2 !border-white !shadow-sm" />
+                <Handle type="target" id="target-top" position={Position.Top} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+                <Handle type="source" id="source-top" position={Position.Top} style={{ marginTop: -8 }} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+                <Handle type="target" id="target-bottom" position={Position.Bottom} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+                <Handle type="source" id="source-bottom" position={Position.Bottom} style={{ marginTop: 8 }} isConnectable={isConnectable} className="!w-2 !h-2 !bg-slate-600 !border-2 !border-white/90 !shadow-sm opacity-60 group-hover:opacity-100" />
+            </div>
+        );
+    }
 
     if (isRadialMode) {
         const radialDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
@@ -269,10 +766,13 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
             <div
                 style={{
                     width: cardWidth,
+                    height: (nodeKind === 'topic' && !isExpanded) ? cardHeight : undefined,
                     minWidth: isActNode
                         ? ACT_NODE_COMPACT_WIDTH
                         : NODE_COLLAPSED_BASE_WIDTH,
                     maxWidth: cardMaxWidth,
+                    ...(depthBgColor ? { backgroundColor: depthBgColor } : {}),
+                    ...(activityOpacity !== undefined ? { opacity: activityOpacity } : {}),
                 }}
                 className={`
                 group relative rounded-2xl transition-all duration-300 origin-left ${isExpanded ? 'nowheel' : ''}
@@ -336,16 +836,25 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                     </span>
                                 )}
                                 {isExpanded && !isDraftAct && createdBy && (
-                                    <span
-                                        className={[
-                                            `inline-flex items-center gap-1 rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium`,
-                                            createdBy === 'agent'
-                                                ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                                : 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                                        ].join(' ')}
-                                    >
-                                        {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
-                                        {createdBy === 'agent' ? 'AI' : 'You'}
+                                    createdBy === 'agent' ? (
+                                        <span className={`inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium text-blue-700`}>
+                                            <Bot className="h-3 w-3" />
+                                            AI
+                                        </span>
+                                    ) : (
+                                        <span className={`inline-flex items-center gap-1 rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium ${atc.accent} border-current/20 ${atc.bgTint}`}>
+                                            <span className={`h-2.5 w-2.5 rounded-full ${atc.dot}`} />
+                                            You
+                                        </span>
+                                    )
+                                )}
+                                {(data.detailHtml || data.contentMd) && (
+                                    <span className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/50 ${isActNode ? 'px-1 py-0.5' : 'px-1.5 py-0.5'} text-slate-500`}>
+                                        {data.detailHtml ? (
+                                            <Code className="h-3 w-3" aria-label="Contains HTML/CSS" />
+                                        ) : (
+                                            <FileText className="h-3 w-3" aria-label="Contains Markdown" />
+                                        )}
                                     </span>
                                 )}
                             </div>
@@ -390,6 +899,31 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                 {data.label || <span className="text-muted-foreground/50 italic">Ask a question...</span>}
                             </h3>
                         )}
+                        {/* ── Topic node brief (collapsed only) ── */}
+                        {!isExpanded && !isActNode && nodeKind === 'topic' && (
+                            <div className="mt-2 min-h-[52px] flex flex-col justify-center">
+                                {data.contextSummary ? (
+                                    <p className="line-clamp-3 text-[11px] leading-relaxed text-muted-foreground">
+                                        {data.contextSummary}
+                                    </p>
+                                ) : data.briefGenerating ? (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <span>Generating…</span>
+                                    </div>
+                                ) : data.onGenerateBrief ? (
+                                    <button
+                                        type="button"
+                                        className="nodrag flex w-fit items-center gap-1 rounded-full border border-dashed border-primary/30 px-2.5 py-1 text-[11px] font-medium text-primary/60 transition-colors hover:border-primary/60 hover:text-primary"
+                                        onClick={(e) => { e.stopPropagation(); data.onGenerateBrief?.(); }}
+                                    >
+                                        <span>✦</span>
+                                        <span>Generate brief</span>
+                                    </button>
+                                ) : null}
+                            </div>
+                        )}
+
                         {isExpanded && referencedNodes.length > 0 && (
                             <div className={`flex flex-wrap gap-1.5 ${isActNode ? 'mt-1.5' : 'mt-2'}`}>
                                 <span className={`${isActNode ? 'text-[10px]' : 'text-[11px]'} font-medium text-muted-foreground/70`}>
@@ -555,30 +1089,6 @@ export function GraphNodeCard({ id, data, selected, isConnectable, sourcePositio
                                             <FileUp className="w-3.5 h-3.5 mr-1.5" />
                                         )}
                                         Add Media
-                                    </Button>
-                                </div>
-                            )}
-                            {isActNode && (
-                                <div className={`flex flex-wrap gap-2 ${isDraftAct && !hasActionButtons && !hasBodyText ? 'mt-0 pt-0' : `border-t border-border/20 ${isActNode ? 'mt-3 pt-2.5' : 'mt-4 pt-3'}`}`}>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className={[
-                                            `${isActNode ? 'h-7 text-[11px] px-2.5 rounded-md' : 'h-8 text-xs px-3 rounded-lg'} font-semibold shadow-sm border border-border/50`,
-                                            'bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary',
-                                            'transition-all duration-300 group/btn',
-                                            canRetry ? '' : 'opacity-50 pointer-events-none',
-                                        ].join(' ')}
-                                        onClick={(e: React.MouseEvent) => {
-                                            e.stopPropagation();
-                                            if (!canRetry) {
-                                                return;
-                                            }
-                                            data.onRunAction?.(retryQuery);
-                                        }}
-                                    >
-                                        <RotateCcw className="w-3.5 h-3.5 mr-1.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:scale-110 transition-all duration-300" />
-                                        Retry
                                     </Button>
                                 </div>
                             )}

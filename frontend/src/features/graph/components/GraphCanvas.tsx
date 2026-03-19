@@ -1,21 +1,24 @@
 "use client";
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Search, Trash2, Keyboard, HelpCircle } from 'lucide-react';
 import {
     Background,
-    Controls,
     Edge,
     MarkerType,
     MiniMap,
     Node,
+    Panel,
     ReactFlow,
     SelectionMode,
     useReactFlow,
+    useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
+import { GraphToolbar } from './GraphToolbar';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
@@ -23,11 +26,21 @@ import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-pr
 import { projectSelectionGroups } from '@/features/agentInteraction/selectors/projectSelectionGroups';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
+import {
+    CAMERA_CONFIG,
+    createSingleNodeFocusOptions,
+    createFitViewOptions,
+    getBoundingBoxForNodes,
+} from '@/services/camera/cameraService';
 
+import { ActTreeGroupNode } from './ActTreeGroupNode';
+import { BundledEdge } from './BundledEdge';
 import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import { SelectedNodePanel } from './SelectedNodePanel';
+import { FilePreviewPanel } from './FilePreviewPanel';
+import { SearchBar } from './SearchBar';
 import {
     getCollapsedNodeWidth,
     getExpandedNodeWidth,
@@ -38,8 +51,10 @@ import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
+import { truncate } from '@/lib/string';
 
 const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
+const RECENT_CLICKED_NODE_LIMIT = 8;
 
 class GraphNodeRenderBoundary extends React.Component<
     { children: React.ReactNode; nodeId?: string; label?: string },
@@ -89,7 +104,178 @@ function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeC
     );
 }
 
+const ZOOM_LEVELS = [0.4, 0.65, 1.0, 1.5] as const;
+
+type NavControlProps = {
+    actNodeIds: string[];
+    activeNodeId: string | null;
+    onFocusActNode: (nodeId: string) => void;
+};
+
+function NavControl({ actNodeIds, activeNodeId, onFocusActNode }: NavControlProps) {
+    const { zoomTo, fitView } = useReactFlow();
+    const { zoom } = useViewport();
+
+    // ── Zoom ─────────────────────────────────────────────────────────────────
+    const zoomIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
+        Math.abs(level - zoom) < Math.abs(ZOOM_LEVELS[best] - zoom) ? idx : best, 0);
+
+    const zoomStep = (delta: 1 | -1) => {
+        const next = Math.min(Math.max(zoomIdx + delta, 0), ZOOM_LEVELS.length - 1);
+        zoomTo(ZOOM_LEVELS[next], { duration: 220 });
+    };
+
+    // ── Act node navigation ───────────────────────────────────────────────────
+    const actIdx = actNodeIds.indexOf(activeNodeId ?? '');
+    const hasAct = actNodeIds.length > 0;
+
+    const focusAct = (delta: 1 | -1) => {
+        if (!hasAct) return;
+        const base = actIdx < 0 ? (delta === 1 ? -1 : actNodeIds.length) : actIdx;
+        const next = (base + delta + actNodeIds.length) % actNodeIds.length;
+        onFocusActNode(actNodeIds[next]);
+    };
+
+    const iconBtn = 'flex h-7 w-7 items-center justify-center rounded-md transition-colors';
+    const activeBtn = `${iconBtn} text-slate-600 hover:bg-slate-100`;
+    const disabledBtn = `${iconBtn} text-slate-300 cursor-default`;
+
+    return (
+        <Panel position="bottom-left" className="!m-3">
+            <div className="flex flex-col items-center gap-0.5 rounded-lg border border-border/40 bg-white shadow-sm p-1 select-none">
+
+                {/* Zoom in */}
+                <button type="button" onClick={() => zoomStep(1)} disabled={zoomIdx >= ZOOM_LEVELS.length - 1}
+                    className={zoomIdx >= ZOOM_LEVELS.length - 1 ? disabledBtn : activeBtn} title="Zoom in">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/>
+                    </svg>
+                </button>
+
+                {/* Zoom level dots */}
+                <div className="flex flex-col items-center gap-0.5 py-0.5">
+                    {ZOOM_LEVELS.map((level, idx) => (
+                        <button key={level} type="button" onClick={() => zoomTo(level, { duration: 220 })}
+                            className={`h-1.5 w-1.5 rounded-full transition-all ${idx === zoomIdx ? 'bg-primary scale-125' : 'bg-slate-300 hover:bg-slate-400'}`}
+                            title={`${Math.round(level * 100)}%`} />
+                    ))}
+                </div>
+
+                {/* Zoom out */}
+                <button type="button" onClick={() => zoomStep(-1)} disabled={zoomIdx <= 0}
+                    className={zoomIdx <= 0 ? disabledBtn : activeBtn} title="Zoom out">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="1" y1="6" x2="11" y2="6"/>
+                    </svg>
+                </button>
+
+                <div className="my-0.5 w-6 border-t border-border/40" />
+
+                {/* Act node navigation — left / counter / right */}
+                <div className="flex items-center gap-0.5">
+                    <button type="button" onClick={() => focusAct(-1)} disabled={!hasAct}
+                        className={!hasAct ? disabledBtn : activeBtn} title="Previous act node">
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="7,1 3,5 7,9"/>
+                        </svg>
+                    </button>
+                    <span className="w-6 text-center text-[10px] font-medium text-slate-400 tabular-nums">
+                        {hasAct ? `${actIdx >= 0 ? actIdx + 1 : '–'}/${actNodeIds.length}` : '–'}
+                    </span>
+                    <button type="button" onClick={() => focusAct(1)} disabled={!hasAct}
+                        className={!hasAct ? disabledBtn : activeBtn} title="Next act node">
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3,1 7,5 3,9"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div className="my-0.5 w-6 border-t border-border/40" />
+
+                {/* Fit view */}
+                <button type="button" onClick={() => fitView({ duration: 300, padding: 0.12 })}
+                    className={activeBtn} title="Fit view">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M1 5V2h3M15 5V2h-3M1 11v3h3M15 11v3h-3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </Panel>
+    );
+}
+
+const SHORTCUTS = [
+    { keys: ['↑', '↓'],           desc: 'ズームイン / アウト' },
+    { keys: ['←', '→'],           desc: 'Act ノード切り替え' },
+    { keys: ['⌘', 'F'],           desc: 'ノード検索 (部分一致)' },
+    { keys: ['文字入力'],          desc: 'ノード選択中 → Act 作成' },
+    { keys: ['クリック'],          desc: 'ノード展開 / フォーカス' },
+    { keys: ['⌘', 'クリック'],    desc: '複数選択' },
+    { keys: ['ダブルクリック'],    desc: 'ズームイン' },
+    { keys: ['Space', 'ドラッグ'], desc: 'パン' },
+] as const;
+
+function KeyboardShortcutsHint() {
+    return (
+        <div className="fixed right-0 top-1/3 z-[100] group">
+            {/* Expanded panel — absolutely positioned to the left of the trigger, visible on hover */}
+            <div className="
+                absolute right-full top-0 mr-2 w-64 origin-right scale-95 rounded-2xl border border-slate-200
+                bg-white/98 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)]
+                opacity-0 pointer-events-none
+                transition-all duration-300 ease-out
+                group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto
+                group-hover:-translate-x-2
+            ">
+                <div className="px-4 pt-4 pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <Keyboard className="h-4 w-4 text-primary" />
+                        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+                            Shortcuts & Help
+                        </p>
+                    </div>
+                </div>
+                <ul className="px-4 py-3 flex flex-col gap-2.5">
+                    {SHORTCUTS.map(({ keys, desc }, i) => (
+                        <li key={i} className="flex items-center justify-between gap-4">
+                            <span className="text-[11px] font-semibold text-slate-500">{desc}</span>
+                            <span className="flex items-center gap-1 shrink-0">
+                                {keys.map((k) => (
+                                    <kbd key={k} className="
+                                        inline-flex items-center justify-center rounded-md
+                                        border border-slate-200 bg-slate-50
+                                        px-1.5 py-0.5 text-[10px] font-bold
+                                        text-slate-700 shadow-sm
+                                        leading-none whitespace-nowrap
+                                    ">{k}</kbd>
+                                ))}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+                <div className="px-4 py-2 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
+                    <p className="text-[10px] text-slate-400 font-medium">Tip: Press <span className="font-bold text-slate-600">/</span> to search anywhere</p>
+                </div>
+            </div>
+
+            {/* Trigger handle — Sticks out from the edge */}
+            <div className="
+                flex flex-col items-center gap-2 rounded-l-2xl border border-r-0 border-slate-200 bg-white py-4 px-2 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]
+                text-slate-400 hover:text-primary transition-all cursor-help select-none group-hover:bg-slate-50/80
+            ">
+                <HelpCircle className="h-5 w-5" />
+                <span className="[writing-mode:vertical-lr] text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-primary">Shortcuts</span>
+            </div>
+        </div>
+    );
+}
+
+const edgeTypes = {
+    bundled: BundledEdge,
+};
+
 const nodeTypes = {
+    actTreeGroup: ActTreeGroupNode,
     customTask: GraphNodeCardWithBoundary,
     selectionHeader: SelectionHeaderNodeCard,
     selectionNode: SelectionOptionNodeCard,
@@ -205,6 +391,9 @@ export function GraphCanvas() {
         setSelectedNodes,
         setActiveNode,
         toggleExpandedNode,
+        expandNode,
+        expandBranchNode,
+        clearAllFocus,
         addOrUpdateActNode,
         addQueryActNode,
         addEmptyActNode,
@@ -217,52 +406,75 @@ export function GraphCanvas() {
         expandedNodeIds,
         expandedBranchNodeIds,
         streamingNodeIds,
+        isStreaming,
         collapseUnusedNodes,
+        recordNodeUsed,
+        nodeLastUsedAt,
+        nodeUseCount,
     } = useGraphStore();
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId, isReadOnly } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
-    const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
+    const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const selectionGroups = useAgentInteractionStore((state) => state.groups);
     const toggleSelectionOption = useAgentInteractionStore((state) => state.toggleOptionSelection);
     const confirmSelection = useAgentInteractionStore((state) => state.confirmSelection);
     const clearSelectionGroup = useAgentInteractionStore((state) => state.clearSelection);
     const cancelSelectionGroup = useAgentInteractionStore((state) => state.cancelGroup);
-    const commands = useGraphCommands({ workspaceId, topicId });
+    const commands = useGraphCommands({ workspaceId });
     const reactFlowInstance = useReactFlow();
 
     const setPersistedGraphRef = useRef(setPersistedGraph);
     const persistedNodeCountRef = useRef(0);
     const previousViewSignatureRef = useRef<string | null>(null);
+    const needsPostStreamFitRef = useRef(false);
+    const activeNodeIdRef = useRef(activeNodeId);
     const pendingRadialFocusNodeIdRef = useRef<string | null>(null);
     const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
     const isShiftMarqueeSelectionRef = useRef(false);
+    const suppressNextSelectionChangeRef = useRef(false);
     const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
     const selectionComposerNodeIdRef = useRef<string | null>(null);
+    const recentStorageKey = workspaceId ? `graph.recentClickedNodeIds.${workspaceId}` : null;
+    const [recentClickedNodeIds, setRecentClickedNodeIds] = React.useState<string[]>([]);
+    const [customNodeSizes, setCustomNodeSizes] = React.useState<Map<string, { width: number; height: number }>>(new Map());
+
+    // Load from localStorage when workspaceId becomes available
+    const loadedWorkspaceIdRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!workspaceId || loadedWorkspaceIdRef.current === workspaceId) return;
+        loadedWorkspaceIdRef.current = workspaceId;
+        if (typeof window === 'undefined') return;
+        try {
+            const stored = window.localStorage.getItem(`graph.recentClickedNodeIds.${workspaceId}`);
+            if (stored) setRecentClickedNodeIds(JSON.parse(stored) as string[]);
+        } catch { /* ignore */ }
+        try {
+            const storedSizes = window.localStorage.getItem(`graph.nodeSizes.${workspaceId}`);
+            if (storedSizes) setCustomNodeSizes(new Map(JSON.parse(storedSizes) as [string, { width: number; height: number }][]));
+        } catch { /* ignore */ }
+    }, [workspaceId]);
     useLayoutEffect(() => {
         selectedNodeIdsRef.current = selectedNodeIds;
+        activeNodeIdRef.current = activeNodeId;
     });
     const usePersistedGraphMock = useMemo(() => {
         return searchParams.get('graphMock') === '1';
     }, [searchParams]);
     const persistedLayoutMode = useMemo(() => {
-        return searchParams.get('layout') === 'radial'
-            ? 'radial' as const
-            : 'force' as const;
+        const layout = searchParams.get('layout');
+        if (layout === 'radial') return 'radial' as const;
+        return 'orbit' as const;
     }, [searchParams]);
+
+    const effectiveWorkspaceId = useMemo(() => (usePersistedGraphMock ? 'ws-mock-public' : workspaceId), [usePersistedGraphMock, workspaceId]);
+    const effectiveTopicId = usePersistedGraphMock ? 'topic-mock-1' : undefined;
 
     useEffect(() => {
         setPersistedGraphRef.current = setPersistedGraph;
     }, [setPersistedGraph]);
 
     useEffect(() => {
-        if (usePersistedGraphMock) {
-            const mock = createPersistedGraphMockHundred(topicId);
-            persistedNodeCountRef.current = mock.nodes.length;
-            setPersistedGraphRef.current(mock.nodes, mock.edges);
-            return;
-        }
-
-        const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes) => {
+        const unsubscribe = organizeService.subscribeTree(effectiveWorkspaceId, (topicNodes) => {
             const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -271,6 +483,7 @@ export function GraphCanvas() {
                     nodeSource: 'persisted',
                     createdBy: node.createdBy,
                     topicId: node.topicId,
+                    inputId: node.inputId,
                     label: node.title,
                     kind: node.kind,
                     contextSummary: node.contextSummary,
@@ -299,10 +512,10 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [topicId, usePersistedGraphMock, workspaceId]);
+    }, [effectiveWorkspaceId]);
 
     useEffect(() => {
-        const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (draftNodes) => {
+        const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, (draftNodes) => {
             const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -310,13 +523,15 @@ export function GraphCanvas() {
                 data: {
                     nodeSource: 'act',
                     createdBy: node.createdBy ?? 'agent',
-                    topicId: node.topicId ?? topicId,
+                    ...(node.authorUid !== undefined ? { authorUid: node.authorUid } : {}),
+                    topicId: node.topicId,
                     label: node.title,
                     kind: 'act',
                     contentMd: node.contentMd,
                     contextSummary: node.contextSummary,
                     detailHtml: node.detailHtml,
                     referencedNodeIds: node.referencedNodeIds,
+                    parentId: node.parentId,
                 },
             }));
             const graphState = useGraphStore.getState();
@@ -344,50 +559,119 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [setActGraph, topicId, workspaceId]);
+    }, [effectiveWorkspaceId, setActGraph]);
 
-    const effectiveExpandedBranchNodeIds = useMemo(() => {
-        const allPersistedIds = new Set((persistedNodes as GraphNodeBase[]).map((node) => node.id));
-        const rootIds = (persistedNodes as GraphNodeBase[])
-            .filter((node) => {
-                const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
-                return !parentId || !allPersistedIds.has(parentId);
-            })
-            .map((node) => node.id);
+    // Strip act nodes down to layout-relevant fields only.
+    // parentId and referencedNodeIds are included because they directly determine
+    // tree structure and Y anchors — changes to these must trigger layout recomputation.
+    const actNodesLayoutKey = (actNodes as GraphNodeBase[]).map((n) => {
+        const refs = Array.isArray(n.data?.referencedNodeIds)
+            ? (n.data.referencedNodeIds as unknown[])
+                .filter((v): v is string => typeof v === 'string')
+                .join(',')
+            : '';
+        const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
+        return `${n.id}:${n.data?.label ?? ''}:${(n.data?.topicId as string | undefined) ?? ''}:${parentId}:${refs}`;
+    }).join('|');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({
+        ...n,
+        data: {
+            kind: n.data?.kind,
+            nodeSource: n.data?.nodeSource,
+            label: n.data?.label,
+            topicId: n.data?.topicId,
+            referencedNodeIds: n.data?.referencedNodeIds,
+            parentId: n.data?.parentId,
+            isManualPosition: n.data?.isManualPosition,
+        },
+    } as GraphNodeBase)), [actNodesLayoutKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        return [...new Set([...rootIds, ...expandedBranchNodeIds])];
-    }, [expandedBranchNodeIds, persistedNodes]);
+    const deferredActNodes = useDeferredValue(actNodesForLayout);
+
+    const deferredExpandedBranchNodeIds = useDeferredValue(expandedBranchNodeIds);
 
     const persistedGraph = useMemo(
         () => projectPersistedGraph(
             persistedNodes as GraphNodeBase[],
             persistedEdges,
-            effectiveExpandedBranchNodeIds,
-            expandedNodeIds,
             persistedLayoutMode,
+            deferredExpandedBranchNodeIds,
         ),
-        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
+        [deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
     );
     const isRadialLayout = persistedLayoutMode === 'radial';
-    const radialOverviewGraph = useMemo(
-        () => projectPersistedGraph(
-            persistedNodes as GraphNodeBase[],
-            persistedEdges,
-            effectiveExpandedBranchNodeIds,
-            expandedNodeIds,
-            'radial',
-        ),
-        [effectiveExpandedBranchNodeIds, expandedNodeIds, persistedEdges, persistedNodes],
+
+    // Act nodes adapted for the radial overview: parentId = primary anchor (referencedNodeIds[0])
+    const actNodesForRadial = useMemo(() => {
+        const persistedIdSet = new Set(persistedNodes.map((n) => n.id));
+        return (actNodes as GraphNodeBase[]).map((node) => {
+            const referencedIds: string[] = Array.isArray(node.data?.referencedNodeIds)
+                ? (node.data.referencedNodeIds as unknown[]).filter((v): v is string => typeof v === 'string')
+                : [];
+            const anchor = referencedIds.find((id) => persistedIdSet.has(id));
+            return {
+                ...node,
+                data: {
+                    ...node.data,
+                    parentId: anchor ?? undefined,
+                },
+            };
+        });
+    }, [actNodes, persistedNodes]);
+
+    const actEdgesForRadial = useMemo(() =>
+        actNodesForRadial
+            .filter((node) => typeof node.data?.parentId === 'string')
+            .map((node) => ({
+                id: `radial-act-edge-${node.id}`,
+                source: node.data!.parentId as string,
+                target: node.id,
+                animated: false,
+            })),
+        [actNodesForRadial],
     );
 
-    const positionedActNodes = useMemo(
-        () => projectActOverlay({
-            actNodes: actNodes as GraphNodeBase[],
+    const radialOverviewGraph = useMemo(
+        () => projectPersistedGraph(
+            [...persistedNodes, ...actNodesForRadial] as GraphNodeBase[],
+            [...persistedEdges, ...actEdgesForRadial],
+            'radial',
+        ),
+        [actEdgesForRadial, actNodesForRadial, persistedEdges, persistedNodes],
+    );
+
+    // Full act node data keyed by id. Used to restore fields stripped by actNodesForLayout
+    // (kind, contentMd, etc.) which are excluded from layout input to avoid streaming thrash.
+    const fullActNodeDataById = useMemo(
+        () => new Map((actNodes as GraphNodeBase[]).map((n) => [n.id, n.data])),
+        [actNodes],
+    );
+
+    // Parent → children map for act nodes (for tree navigation and edges).
+    const actChildrenByParent = useMemo(() => {
+        const map = new Map<string, string[]>();
+        for (const [id, data] of fullActNodeDataById) {
+            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
+            if (parentId) {
+                const arr = map.get(parentId) ?? [];
+                arr.push(id);
+                map.set(parentId, arr);
+            }
+        }
+        return map;
+    }, [fullActNodeDataById]);
+
+    // Rectangle-first act node layout: each tree gets a pre-allocated zone anchored to its
+    // referenced persisted node. Only active in orbit mode; radial uses RadialOverview instead.
+    const positionedActNodes = useMemo(() => {
+        if (persistedLayoutMode !== 'orbit') return [];
+        return projectActOverlay({
+            actNodes: deferredActNodes,
             persistedNodes: persistedGraph.positionedNodes,
             expandedNodeIds,
-        }),
-        [actNodes, expandedNodeIds, persistedGraph.positionedNodes],
-    );
+        });
+    }, [deferredActNodes, expandedNodeIds, persistedGraph.positionedNodes, persistedLayoutMode]);
 
     const regularGraphNodes = useMemo(
         () => [...persistedGraph.positionedNodes, ...positionedActNodes],
@@ -410,9 +694,40 @@ export function GraphCanvas() {
     );
 
     const allReferenceableNodes = useMemo(
-        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
-        [persistedGraph.positionedNodes, positionedActNodes],
+        () => persistedGraph.positionedNodes,
+        [persistedGraph.positionedNodes],
     );
+
+    const referenceableNodeById = useMemo(
+        () => new Map(allReferenceableNodes.map((node) => [node.id, node])),
+        [allReferenceableNodes],
+    );
+
+    const recordRecentClickedNode = useCallback((nodeId: string) => {
+        setRecentClickedNodeIds((previous) => {
+            const next = [nodeId, ...previous.filter((id) => id !== nodeId)].slice(0, RECENT_CLICKED_NODE_LIMIT);
+            if (typeof window !== 'undefined' && recentStorageKey) {
+                try { window.localStorage.setItem(recentStorageKey, JSON.stringify(next)); } catch { /* ignore quota errors */ }
+            }
+            return next;
+        });
+    }, [recentStorageKey]);
+
+    const handleNodeResize = useCallback((nodeId: string, width: number, height: number) => {
+        setCustomNodeSizes((prev) => {
+            const next = new Map(prev);
+            next.set(nodeId, { width, height });
+            if (typeof window !== 'undefined' && workspaceId) {
+                try { window.localStorage.setItem(`graph.nodeSizes.${workspaceId}`, JSON.stringify([...next])); } catch { /* ignore quota errors */ }
+            }
+            return next;
+        });
+    }, [workspaceId]);
+
+    useEffect(() => {
+        if (referenceableNodeById.size === 0) return; // nodes not yet loaded, don't wipe localStorage-restored ids
+        setRecentClickedNodeIds((previous) => previous.filter((id) => referenceableNodeById.has(id)));
+    }, [referenceableNodeById]);
 
     const displayNodes = useMemo(
         () => buildDisplayNodes({
@@ -448,28 +763,212 @@ export function GraphCanvas() {
         ],
     );
 
+    // ── Brief generation ──────────────────────────────────────────────────────
+    // Act nodes with kind='brief' that haven't yet produced content are "in progress"
+    const briefGeneratingNodeIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const actNode of actNodes as GraphNodeBase[]) {
+            if (actNode.data?.kind !== 'brief') continue;
+            if (actNode.data?.contentMd) continue; // already complete
+            const refs = actNode.data?.referencedNodeIds;
+            if (Array.isArray(refs) && typeof refs[0] === 'string') ids.add(refs[0]);
+        }
+        return ids;
+    }, [actNodes]);
+
+    const handleGenerateBrief = useCallback((nodeId: string, nodePosition: { x: number; y: number }) => {
+        const actId = addQueryActNode(
+            { x: nodePosition.x + 420, y: nodePosition.y },
+            '',
+            { isManualPosition: true },
+        );
+        addOrUpdateActNode(actId, {
+            referencedNodeIds: [nodeId],
+            kind: 'brief',
+            createdBy: 'user',
+        });
+    }, [addOrUpdateActNode, addQueryActNode]);
+
+    // Write completed brief act content back to the persisted node's contextSummary
+    const appliedBriefActIds = useRef(new Set<string>());
+    useEffect(() => {
+        for (const actNode of actNodes as GraphNodeBase[]) {
+            if (actNode.data?.kind !== 'brief') continue;
+            if (!actNode.data?.contentMd) continue;
+            if (appliedBriefActIds.current.has(actNode.id)) continue;
+            const refs = actNode.data?.referencedNodeIds;
+            const targetNodeId = Array.isArray(refs) && typeof refs[0] === 'string' ? refs[0] : null;
+            if (!targetNodeId || !workspaceId) continue;
+            appliedBriefActIds.current.add(actNode.id);
+            void organizeService.updateNodeSummary(workspaceId, targetNodeId, actNode.data.contentMd);
+        }
+    }, [actNodes, workspaceId]);
+
     const canvasNodes = useMemo(
-        () => [...displayNodes, ...selectionProjection.nodes],
-        [displayNodes, selectionProjection.nodes],
+        () => [
+            ...displayNodes.map((node) => {
+                const customSize = customNodeSizes.get(node.id);
+                const extraData: Record<string, unknown> = {
+                    onResize: (w: number, h: number) => handleNodeResize(node.id, w, h),
+                    ...(customSize !== undefined ? { customWidth: customSize.width, customHeight: customSize.height } : {}),
+                    ...(node.data.nodeSource === 'persisted' && node.data.kind === 'topic' ? {
+                        briefGenerating: briefGeneratingNodeIds.has(node.id),
+                        onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
+                    } : {}),
+                };
+                return { ...node, data: { ...node.data, ...extraData } };
+            }),
+            ...selectionProjection.nodes,
+        ],
+        [briefGeneratingNodeIds, customNodeSizes, displayNodes, handleGenerateBrief, handleNodeResize, selectionProjection.nodes],
     );
 
-    const layoutAwareDisplayNodes = useMemo(
-        () => canvasNodes.map((node) => {
-            const layoutMode: 'force' | 'radial' = isRadialLayout && node.data?.nodeSource === 'persisted'
+    // Computed early so both layoutAwareDisplayNodes and displayEdges can share it.
+    const persistedRootIdByNode = useMemo(() => {
+        const resolved = new Map<string, string>();
+        const parentById = new Map(
+            persistedGraph.positionedNodes.map((node) => [
+                node.id,
+                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
+            ]),
+        );
+        persistedGraph.positionedNodes.forEach((node) => {
+            let cur: string | undefined = node.id;
+            let root = node.id;
+            while (cur) {
+                const p = parentById.get(cur);
+                if (!p) { root = cur; break; }
+                cur = p;
+            }
+            resolved.set(node.id, root);
+        });
+        return resolved;
+    }, [persistedGraph.positionedNodes]);
+
+    // Descendants of activeNodeId (via parentId chain) for relation highlighting.
+    const activeDescendantIds = useMemo(() => {
+        if (!activeNodeId) return new Set<string>();
+        const childrenByParent = new Map<string, string[]>();
+        for (const [id, data] of fullActNodeDataById) {
+            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
+            if (parentId) {
+                const arr = childrenByParent.get(parentId) ?? [];
+                arr.push(id);
+                childrenByParent.set(parentId, arr);
+            }
+        }
+        const descendants = new Set<string>();
+        const queue = [activeNodeId];
+        while (queue.length > 0) {
+            const cur = queue.shift()!;
+            for (const child of childrenByParent.get(cur) ?? []) {
+                if (!descendants.has(child)) {
+                    descendants.add(child);
+                    queue.push(child);
+                }
+            }
+        }
+        return descendants;
+    }, [activeNodeId, fullActNodeDataById]);
+
+    // Navigate to an act node: expand it if collapsed, then pan camera to it.
+    // Defined before layoutAwareDisplayNodes so it can be injected into node data.
+    const handleNavigateToActNode = useCallback((nodeId: string) => {
+        if (!expandedNodeIds.includes(nodeId)) {
+            toggleExpandedNode(nodeId);
+        }
+        const target = reactFlowInstance.getNode(nodeId);
+        if (target) {
+            reactFlowInstance.setCenter(
+                target.position.x + 130,
+                target.position.y + 80,
+                { zoom: Math.max(reactFlowInstance.getZoom(), 1.0), duration: 450 },
+            );
+        }
+    }, [expandedNodeIds, reactFlowInstance, toggleExpandedNode]);
+
+    const layoutAwareDisplayNodes = useMemo(() => {
+        const now = Date.now();
+        // Half-life for recency decay: 20 minutes
+        const RECENCY_HALF_LIFE_MS = 20 * 60 * 1000;
+        // Frequency saturation constant: K uses → 50% frequency score
+        const FREQ_K = 4;
+
+        return canvasNodes.map((node) => {
+            const layoutMode: 'radial' | undefined = isRadialLayout && node.data?.nodeSource === 'persisted'
                 ? 'radial'
-                : 'force';
+                : undefined;
+
+            let rootHue = 210;
+            if (node.data?.nodeSource === 'persisted') {
+                const rootId = persistedRootIdByNode.get(node.id);
+                const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
+                rootHue = rootIndex >= 0 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length] : 210;
+            }
+
+            // Activity opacity: only applied to act nodes.
+            // New nodes (no usage recorded yet) stay at full opacity.
+            let activityOpacity: number | undefined;
+            if (node.data?.nodeSource === 'act') {
+                const lastUsed = nodeLastUsedAt[node.id];
+                const count = nodeUseCount[node.id] ?? 0;
+                if (lastUsed !== undefined) {
+                    const recencyScore = Math.exp(-(now - lastUsed) / RECENCY_HALF_LIFE_MS);
+                    const freqScore = count / (count + FREQ_K);
+                    const activity = 0.5 * recencyScore + 0.5 * freqScore;
+                    // Map [0, 1] → [0.25, 1.0] so even unused nodes remain visible
+                    activityOpacity = 0.25 + 0.75 * activity;
+                }
+            }
+
+            // Act nodes pass through layout with stripped data (to avoid streaming thrash).
+            // Re-merge the full store data so kind, contentMd, etc. are available for rendering.
+            const fullActData = fullActNodeDataById.get(node.id);
+
+            // Relation to activeNodeId: used for visual highlighting of connected act nodes.
+            const activeRelation: 'self' | 'descendant' | null = activeNodeId
+                ? node.id === activeNodeId
+                    ? 'self'
+                    : activeDescendantIds.has(node.id)
+                        ? 'descendant'
+                        : null
+                : null;
+
+            // Parent/child navigation chips for act nodes.
+            let childActNodes: Array<{ id: string; label: string }> | undefined;
+            let parentActNode: { id: string; label: string } | undefined;
+            if (node.data?.nodeSource === 'act') {
+                const childIds = actChildrenByParent.get(node.id) ?? [];
+                if (childIds.length > 0) {
+                    childActNodes = childIds.map((cid) => {
+                        const d = fullActNodeDataById.get(cid);
+                        return { id: cid, label: typeof d?.label === 'string' ? d.label : cid };
+                    });
+                }
+                const parentId = typeof fullActData?.parentId === 'string' ? fullActData.parentId : undefined;
+                if (parentId) {
+                    const pd = fullActNodeDataById.get(parentId);
+                    parentActNode = { id: parentId, label: typeof pd?.label === 'string' ? pd.label : parentId };
+                }
+            }
 
             return {
                 ...node,
                 data: {
+                    ...(fullActData ?? {}),
                     ...node.data,
                     layoutMode,
                     radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
+                    rootHue,
+                    ...(activityOpacity !== undefined ? { activityOpacity } : {}),
+                    ...(activeRelation !== null ? { activeRelation } : {}),
+                    ...(childActNodes !== undefined ? { childActNodes } : {}),
+                    ...(parentActNode !== undefined ? { parentActNode } : {}),
+                    ...(node.data?.nodeSource === 'act' ? { onNavigateToNode: handleNavigateToActNode } : {}),
                 },
             };
-        }),
-        [canvasNodes, isRadialLayout, persistedGraph.depthById],
-    );
+        });
+    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -496,13 +995,19 @@ export function GraphCanvas() {
                 ...node.data,
                 layoutMode: 'radial' as const,
                 radialDepth: radialOverviewGraph.depthById.get(node.id) ?? 0,
+                ...(node.data.nodeSource === 'persisted' && node.data.kind === 'topic' ? {
+                    briefGenerating: briefGeneratingNodeIds.has(node.id),
+                    onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
+                } : {}),
             },
         })),
         [
+            briefGeneratingNodeIds,
             commands,
             editingNodeId,
             expandedBranchNodeIds,
             expandedNodeIds,
+            handleGenerateBrief,
             radialOverviewGraph.childrenByParent,
             radialOverviewGraph.depthById,
             radialOverviewGraph.positionedNodes,
@@ -592,40 +1097,35 @@ export function GraphCanvas() {
     }, [actNodes, addOrUpdateActNode, addQueryActNode, regularGraphNodes, removeActNode, selectedNodeIds]);
 
     const normalizedDisplayNodes = useMemo(() => {
+        if (layoutAwareDisplayNodes.length === 0) return layoutAwareDisplayNodes;
+
+        // Single pass: sanitize positions and track min in one loop
+        let minX = Infinity;
+        let minY = Infinity;
         const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
             const x = node.position?.x;
             const y = node.position?.y;
-            if (isRenderableCoordinate(x) && isRenderableCoordinate(y)) {
-                return node;
-            }
-            return {
-                ...node,
-                position: {
-                    x: 120 + ((index % 4) * 360),
-                    y: 100 + (Math.floor(index / 4) * 220),
-                },
-            };
+            const safe = isRenderableCoordinate(x) && isRenderableCoordinate(y)
+                ? node
+                : {
+                    ...node,
+                    position: {
+                        x: 120 + ((index % 4) * 360),
+                        y: 100 + (Math.floor(index / 4) * 220),
+                    },
+                };
+            if (safe.position.x < minX) minX = safe.position.x;
+            if (safe.position.y < minY) minY = safe.position.y;
+            return safe;
         });
 
-        if (safeDisplayNodes.length === 0) {
-            return safeDisplayNodes;
-        }
-
-        const minX = Math.min(...safeDisplayNodes.map((node) => node.position.x));
-        const minY = Math.min(...safeDisplayNodes.map((node) => node.position.y));
         const offsetX = minX < 120 ? 120 - minX : 0;
         const offsetY = minY < 100 ? 100 - minY : 0;
-
-        if (offsetX === 0 && offsetY === 0) {
-            return safeDisplayNodes;
-        }
+        if (offsetX === 0 && offsetY === 0) return safeDisplayNodes;
 
         return safeDisplayNodes.map((node) => ({
             ...node,
-            position: {
-                x: node.position.x + offsetX,
-                y: node.position.y + offsetY,
-            },
+            position: { x: node.position.x + offsetX, y: node.position.y + offsetY },
         }));
     }, [layoutAwareDisplayNodes]);
 
@@ -639,9 +1139,14 @@ export function GraphCanvas() {
         );
 
         const expandedNodes = normalizedDisplayNodes.filter((node) => isExpandedNode(node));
-        if (expandedNodes.length === 0) {
-            return normalizedDisplayNodes;
-        }
+
+        // Precompute expanded node bboxes once — avoids calling getDisplayNodeDimensions
+        // M×N times (once per pair). Now expanded nodes are O(M), test nodes are O(N).
+        const MARGIN = 28;
+        const expandedBBoxes = expandedNodes.map((n) => {
+            const { width, height } = getDisplayNodeDimensions(n as Node<Record<string, unknown>>);
+            return { id: n.id, x: n.position.x, y: n.position.y, w: width, h: height };
+        });
 
         return normalizedDisplayNodes.map((node) => {
             if (node.type !== 'customTask') {
@@ -649,9 +1154,18 @@ export function GraphCanvas() {
             }
             const isExpanded = isExpandedNode(node);
             const isSelected = selectedNodeIds.includes(node.id);
-            const overlapsExpanded = !isExpanded && expandedNodes.some((expandedNode) => (
-                expandedNode.id !== node.id && overlapsWithMargin(node, expandedNode)
-            ));
+
+            let overlapsExpanded = false;
+            if (!isExpanded && expandedNodes.length > 0) {
+                const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                overlapsExpanded = expandedBBoxes.some((bbox) => (
+                    bbox.id !== node.id
+                    && node.position.x < bbox.x + bbox.w + MARGIN
+                    && node.position.x + width + MARGIN > bbox.x
+                    && node.position.y < bbox.y + bbox.h + MARGIN
+                    && node.position.y + height + MARGIN > bbox.y
+                ));
+            }
 
             return {
                 ...node,
@@ -664,33 +1178,80 @@ export function GraphCanvas() {
         });
     }, [normalizedDisplayNodes, selectedNodeIds]);
 
-    const persistedRootIdByNode = useMemo(() => {
-        const resolved = new Map<string, string>();
-        const parentById = new Map(
-            persistedGraph.positionedNodes.map((node) => [
-                node.id,
-                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
-            ]),
+    // ── Act tree group rectangles ─────────────────────────────────────────────
+    // One background rectangle per user-created act node. Agent act nodes that
+    // descend from a user act node are included in that user node's rectangle.
+    // Agent nodes with no user ancestor are skipped (no rectangle for them).
+    const actTreeGroupNodes = useMemo(() => {
+        const GROUP_PAD = 20;
+        const HEADER_H = 28; // reserve space for the header stripe
+
+        const actDisplayNodes = emphasizedDisplayNodes.filter(
+            (n) => (n.data as Record<string, unknown>)?.nodeSource === 'act',
         );
+        if (actDisplayNodes.length === 0) return [];
 
-        persistedGraph.positionedNodes.forEach((node) => {
-            let currentId: string | undefined = node.id;
-            let currentRoot = node.id;
+        const actIdSet = new Set(actDisplayNodes.map((n) => n.id));
 
-            while (currentId) {
-                const parentId = parentById.get(currentId);
-                if (!parentId) {
-                    currentRoot = currentId;
-                    break;
-                }
-                currentId = parentId;
+        // Walk up parentId chain to find the nearest user-created act ancestor (or self).
+        // Returns null if no user ancestor exists (pure agent subtree with no user root).
+        const findUserOwner = (nodeId: string, seen = new Set<string>()): string | null => {
+            if (seen.has(nodeId)) return null; // cycle guard
+            seen.add(nodeId);
+            const data = fullActNodeDataById.get(nodeId);
+            if (!data) return null;
+            if (data.createdBy === 'user') return nodeId;
+            const parentId = typeof data.parentId === 'string' ? data.parentId : undefined;
+            if (parentId && actIdSet.has(parentId)) return findUserOwner(parentId, seen);
+            return null;
+        };
+
+        // Group all act nodes by their user-created owner.
+        const byOwner = new Map<string, typeof actDisplayNodes>();
+        for (const node of actDisplayNodes) {
+            const ownerId = findUserOwner(node.id);
+            if (!ownerId) continue; // agent node with no user ancestor → no rectangle
+            const group = byOwner.get(ownerId) ?? [];
+            group.push(node);
+            byOwner.set(ownerId, group);
+        }
+
+        // Build one rectangle per user-owned group.
+        const groupNodes: Node[] = [];
+        for (const [ownerId, nodes] of byOwner) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const node of nodes) {
+                const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                minX = Math.min(minX, node.position.x);
+                minY = Math.min(minY, node.position.y);
+                maxX = Math.max(maxX, node.position.x + width);
+                maxY = Math.max(maxY, node.position.y + height);
             }
 
-            resolved.set(node.id, currentRoot);
-        });
+            const ownerData = fullActNodeDataById.get(ownerId);
+            const label = typeof ownerData?.label === 'string' ? ownerData.label : '';
 
-        return resolved;
-    }, [persistedGraph.positionedNodes]);
+            groupNodes.push({
+                id: `act-group-${ownerId}`,
+                type: 'actTreeGroup',
+                position: {
+                    x: minX - GROUP_PAD,
+                    y: minY - HEADER_H - GROUP_PAD,
+                },
+                data: {
+                    width: maxX - minX + GROUP_PAD * 2,
+                    height: maxY - minY + HEADER_H + GROUP_PAD * 2,
+                    label,
+                    nodeCount: nodes.length,
+                    createdBy: 'user',
+                },
+                selectable: false,
+                draggable: false,
+                focusable: false,
+            } as Node);
+        }
+        return groupNodes;
+    }, [emphasizedDisplayNodes, fullActNodeDataById]);
 
     const persistedParentById = useMemo(
         () => new Map(
@@ -710,9 +1271,41 @@ export function GraphCanvas() {
 
             const nodeById = new Map(emphasizedDisplayNodes.map((node) => [node.id, node]));
 
+            // Straight edges connecting act parent → child nodes
+            const actParentChildEdges: Edge[] = [];
+            for (const [parentId, childIds] of actChildrenByParent) {
+                for (const childId of childIds) {
+                    actParentChildEdges.push({
+                        id: `edge-act-${parentId}-${childId}`,
+                        source: parentId,
+                        target: childId,
+                    });
+                }
+            }
+
+            // Precompute per-cluster centroids for edge bundling
+            const clusterPoints = new Map<string, { x: number; y: number }[]>();
+            for (const [nodeId, rootId] of persistedRootIdByNode) {
+                const node = nodeById.get(nodeId);
+                if (!node) continue;
+                const pts = clusterPoints.get(rootId) ?? [];
+                pts.push(node.position);
+                clusterPoints.set(rootId, pts);
+            }
+            const clusterCentroids = new Map<string, { x: number; y: number }>();
+            for (const [rootId, pts] of clusterPoints) {
+                clusterCentroids.set(rootId, {
+                    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+                    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+                });
+            }
+
+            // Precompute rootId → index Map so edge loop is O(1) instead of O(n) per edge
+            const rootIdToIndex = new Map(persistedGraph.rootIds.map((id, i) => [id, i]));
+
             return buildDisplayEdges(
                 [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
-                [...actEdges, ...selectionProjection.edges],
+                [...actEdges, ...actParentChildEdges, ...selectionProjection.edges],
             ).map((edge) => {
             const sourceNode = nodeById.get(edge.source);
             const targetNode = nodeById.get(edge.target);
@@ -725,7 +1318,7 @@ export function GraphCanvas() {
             const sourceRootId = persistedRootIdByNode.get(edge.source);
             const targetRootId = persistedRootIdByNode.get(edge.target);
             const rootId = sourceRootId ?? targetRootId;
-            const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
+            const rootIndex = rootId ? (rootIdToIndex.get(rootId) ?? -1) : -1;
             const rootHue = rootIndex >= 0
                 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length]
                 : 210;
@@ -736,11 +1329,22 @@ export function GraphCanvas() {
                 ? resolveNearestSides(sourceNode as Node<Record<string, unknown>>, targetNode as Node<Record<string, unknown>>)
                 : null;
 
+            // Bundle point for cross-cluster relation edges
+            const isCrossCluster = isRelation && sourceRootId && targetRootId && sourceRootId !== targetRootId;
+            const bundlePoint = isCrossCluster
+                ? (() => {
+                    const sc = clusterCentroids.get(sourceRootId!);
+                    const tc = clusterCentroids.get(targetRootId!);
+                    if (!sc || !tc) return undefined;
+                    return { x: (sc.x + tc.x) / 2, y: (sc.y + tc.y) / 2 };
+                })()
+                : undefined;
+
             return {
                 ...edge,
                 sourceHandle: nearestSides ? `source-${nearestSides.sourceSide}` : (edge as Edge).sourceHandle,
                 targetHandle: nearestSides ? `target-${nearestSides.targetSide}` : (edge as Edge).targetHandle,
-                type: isActContext ? 'simplebezier' : (isRelation ? 'smoothstep' : 'default'),
+                type: isActContext ? 'simplebezier' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
                 zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
                 interactionWidth: isActContext ? 32 : 24,
                 markerEnd: isActContext
@@ -752,21 +1356,11 @@ export function GraphCanvas() {
                     }
                     : undefined,
                 label: isActContextFocused ? 'context' : undefined,
-                labelStyle: isActContextFocused
-                    ? {
-                        fill: '#0f766e',
-                        fontSize: 11,
-                        fontWeight: 600,
-                    }
-                    : undefined,
-                labelBgStyle: isActContextFocused
-                    ? {
-                        fill: 'rgba(248, 250, 252, 0.92)',
-                        fillOpacity: 1,
-                    }
-                    : undefined,
+                labelStyle: isActContextFocused ? { fill: '#0f766e', fontSize: 11, fontWeight: 600 } : undefined,
+                labelBgStyle: isActContextFocused ? { fill: 'rgba(248, 250, 252, 0.92)', fillOpacity: 1 } : undefined,
                 labelBgPadding: isActContextFocused ? [6, 3] as [number, number] : undefined,
                 labelBgBorderRadius: isActContextFocused ? 6 : undefined,
+                data: bundlePoint ? { bundlePoint } : undefined,
                 style: {
                     stroke: isActContext
                         ? (isActContextFocused ? '#0f766e' : '#64748b')
@@ -786,6 +1380,7 @@ export function GraphCanvas() {
             });
         },
         [
+            actChildrenByParent,
             actEdges,
             autoRouteEdgeHandles,
             emphasizedDisplayNodes,
@@ -801,22 +1396,29 @@ export function GraphCanvas() {
     );
 
     const focusNode = useCallback((nodeId: string) => {
-        const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId);
+        const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId)
+            ?? (actNodes as GraphNodeBase[]).find((node) => node.id === nodeId);
         if (!targetNode) {
             return;
         }
 
         setActiveNode(targetNode.id);
         const currentZoom = reactFlowInstance.getZoom();
-        const nextZoom = Math.min(Math.max(currentZoom, 1.16), 1.3);
+        const animationOptions = createSingleNodeFocusOptions(currentZoom);
         reactFlowInstance.setCenter(
-            targetNode.position.x + 170,
-            targetNode.position.y + 90,
-            { duration: 320, zoom: nextZoom },
+            targetNode.position.x + CAMERA_CONFIG.nodeOffsetX,
+            targetNode.position.y + CAMERA_CONFIG.nodeOffsetY,
+            { duration: animationOptions.duration, zoom: animationOptions.zoom },
         );
-    }, [emphasizedDisplayNodes, reactFlowInstance, setActiveNode]);
+    }, [emphasizedDisplayNodes, actNodes, reactFlowInstance, setActiveNode]);
+
+    const focusActNode = useCallback((nodeId: string) => {
+        setSelectedNodes([nodeId]);
+        focusNode(nodeId);
+    }, [focusNode, setSelectedNodes]);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        if (isReadOnly) return;
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
             return;
@@ -832,8 +1434,16 @@ export function GraphCanvas() {
             x: event.clientX,
             y: event.clientY,
         });
-        addEmptyActNode(flowPosition);
-    }, [addEmptyActNode, reactFlowInstance]);
+
+        if (selectedNodeIds.length > 0) {
+            // Create act node at clicked position referencing currently selected nodes.
+            // isManualPosition: true prevents the overlay from overriding the user-chosen position.
+            const composerNodeId = addQueryActNode(flowPosition, '', { isManualPosition: true });
+            addOrUpdateActNode(composerNodeId, { referencedNodeIds: selectedNodeIds, kind: 'act', createdBy: 'user' });
+        } else {
+            addEmptyActNode(flowPosition);
+        }
+    }, [addEmptyActNode, addOrUpdateActNode, addQueryActNode, selectedNodeIds, reactFlowInstance, isReadOnly]);
 
     const viewSignature = useMemo(
         () => JSON.stringify({
@@ -843,6 +1453,7 @@ export function GraphCanvas() {
         [displayEdges, emphasizedDisplayNodes],
     );
 
+    /*
     useEffect(() => {
         if (emphasizedDisplayNodes.length === 0) {
             previousViewSignatureRef.current = null;
@@ -854,19 +1465,45 @@ export function GraphCanvas() {
         }
         previousViewSignatureRef.current = viewSignature;
 
+        if (isStreaming) {
+            needsPostStreamFitRef.current = true;
+            return;
+        }
+
+        needsPostStreamFitRef.current = false;
         const timeoutId = window.setTimeout(() => {
             reactFlowInstance.fitView({
-                duration: 180,
-                padding: 0.14,
-                minZoom: 0.2,
-                maxZoom: 1.2,
+                duration: CAMERA_CONFIG.fitViewDuration,
+                padding: CAMERA_CONFIG.fitViewPadding,
+                minZoom: CAMERA_CONFIG.fitViewZoomMin,
+                maxZoom: CAMERA_CONFIG.fitViewZoomMax,
             });
         }, 50);
 
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [emphasizedDisplayNodes.length, reactFlowInstance, viewSignature]);
+    }, [emphasizedDisplayNodes.length, isStreaming, reactFlowInstance, viewSignature]);
+    */
+
+    /*
+    // ストリーミング終了後に一度だけ fitView を実行
+    useEffect(() => {
+        if (isStreaming || !needsPostStreamFitRef.current) {
+            return;
+        }
+        needsPostStreamFitRef.current = false;
+        const timeoutId = window.setTimeout(() => {
+            reactFlowInstance.fitView({
+                duration: CAMERA_CONFIG.fitViewDuration,
+                padding: CAMERA_CONFIG.fitViewPadding,
+                minZoom: CAMERA_CONFIG.fitViewZoomMin,
+                maxZoom: CAMERA_CONFIG.fitViewZoomMax,
+            });
+        }, 100);
+        return () => window.clearTimeout(timeoutId);
+    }, [isStreaming, reactFlowInstance]);
+    */
 
     useEffect(() => {
         const pendingNodeId = pendingRadialFocusNodeIdRef.current;
@@ -883,11 +1520,13 @@ export function GraphCanvas() {
     }, [emphasizedDisplayNodes, focusNode]);
 
     const handleSelectionChange = useCallback(({ nodes: changedNodes }: { nodes: Node[] }) => {
-        if (isShiftMarqueeSelectionRef.current) {
+        if (isShiftMarqueeSelectionRef.current || suppressNextSelectionChangeRef.current) {
+            suppressNextSelectionChangeRef.current = false;
             return;
         }
         const ids = changedNodes
             .filter((n) => n.type === 'customTask' || n.type == null)
+            .filter((n) => (n.data as Record<string, unknown>)?.nodeSource !== 'act')
             .map((n) => n.id)
             .sort();
         const current = [...selectedNodeIdsRef.current].sort();
@@ -931,57 +1570,56 @@ export function GraphCanvas() {
         event.preventDefault();
     }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
 
-    const handleDraftNodeFocusNavigation = useCallback((event: KeyboardEvent) => {
-        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+    const handleKeyNavigation = useCallback((event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            const target = event.target;
+            if (
+                target instanceof HTMLElement
+                && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+            ) {
+                return;
+            }
+            clearAllFocus();
             return;
         }
-        if (event.metaKey || event.ctrlKey || event.altKey) {
-            return;
-        }
+
+        const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key);
+        if (!isArrow) return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
 
         const target = event.target;
         if (
             target instanceof HTMLElement
-            && (
-                target.tagName === 'INPUT'
-                || target.tagName === 'TEXTAREA'
-                || target.isContentEditable
-            )
+            && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
         ) {
             return;
         }
 
-        const draftActNodes = emphasizedDisplayNodes
-            .filter((node) => node.type === 'customTask')
-            .filter((node) => {
-                const data = node.data as Partial<GraphNodeRender['data']> | undefined;
-                return data?.kind === 'act' && data?.actStage === 'draft';
-            })
-            .sort((left, right) => {
-                if (left.position.y !== right.position.y) {
-                    return left.position.y - right.position.y;
-                }
-                return left.position.x - right.position.x;
-            });
-
-        if (draftActNodes.length === 0) {
+        // ↑ / ↓ — zoom in / out through preset levels
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            const currentZoom = reactFlowInstance.getZoom();
+            const nearestIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
+                Math.abs(level - currentZoom) < Math.abs(ZOOM_LEVELS[best] - currentZoom) ? idx : best, 0);
+            const delta = event.key === 'ArrowUp' ? 1 : -1;
+            const nextIdx = Math.min(Math.max(nearestIdx + delta, 0), ZOOM_LEVELS.length - 1);
+            if (nextIdx !== nearestIdx) {
+                reactFlowInstance.zoomTo(ZOOM_LEVELS[nextIdx], { duration: 220 });
+            }
+            event.preventDefault();
             return;
         }
 
-        const currentIndex = draftActNodes.findIndex((node) => node.id === activeNodeId);
-        const movingDown = event.key === 'ArrowDown';
-        const fallbackIndex = movingDown ? -1 : 0;
-        const baseIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
-        const direction = movingDown ? 1 : -1;
-        const nextIndex = (baseIndex + direction + draftActNodes.length) % draftActNodes.length;
+        // ← / → — cycle through act nodes (use store directly, not deferred display nodes)
+        const storeActNodes = actNodes as GraphNodeBase[];
+        if (storeActNodes.length === 0) return;
 
-        const nextNodeId = draftActNodes[nextIndex].id;
-        if (event.shiftKey) {
-            setSelectedNodes([nextNodeId]);
-        }
-        focusNode(nextNodeId);
+        const currentIndex = storeActNodes.findIndex((node) => node.id === activeNodeId);
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const base = currentIndex < 0 ? (direction === 1 ? -1 : storeActNodes.length) : currentIndex;
+        const nextIndex = (base + direction + storeActNodes.length) % storeActNodes.length;
+        focusActNode(storeActNodes[nextIndex].id);
         event.preventDefault();
-    }, [activeNodeId, emphasizedDisplayNodes, focusNode, setSelectedNodes]);
+    }, [activeNodeId, actNodes, focusActNode, reactFlowInstance]);
 
     useEffect(() => {
         const handleFocusNode = (event: Event) => {
@@ -1001,19 +1639,24 @@ export function GraphCanvas() {
     }, [handleSelectionTyping]);
 
     useEffect(() => {
-        window.addEventListener('keydown', handleDraftNodeFocusNavigation);
-        return () => window.removeEventListener('keydown', handleDraftNodeFocusNavigation);
-    }, [handleDraftNodeFocusNavigation]);
+        window.addEventListener('keydown', handleKeyNavigation);
+        return () => window.removeEventListener('keydown', handleKeyNavigation);
+    }, [handleKeyNavigation]);
 
     useEffect(() => {
-        const COLLAPSE_THRESHOLD_MS = 90_000;
+        const collapseThresholdMs = collapseThresholdMinutes * 60_000;
         const id = window.setInterval(() => {
-            collapseUnusedNodes(Date.now(), COLLAPSE_THRESHOLD_MS);
+            const currentActiveNodeId = activeNodeIdRef.current;
+            if (currentActiveNodeId) {
+                recordNodeUsed(currentActiveNodeId);
+            }
+            collapseUnusedNodes(Date.now(), collapseThresholdMs);
         }, 5_000);
         return () => window.clearInterval(id);
-    }, [collapseUnusedNodes]);
+    }, [collapseUnusedNodes, recordNodeUsed, collapseThresholdMinutes]);
 
     const activateRadialNode = useCallback((nodeId: string) => {
+        recordRecentClickedNode(nodeId);
         setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);
         commands.openDetails(nodeId);
 
@@ -1050,52 +1693,61 @@ export function GraphCanvas() {
         isRadialLayout,
         persistedParentById,
         radialOverviewNodeById,
+        recordRecentClickedNode,
         setSelectedNodes,
     ]);
 
-    const setLayoutMode = useCallback((nextLayout: 'force' | 'radial') => {
-        const nextParams = new URLSearchParams(searchParams.toString());
-        if (nextLayout === 'force') {
-            nextParams.delete('layout');
-        } else {
-            nextParams.set('layout', nextLayout);
+    const handleSelectRecentNode = useCallback((nodeId: string) => {
+        setSelectedNodes([nodeId]);
+        setActiveNode(nodeId);
+        recordNodeUsed(nodeId);
+        if (!isRadialLayout) {
+            focusNode(nodeId);
         }
-        const nextQuery = nextParams.toString();
-        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-    }, [pathname, router, searchParams]);
+    }, [focusNode, isRadialLayout, recordNodeUsed, setActiveNode, setSelectedNodes]);
+
+    const recentClickedSelector = recentClickedNodeIds.length > 0 ? (
+        <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex w-[min(820px,calc(100%-2rem))] -translate-x-1/2 items-center justify-center gap-1.5">
+            {recentClickedNodeIds.map((nodeId, index) => {
+                const node = referenceableNodeById.get(nodeId);
+                const data = node?.data as Record<string, unknown> | undefined;
+                const label = typeof data?.label === 'string' && data.label.trim().length > 0
+                    ? data.label.trim()
+                    : nodeId;
+                const isActive = activeNodeId === nodeId;
+
+                return (
+                    <React.Fragment key={nodeId}>
+                        {index > 0 && <span className="text-[11px] font-semibold text-slate-400">&lt;&lt;</span>}
+                        <button
+                            type="button"
+                            className={[
+                                'pointer-events-auto max-w-[140px] rounded-xl border px-3 py-1.5 text-left text-xs font-medium transition-colors',
+                                isActive
+                                    ? 'border-slate-900/70 bg-slate-900/70 text-white'
+                                    : 'border-slate-200/70 bg-white/60 text-slate-700 hover:border-slate-300/80 hover:bg-white/75',
+                            ].join(' ')}
+                            title={label}
+                            onClick={() => handleSelectRecentNode(nodeId)}
+                        >
+                            <span className="block truncate">{truncate(label, 18)}</span>
+                        </button>
+                    </React.Fragment>
+                );
+            })}
+        </div>
+    ) : null;
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
-            {(['force', 'radial'] as const).map((mode) => {
-                const active = persistedLayoutMode === mode;
-                return (
-                    <button
-                        key={mode}
-                        type="button"
-                        className={[
-                            'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200',
-                            active
-                                ? 'bg-slate-900 text-white'
-                                : 'text-slate-600 hover:bg-slate-100',
-                        ].join(' ')}
-                        onClick={() => setLayoutMode(mode)}
-                    >
-                        {mode === 'force' ? 'Force' : 'Radial'}
-                    </button>
-                );
-            })}
             <button
                 type="button"
-                className={[
-                    'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200 border',
-                    autoRouteEdgeHandles
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-100',
-                ].join(' ')}
-                onClick={() => setStreamPreferences({ autoRouteEdgeHandles: !autoRouteEdgeHandles })}
-                title="Toggle nearest-side edge routing"
+                className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                onClick={() => window.dispatchEvent(new CustomEvent('action:open-search'))}
             >
-                Auto Side
+                <Search className="h-3.5 w-3.5" />
+                <span>Search</span>
+                <kbd className="ml-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">⌘F</kbd>
             </button>
         </div>
     );
@@ -1104,6 +1756,7 @@ export function GraphCanvas() {
         return (
             <div className="relative h-full w-full">
                 {layoutToggle}
+                {recentClickedSelector}
                 <RadialOverview
                     nodes={radialOverviewNodes as GraphNodeRender[]}
                     rootIds={radialOverviewGraph.rootIds}
@@ -1119,7 +1772,12 @@ export function GraphCanvas() {
     return (
         <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
             {layoutToggle}
+            {recentClickedSelector}
+            <SearchBar />
+            <GraphToolbar />
             <SelectedNodePanel />
+            <FilePreviewPanel />
+            <KeyboardShortcutsHint />
             <div className="group absolute bottom-4 right-4 z-20 h-[400px] w-[480px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/88 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out hover:h-[540px] hover:w-[680px]">
                 <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2">
                     <div>
@@ -1148,7 +1806,7 @@ export function GraphCanvas() {
                 </div>
             </div>
             <ReactFlow
-                nodes={emphasizedDisplayNodes as GraphNodeRender[]}
+                nodes={[...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[]}
                 edges={displayEdges}
                 defaultEdgeOptions={{
                     style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },
@@ -1160,6 +1818,10 @@ export function GraphCanvas() {
                     if (node.type === 'selectionHeader' || node.type === 'selectionNode') {
                         return;
                     }
+
+                    // Keep recent-click history visible even when the click lands on inner controls.
+                    recordRecentClickedNode(node.id);
+
                     const target = event.target;
                     if (
                         target instanceof HTMLElement
@@ -1182,14 +1844,33 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    toggleExpandedNode(node.id);
-                    focusNode(node.id);
+                    // Draft or suggestion act node: click to run
+                    const nodeKind = node.data?.kind as string | undefined;
+                    const actStage = node.data?.actStage as string | undefined;
+                    if ((nodeKind === 'suggestion' || actStage === 'draft') && !isStreaming) {
+                        const query = ((node.data?.contentMd as string | undefined) || (node.data?.label as string | undefined) || '').trim();
+                        if (query) {
+                            void commands.runActFromNode(node.id, query);
+                        }
+                        return;
+                    }
+
+                    // Click to explore: expand detail panel AND branch
+                    expandNode(node.id);
+                    expandBranchNode(node.id);
+                    recordNodeUsed(node.id);
+
+                    if (activeNodeId !== node.id) {
+                        focusNode(node.id);
+                    }
                 }}
                 onNodeDoubleClick={(_event: React.MouseEvent, node: Node) => {
+                    const currentZoom = reactFlowInstance.getZoom();
+                    const nextZoom = Math.max(currentZoom, CAMERA_CONFIG.doubleClickZoomMin);
                     reactFlowInstance.setCenter(
-                        node.position.x + 170,
-                        node.position.y + 90,
-                        { duration: 300, zoom: Math.max(reactFlowInstance.getZoom(), 0.9) },
+                        node.position.x + CAMERA_CONFIG.nodeOffsetX,
+                        node.position.y + CAMERA_CONFIG.nodeOffsetY,
+                        { duration: CAMERA_CONFIG.doubleClickDuration, zoom: nextZoom },
                     );
                 }}
                 onSelectionChange={handleSelectionChange}
@@ -1237,6 +1918,7 @@ export function GraphCanvas() {
                     }
 
                     shiftMarqueeStartRef.current = null;
+                    suppressNextSelectionChangeRef.current = isShiftMarqueeSelectionRef.current;
                     isShiftMarqueeSelectionRef.current = false;
                 }}
                 onPaneClick={() => {
@@ -1244,8 +1926,10 @@ export function GraphCanvas() {
                 }}
                 zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
                 nodesDraggable={false}
                 panOnScroll
+                panOnScrollSpeed={0.5}
                 selectionOnDrag
                 panOnDrag={[1, 2]}
                 selectionMode={SelectionMode.Partial}
@@ -1253,7 +1937,11 @@ export function GraphCanvas() {
                 fitView
             >
                 <Background color="var(--border)" gap={24} size={1} />
-                <Controls className="!rounded-md !border-border/40 !bg-white !shadow-sm" />
+                <NavControl
+                    actNodeIds={(actNodes as GraphNodeBase[]).map((n) => n.id)}
+                    activeNodeId={activeNodeId}
+                    onFocusActNode={focusActNode}
+                />
                 <MiniMap
                     className="!rounded-md !border-border/40 !bg-white !shadow-sm"
                     maskColor="rgba(0,0,0,0.05)"

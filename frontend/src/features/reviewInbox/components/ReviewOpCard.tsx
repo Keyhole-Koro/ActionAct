@@ -1,16 +1,5 @@
+import { formatDateTime } from '@/lib/string';
 import type { ReviewOpItem } from '@/services/organize/port';
-
-function formatDateTime(value?: number | null) {
-    if (!value) {
-        return 'Pending timestamp';
-    }
-    return new Intl.DateTimeFormat(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(value);
-}
 
 function stateClassName(state: ReviewOpItem['state']) {
     switch (state) {

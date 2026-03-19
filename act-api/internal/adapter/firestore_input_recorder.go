@@ -28,10 +28,10 @@ func (r *FirestoreInputRecorder) RecordInput(ctx context.Context, input domain.U
 		Collection("inputs").Doc(input.InputID)
 
 	_, err := docRef.Set(ctx, map[string]interface{}{
-		"status":      "received",
-		"contentType": input.ContentType,
+		"status":           "received",
+		"contentType":      input.ContentType,
 		"originalFilename": input.OriginalFilename,
-		"sizeBytes":   input.SizeBytes,
+		"sizeBytes":        input.SizeBytes,
 		"rawRef": map[string]interface{}{
 			"gcsUri": gcsURI,
 			"sha256": sha256Hex,
@@ -43,6 +43,36 @@ func (r *FirestoreInputRecorder) RecordInput(ctx context.Context, input domain.U
 		return fmt.Errorf("firestore set input: %w", err)
 	}
 	return nil
+}
+
+// GetInput retrieves the input metadata from Firestore.
+func (r *FirestoreInputRecorder) GetInput(ctx context.Context, workspaceID, inputID string) (*domain.InputDetail, error) {
+	docRef := r.client.
+		Collection("workspaces").Doc(workspaceID).
+		Collection("inputs").Doc(inputID)
+
+	snap, err := docRef.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("firestore get input: %w", err)
+	}
+	if !snap.Exists() {
+		return nil, fmt.Errorf("input not found")
+	}
+
+	var detail domain.InputDetail
+	if err := snap.DataTo(&detail); err != nil {
+		return nil, fmt.Errorf("decode input: %w", err)
+	}
+
+	// Manual mapping for fields that might be inside a map or have different naming
+	data := snap.Data()
+	if rawRef, ok := data["rawRef"].(map[string]interface{}); ok {
+		detail.GCSUri, _ = rawRef["gcsUri"].(string)
+	}
+	detail.InputID = inputID
+	detail.WorkspaceID = workspaceID
+
+	return &detail, nil
 }
 
 // Close releases the Firestore client.
