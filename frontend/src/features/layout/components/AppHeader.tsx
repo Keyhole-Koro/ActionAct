@@ -32,7 +32,7 @@ export function AppHeader() {
                             <Sparkles className="w-4 h-4 text-white" />
                         </div>
                         <h1 className="text-lg font-bold tracking-tight text-foreground">
-                            Action
+                            Act
                         </h1>
                     </div>
 
