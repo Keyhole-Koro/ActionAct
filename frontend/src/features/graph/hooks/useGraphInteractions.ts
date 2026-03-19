@@ -3,8 +3,8 @@ import { Node } from '@xyflow/react';
 import { useReactFlow } from '@xyflow/react';
 import { getAuth } from 'firebase/auth';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
-import { upsertActNodeDraft, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
-import { getDisplayNodeDimensions, readClientPoint, sameSortedIds } from '../components/graphCanvas/graphCanvasUtils';
+import { upsertActNodeDraft } from '@/features/graph/runtime/act-graph-actions';
+import { readClientPoint } from '../components/graphCanvas/graphCanvasUtils';
 import type { GraphNodeBase, GraphNodeRender } from '../types';
 import type { useGraphCommands } from './useGraphCommands';
 
@@ -20,7 +20,6 @@ interface UseGraphInteractionsOptions {
     editingNodeId: string | null;
     actNodes: GraphNodeBase[];
     emphasizedDisplayNodes: Node[];
-    regularGraphNodes: GraphNodeBase[];
     effectiveWorkspaceId: string | undefined | null;
     collapseThresholdMinutes: number;
     activeNodeIdRef: React.MutableRefObject<string | null>;
@@ -52,7 +51,6 @@ interface UseGraphInteractionsResult {
     isShiftMarqueeSelectionRef: React.MutableRefObject<boolean>;
     suppressNextSelectionChangeRef: React.MutableRefObject<boolean>;
     shiftMarqueeStartRef: React.MutableRefObject<{ x: number; y: number } | null>;
-    selectionComposerNodeIdRef: React.MutableRefObject<string | null>;
 }
 
 export function useGraphInteractions({
@@ -65,7 +63,6 @@ export function useGraphInteractions({
     editingNodeId,
     actNodes,
     emphasizedDisplayNodes,
-    regularGraphNodes,
     effectiveWorkspaceId,
     collapseThresholdMinutes,
     activeNodeIdRef,
@@ -90,7 +87,6 @@ export function useGraphInteractions({
     const isShiftMarqueeSelectionRef = useRef(false);
     const suppressNextSelectionChangeRef = useRef(false);
     const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
-    const selectionComposerNodeIdRef = useRef<string | null>(null);
 
     const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
         if (isReadOnly) return;
@@ -245,94 +241,6 @@ export function useGraphInteractions({
         event.preventDefault();
     }, [activeNodeId, actNodes, focusActNode, reactFlowInstance, clearAllFocus]);
 
-    // selectedNodes変化 → composerActNode 自動作成/更新/削除のuseEffect
-    useEffect(() => {
-        if (!effectiveWorkspaceId) return;
-        const myUid = getAuth().currentUser?.uid;
-
-        const composerId = selectionComposerNodeIdRef.current;
-        if (composerId && !actNodes.some((node) => node.id === composerId)) {
-            selectionComposerNodeIdRef.current = null;
-        }
-
-        const contextNodeIds = [...new Set(selectedNodeIds.filter((id) => id !== selectionComposerNodeIdRef.current))].sort();
-
-        if (contextNodeIds.length === 0) {
-            const currentComposerId = selectionComposerNodeIdRef.current;
-            if (!currentComposerId) {
-                return;
-            }
-            const composerNode = actNodes.find((node) => node.id === currentComposerId);
-            const hasLabel = typeof composerNode?.data?.label === 'string' && composerNode.data.label.trim().length > 0;
-            const hasResolvedContent = [
-                composerNode?.data?.contentMd,
-                composerNode?.data?.contextSummary,
-                composerNode?.data?.detailHtml,
-                composerNode?.data?.thoughtMd,
-            ].some((value) => typeof value === 'string' && value.trim().length > 0);
-
-            if (composerNode && !hasLabel && !hasResolvedContent) {
-                void removeActNodeAndDraft(effectiveWorkspaceId, currentComposerId);
-            }
-            selectionComposerNodeIdRef.current = null;
-            return;
-        }
-
-        const currentComposerId = selectionComposerNodeIdRef.current;
-        if (currentComposerId) {
-            const composerNode = actNodes.find((node) => node.id === currentComposerId);
-            if (!composerNode) {
-                selectionComposerNodeIdRef.current = null;
-                return;
-            }
-
-            const hasLabel = typeof composerNode.data?.label === 'string' && composerNode.data.label.trim().length > 0;
-            const hasResolvedContent = [
-                composerNode.data?.contentMd,
-                composerNode.data?.contextSummary,
-                composerNode.data?.detailHtml,
-                composerNode.data?.thoughtMd,
-            ].some((value) => typeof value === 'string' && value.trim().length > 0);
-
-            if (hasLabel || hasResolvedContent) {
-                selectionComposerNodeIdRef.current = null;
-                return;
-            }
-
-            const currentReferenced = Array.isArray(composerNode.data?.referencedNodeIds)
-                ? composerNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string').sort()
-                : [];
-            if (!sameSortedIds(currentReferenced, contextNodeIds)) {
-                void upsertActNodeDraft(effectiveWorkspaceId, currentComposerId, {
-                    referencedNodeIds: contextNodeIds,
-                    kind: 'act',
-                    createdBy: 'user',
-                    authorUid: myUid ?? undefined,
-                });
-            }
-            return;
-        }
-
-        const contextNodes = regularGraphNodes.filter((node) => contextNodeIds.includes(node.id));
-        if (contextNodes.length === 0) {
-            return;
-        }
-
-        const maxRightX = contextNodes.reduce((max, node) => {
-            const { width } = getDisplayNodeDimensions(node as GraphNodeRender);
-            return Math.max(max, node.position.x + width);
-        }, contextNodes[0].position.x);
-        const averageY = contextNodes.reduce((sum, node) => sum + node.position.y, 0) / contextNodes.length;
-        const composerNodeId = addQueryActNode({ x: maxRightX + 220, y: averageY }, '');
-        selectionComposerNodeIdRef.current = composerNodeId;
-        void upsertActNodeDraft(effectiveWorkspaceId, composerNodeId, {
-            referencedNodeIds: contextNodeIds,
-            kind: 'act',
-            createdBy: 'user',
-            authorUid: myUid ?? undefined,
-        });
-    }, [actNodes, addQueryActNode, effectiveWorkspaceId, regularGraphNodes, selectedNodeIds]);
-
     // window イベントリスナー登録のuseEffect
     useEffect(() => {
         const handleFocusNode = (event: Event) => {
@@ -432,6 +340,5 @@ export function useGraphInteractions({
         isShiftMarqueeSelectionRef,
         suppressNextSelectionChangeRef,
         shiftMarqueeStartRef,
-        selectionComposerNodeIdRef,
     };
 }

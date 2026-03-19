@@ -35,7 +35,9 @@ export interface UploadTask {
     topicId: string;
     status: InputProgressStatus;
     progressPercentage: number;
+    resolutionMode?: string;
     resolvedTopicId?: string;
+    errorMessage?: string;
 }
 
 const statusPercentages: Record<InputProgressStatus, number> = {
@@ -110,7 +112,9 @@ export const useUploadStore = create<UploadStoreState>()(
                             ...existing,
                             status: progress.status,
                             progressPercentage: statusPercentages[progress.status] ?? existing.progressPercentage,
+                            resolutionMode: progress.resolutionMode ?? existing.resolutionMode,
                             resolvedTopicId: progress.resolvedTopicId ?? existing.resolvedTopicId,
+                            errorMessage: progress.errorMessage ?? existing.errorMessage,
                         },
                     },
                 };

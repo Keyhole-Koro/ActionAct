@@ -11,6 +11,7 @@ import type { GraphNodeBase, GraphNodeRender } from '../types';
 import type { useGraphCommands } from './useGraphCommands';
 
 const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
+const OVERLAP_CELL_SIZE = 320;
 
 interface UseGraphDisplayNodesOptions {
     regularGraphNodes: GraphNodeBase[];
@@ -86,6 +87,13 @@ export function useGraphDisplayNodes({
     handleNodeResize,
 }: UseGraphDisplayNodesOptions): UseGraphDisplayNodesResult {
     const reactFlowInstance = useReactFlow();
+    const expandedNodeIdSet = useMemo(() => new Set(expandedNodeIds), [expandedNodeIds]);
+    const streamingNodeIdSet = useMemo(() => new Set(streamingNodeIds), [streamingNodeIds]);
+    const selectedNodeIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+    const rootIdToIndex = useMemo(
+        () => new Map(persistedGraph.rootIds.map((id, index) => [id, index])),
+        [persistedGraph.rootIds],
+    );
 
     const handleGenerateBrief = useCallback((nodeId: string, nodePosition: { x: number; y: number }) => {
         if (!effectiveWorkspaceId) return;
@@ -127,9 +135,9 @@ export function useGraphDisplayNodes({
             visiblePersistedNodeIds: persistedGraph.visibleNodeIds,
             childrenByParent: persistedGraph.childrenByParent,
             allReferenceableNodes,
-            isNodeExpanded: (nodeId) => expandedNodeIds.includes(nodeId),
+            isNodeExpanded: (nodeId) => expandedNodeIdSet.has(nodeId),
             isNodeEditing: (nodeId) => editingNodeId === nodeId,
-            isNodeStreaming: (nodeId) => streamingNodeIds.includes(nodeId),
+            isNodeStreaming: (nodeId) => streamingNodeIdSet.has(nodeId),
             onToggleBranch: commands.toggleBranch,
             onOpenDetails: commands.openDetails,
             onOpenReferencedNode: commands.openReferencedNode,
@@ -147,12 +155,12 @@ export function useGraphDisplayNodes({
             commands,
             editingNodeId,
             expandedBranchNodeIds,
-            expandedNodeIds,
+            expandedNodeIdSet,
             persistedGraph.childrenByParent,
             persistedGraph.visibleNodeIds,
             regularGraphNodes,
             selectedNodeIds,
-            streamingNodeIds,
+            streamingNodeIdSet,
         ],
     );
 
@@ -189,8 +197,9 @@ export function useGraphDisplayNodes({
         }
         const descendants = new Set<string>();
         const queue = [activeNodeId];
-        while (queue.length > 0) {
-            const cur = queue.shift()!;
+        let queueIndex = 0;
+        while (queueIndex < queue.length) {
+            const cur = queue[queueIndex++]!;
             for (const child of childrenByParent.get(cur) ?? []) {
                 if (!descendants.has(child)) {
                     descendants.add(child);
@@ -203,7 +212,7 @@ export function useGraphDisplayNodes({
 
     // Navigate to an act node: expand it if collapsed, then pan camera to it.
     const handleNavigateToActNode = useCallback((nodeId: string) => {
-        if (!expandedNodeIds.includes(nodeId)) {
+        if (!expandedNodeIdSet.has(nodeId)) {
             toggleExpandedNode(nodeId);
         }
         const target = reactFlowInstance.getNode(nodeId);
@@ -229,7 +238,7 @@ export function useGraphDisplayNodes({
             let rootHue = 210;
             if (node.data?.nodeSource === 'persisted') {
                 const rootId = persistedRootIdByNode.get(node.id);
-                const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
+                const rootIndex = rootId ? (rootIdToIndex.get(rootId) ?? -1) : -1;
                 rootHue = rootIndex >= 0 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length] : 210;
             }
 
@@ -288,7 +297,7 @@ export function useGraphDisplayNodes({
                 },
             };
         });
-    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
+    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedRootIdByNode, rootIdToIndex]);
 
     const radialOverviewNodes = useMemo(
         () => buildDisplayNodes({
@@ -298,9 +307,9 @@ export function useGraphDisplayNodes({
             visiblePersistedNodeIds: radialOverviewGraph.visibleNodeIds,
             childrenByParent: radialOverviewGraph.childrenByParent,
             allReferenceableNodes: radialOverviewGraph.positionedNodes,
-            isNodeExpanded: (nodeId) => expandedNodeIds.includes(nodeId),
+            isNodeExpanded: (nodeId) => expandedNodeIdSet.has(nodeId),
             isNodeEditing: (nodeId) => editingNodeId === nodeId,
-            isNodeStreaming: (nodeId) => streamingNodeIds.includes(nodeId),
+            isNodeStreaming: (nodeId) => streamingNodeIdSet.has(nodeId),
             onToggleBranch: commands.toggleBranch,
             onOpenDetails: commands.openDetails,
             onOpenReferencedNode: commands.openReferencedNode,
@@ -329,14 +338,14 @@ export function useGraphDisplayNodes({
             commands,
             editingNodeId,
             expandedBranchNodeIds,
-            expandedNodeIds,
+            expandedNodeIdSet,
             handleGenerateBrief,
             radialOverviewGraph.childrenByParent,
             radialOverviewGraph.depthById,
             radialOverviewGraph.positionedNodes,
             radialOverviewGraph.visibleNodeIds,
             selectedNodeIds,
-            streamingNodeIds,
+            streamingNodeIdSet,
         ],
     );
 
@@ -402,26 +411,61 @@ export function useGraphDisplayNodes({
             const h = n.measured?.height ?? fallback.height;
             return { id: n.id, x: n.position.x, y: n.position.y, w, h };
         });
+        const expandedBBoxBuckets = new Map<string, typeof expandedBBoxes>();
+        const toCellCoord = (value: number) => Math.floor(value / OVERLAP_CELL_SIZE);
+        const getBucketKey = (x: number, y: number) => `${x}:${y}`;
+
+        for (const bbox of expandedBBoxes) {
+            const minCellX = toCellCoord(bbox.x - MARGIN);
+            const maxCellX = toCellCoord(bbox.x + bbox.w + MARGIN);
+            const minCellY = toCellCoord(bbox.y - MARGIN);
+            const maxCellY = toCellCoord(bbox.y + bbox.h + MARGIN);
+            for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+                for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+                    const key = getBucketKey(cellX, cellY);
+                    const bucket = expandedBBoxBuckets.get(key) ?? [];
+                    bucket.push(bbox);
+                    expandedBBoxBuckets.set(key, bucket);
+                }
+            }
+        }
 
         return normalizedDisplayNodes.map((node) => {
             if (node.type !== 'customTask') {
                 return node;
             }
             const isExpanded = isExpandedNode(node);
-            const isSelected = selectedNodeIds.includes(node.id);
+            const isSelected = selectedNodeIdSet.has(node.id);
 
             let overlapsExpanded = false;
             if (!isExpanded && expandedNodes.length > 0) {
                 const fallback = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
                 const width = node.measured?.width ?? fallback.width;
                 const height = node.measured?.height ?? fallback.height;
-                overlapsExpanded = expandedBBoxes.some((bbox) => (
-                    bbox.id !== node.id
-                    && node.position.x < bbox.x + bbox.w + MARGIN
-                    && node.position.x + width + MARGIN > bbox.x
-                    && node.position.y < bbox.y + bbox.h + MARGIN
-                    && node.position.y + height + MARGIN > bbox.y
-                ));
+                const minCellX = toCellCoord(node.position.x - MARGIN);
+                const maxCellX = toCellCoord(node.position.x + width + MARGIN);
+                const minCellY = toCellCoord(node.position.y - MARGIN);
+                const maxCellY = toCellCoord(node.position.y + height + MARGIN);
+                const candidateBBoxes = new Set<(typeof expandedBBoxes)[number]>();
+                for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+                    for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+                        for (const bbox of expandedBBoxBuckets.get(getBucketKey(cellX, cellY)) ?? []) {
+                            candidateBBoxes.add(bbox);
+                        }
+                    }
+                }
+                for (const bbox of candidateBBoxes) {
+                    if (
+                        bbox.id !== node.id
+                        && node.position.x < bbox.x + bbox.w + MARGIN
+                        && node.position.x + width + MARGIN > bbox.x
+                        && node.position.y < bbox.y + bbox.h + MARGIN
+                        && node.position.y + height + MARGIN > bbox.y
+                    ) {
+                        overlapsExpanded = true;
+                        break;
+                    }
+                }
             }
 
             return {
@@ -433,7 +477,7 @@ export function useGraphDisplayNodes({
                 },
             };
         });
-    }, [normalizedDisplayNodes, selectedNodeIds]);
+    }, [normalizedDisplayNodes, selectedNodeIdSet]);
 
     // ── Act tree group rectangles ─────────────────────────────────────────────
     const actTreeGroupNodes = useMemo(() => {

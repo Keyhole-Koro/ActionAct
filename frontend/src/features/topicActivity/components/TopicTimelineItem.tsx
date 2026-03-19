@@ -23,7 +23,7 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
     );
 }
 
-export function TopicTimelineItem({ item }: { item: TopicActivityItem & { title?: string } }) {
+export function TopicTimelineItem({ item }: { item: TopicActivityItem & { title?: string; resolvedTopicTitle?: string } }) {
     return (
         <article className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] p-4 shadow-[0_18px_38px_-28px_rgba(15,23,42,0.3)]">
             <div className="flex items-start justify-between gap-3">
@@ -41,7 +41,7 @@ export function TopicTimelineItem({ item }: { item: TopicActivityItem & { title?
                 <Block title="Routing">
                     <div>Mode: {item.resolutionMode ?? 'Not surfaced yet'}</div>
                     <div>Reason: {item.currentPhase ?? item.lastEventType ?? 'Not surfaced yet'}</div>
-                    <div>Resolved topic: {item.resolvedTopicId ?? 'Not surfaced yet'}</div>
+                    <div>Resolved topic: {item.resolvedTopicTitle ?? item.resolvedTopicId ?? 'Not surfaced yet'}</div>
                 </Block>
                 <Block title="Draft">
                     <div>Draft version: {item.draftVersion ?? 'Not surfaced yet'}</div>

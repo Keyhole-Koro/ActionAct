@@ -41,6 +41,7 @@ export function useGraphDisplayEdges({
             }
 
             const nodeById = new Map(emphasizedDisplayNodes.map((node) => [node.id, node]));
+            const selectedNodeIdSet = new Set(selectedNodeIds);
 
             // Straight edges connecting act parent → child nodes
             const actParentChildEdges: Edge[] = [];
@@ -55,19 +56,21 @@ export function useGraphDisplayEdges({
             }
 
             // Precompute per-cluster centroids for edge bundling
-            const clusterPoints = new Map<string, { x: number; y: number }[]>();
+            const clusterSums = new Map<string, { sumX: number; sumY: number; count: number }>();
             for (const [nodeId, rootId] of persistedRootIdByNode) {
                 const node = nodeById.get(nodeId);
                 if (!node) continue;
-                const pts = clusterPoints.get(rootId) ?? [];
-                pts.push(node.position);
-                clusterPoints.set(rootId, pts);
+                const current = clusterSums.get(rootId) ?? { sumX: 0, sumY: 0, count: 0 };
+                current.sumX += node.position.x;
+                current.sumY += node.position.y;
+                current.count += 1;
+                clusterSums.set(rootId, current);
             }
             const clusterCentroids = new Map<string, { x: number; y: number }>();
-            for (const [rootId, pts] of clusterPoints) {
+            for (const [rootId, aggregate] of clusterSums) {
                 clusterCentroids.set(rootId, {
-                    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
-                    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+                    x: aggregate.sumX / aggregate.count,
+                    y: aggregate.sumY / aggregate.count,
                 });
             }
 
@@ -83,9 +86,9 @@ export function useGraphDisplayEdges({
                 const isActContext = edge.id.startsWith('edge-ctx-');
                 const isRelation = 'relationType' in edge && edge.relationType === 'related';
                 const isActContextFocused = isActContext
-                    && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
+                    && (selectedNodeIdSet.has(edge.source) || selectedNodeIdSet.has(edge.target));
                 const isRelationFocused = isRelation
-                    && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
+                    && (selectedNodeIdSet.has(edge.source) || selectedNodeIdSet.has(edge.target));
                 const sourceRootId = persistedRootIdByNode.get(edge.source);
                 const targetRootId = persistedRootIdByNode.get(edge.target);
                 const rootId = sourceRootId ?? targetRootId;

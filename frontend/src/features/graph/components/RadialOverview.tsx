@@ -52,6 +52,21 @@ export function RadialOverview({
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const viewportAnimationRef = useRef<number | null>(null);
     const viewportTargetRef = useRef<{ left: number; top: number } | null>(null);
+    const hoverLockRef = useRef<string | null>(null);
+
+    const lockHover = (nodeId: string) => {
+        if (hoverLockRef.current !== null && hoverLockRef.current !== nodeId) {
+            return;
+        }
+        hoverLockRef.current = nodeId;
+        setHoveredNodeId(nodeId);
+        onHoverNode?.(nodeId);
+    };
+
+    const releaseHover = () => {
+        hoverLockRef.current = null;
+        setHoveredNodeId(null);
+    };
 
     // Cancel any in-flight RAF loop when the component unmounts.
     useEffect(() => {
@@ -355,7 +370,7 @@ export function RadialOverview({
         <div
             ref={viewportRef}
             className="relative h-full w-full overflow-auto rounded-[28px] bg-slate-50"
-            onMouseLeave={() => setHoveredNodeId(null)}
+            onMouseLeave={releaseHover}
             onWheel={handleWheel}
         >
             <div
@@ -398,9 +413,8 @@ export function RadialOverview({
                                 strokeWidth={isSelected ? 3.5 : (isFocused ? 2.2 : 1.2)}
                                 className="cursor-pointer transition-all duration-500 ease-out hover:brightness-95"
                                 onMouseEnter={() => {
-                                    setHoveredNodeId(segment.node.id);
+                                    lockHover(segment.node.id);
                                     focusViewportOnPoint(segmentCenterPoint.x, segmentCenterPoint.y);
-                                    onHoverNode?.(segment.node.id);
                                 }}
                                 onClick={(e) => {
                                     if (e.detail === 2) {
@@ -464,12 +478,11 @@ export function RadialOverview({
                             ].join(' ')}
                             style={{ left: labelPoint.x, top: labelPoint.y }}
                             onMouseEnter={() => {
-                                setHoveredNodeId(segment.node.id);
+                                lockHover(segment.node.id);
                                 focusViewportOnPoint(labelPoint.x, labelPoint.y);
-                                onHoverNode?.(segment.node.id);
                             }}
-                            onFocus={() => setHoveredNodeId(segment.node.id)}
-                            onBlur={() => setHoveredNodeId(null)}
+                            onFocus={() => lockHover(segment.node.id)}
+                            onBlur={releaseHover}
                             onClick={() => onActivateNode(segment.node.id)}
                         >
                             {formatRootLabel(segment.node.data?.label ?? segment.node.id)}
@@ -521,13 +534,12 @@ function assignSegments({
 
     const weightedChildren = availableIds.map((nodeId) => {
         const subtreeSize = subtreeSizeById.get(nodeId) ?? 1;
-        const branchContainsHover = hoveredNodeId !== null && ancestorSet.has(nodeId);
         const sizeFactor = Math.min(Math.log2(subtreeSize + 1), 3) / 3;
         const branchMultiplier = hoveredNodeId === null
             ? 1
             : (nodeId === hoveredNodeId
                 ? (1.22 + (sizeFactor * 0.26))
-                : (branchContainsHover ? (1.1 + (sizeFactor * 0.18)) : 0.9));
+                : 1);
 
         return {
             nodeId,

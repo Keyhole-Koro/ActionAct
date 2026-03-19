@@ -8,6 +8,7 @@ import { RichTextPane } from '@/features/nodeMarkdown/components/RichTextPane';
 import { ActionOrganizeBar } from '@/features/action/actionOrganize/components/ActionOrganizeBar';
 import { NodeSummaryCard } from './NodeSummaryCard';
 import { NodeEvidenceList } from './NodeEvidenceList';
+import { NodeInputMediaCard } from './NodeInputMediaCard';
 import { organizeService } from '@/services/organize';
 import type { EvidenceRef } from '@/services/organize/port';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
@@ -33,6 +34,7 @@ export function NodeDetailPanel() {
     const contentMd = safeString(data, 'contentMd');
     const contextSummary = safeOptionalString(data, 'contextSummary');
     const detailHtml = safeOptionalString(data, 'detailHtml');
+    const inputId = safeOptionalString(data, 'inputId');
     const nodeSource = (safeOptionalString(data, 'nodeSource') as 'persisted' | 'act' | undefined) ?? 'persisted';
 
     // Evidence subscription — deps are primitives only (no object ref) to avoid flickering
@@ -98,6 +100,13 @@ export function NodeDetailPanel() {
                         (!contextSummary && !detailHtml) && (
                             <div className="text-sm italic text-muted-foreground py-4">No content generated yet.</div>
                         )
+                    )}
+
+                    {nodeSource === 'persisted' && inputId && (
+                        <NodeInputMediaCard
+                            workspaceId={workspaceId}
+                            inputId={inputId}
+                        />
                     )}
 
                     <NodeEvidenceList evidenceRefs={evidenceRefs} />

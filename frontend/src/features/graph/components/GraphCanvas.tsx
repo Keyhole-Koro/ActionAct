@@ -233,7 +233,6 @@ export function GraphCanvas() {
         editingNodeId,
         actNodes: actNodes as GraphNodeBase[],
         emphasizedDisplayNodes,
-        regularGraphNodes,
         effectiveWorkspaceId,
         collapseThresholdMinutes,
         activeNodeIdRef,

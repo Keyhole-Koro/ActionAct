@@ -4,13 +4,13 @@ import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useGraphStore } from '@/features/graph/store';
-import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { config } from '@/lib/config';
 import { getFirebaseIdToken } from '@/services/firebase/token';
 
 export function FilePreviewPanel() {
     const { previewInputId, previewWorkspaceId, setFilePreview } = useGraphStore();
     const [content, setContent] = useState<string | null>(null);
+    const [objectUrl, setObjectUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [metadata, setMetadata] = useState<{ filename: string; contentType: string } | null>(null);
@@ -18,6 +18,12 @@ export function FilePreviewPanel() {
     useEffect(() => {
         if (!previewInputId || !previewWorkspaceId) {
             setContent(null);
+            setObjectUrl((previous) => {
+                if (previous) {
+                    URL.revokeObjectURL(previous);
+                }
+                return null;
+            });
             setMetadata(null);
             return;
         }
@@ -44,11 +50,26 @@ export function FilePreviewPanel() {
 
                 setMetadata({ filename, contentType });
 
+                const blob = await res.blob();
+                const nextObjectUrl = URL.createObjectURL(blob);
+
+                if (aborted) {
+                    URL.revokeObjectURL(nextObjectUrl);
+                    return;
+                }
+
+                setObjectUrl((previous) => {
+                    if (previous) {
+                        URL.revokeObjectURL(previous);
+                    }
+                    return nextObjectUrl;
+                });
+
                 if (contentType.startsWith('text/') || contentType === 'application/json' || filename.endsWith('.md')) {
-                    const text = await res.text();
+                    const text = await blob.text();
                     if (!aborted) setContent(text);
                 } else {
-                    if (!aborted) setContent('Preview not available for binary files. Please download to view.');
+                    setContent(null);
                 }
             } catch (err) {
                 if (!aborted) setError(err instanceof Error ? err.message : 'Unknown error');
@@ -58,12 +79,27 @@ export function FilePreviewPanel() {
         };
 
         void loadFile();
-        return () => { aborted = true; };
+        return () => {
+            aborted = true;
+        };
     }, [previewInputId, previewWorkspaceId]);
+
+    useEffect(() => () => {
+        if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+        }
+    }, [objectUrl]);
 
     if (!previewInputId) return null;
 
     const isMarkdown = metadata?.filename.endsWith('.md') || metadata?.contentType === 'text/markdown';
+    const isText = Boolean(metadata && (
+        metadata.contentType.startsWith('text/')
+        || metadata.contentType === 'application/json'
+        || metadata.filename.endsWith('.md')
+    ));
+    const isImage = Boolean(metadata?.contentType.startsWith('image/'));
+    const isPdf = metadata?.contentType === 'application/pdf';
 
     return (
         <div className="absolute inset-y-0 right-0 z-50 w-[500px] border-l border-slate-200 bg-white shadow-2xl transition-transform animate-in slide-in-from-right duration-300">
@@ -110,7 +146,21 @@ export function FilePreviewPanel() {
                             <p className="font-semibold">Error</p>
                             <p className="mt-1">{error}</p>
                         </div>
-                    ) : (
+                    ) : isImage && objectUrl ? (
+                        <div className="flex min-h-full items-start justify-center">
+                            <img
+                                src={objectUrl}
+                                alt={metadata?.filename ?? 'Uploaded media'}
+                                className="max-h-full w-auto max-w-full rounded-lg border border-slate-200 bg-white object-contain shadow-sm"
+                            />
+                        </div>
+                    ) : isPdf && objectUrl ? (
+                        <iframe
+                            src={objectUrl}
+                            title={metadata?.filename ?? 'PDF preview'}
+                            className="h-full min-h-[70vh] w-full rounded-lg border border-slate-200 bg-white"
+                        />
+                    ) : isText ? (
                         <div className="prose prose-slate prose-sm max-w-none">
                             {isMarkdown ? (
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -121,6 +171,13 @@ export function FilePreviewPanel() {
                                     {content}
                                 </pre>
                             )}
+                        </div>
+                    ) : (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                            <p className="font-semibold text-slate-800">Preview not available inline</p>
+                            <p className="mt-1">
+                                This file type is available from the raw download endpoint, but the panel only renders text, images, and PDF files.
+                            </p>
                         </div>
                     )}
                 </div>
