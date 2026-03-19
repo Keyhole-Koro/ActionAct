@@ -180,20 +180,26 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
         });
     }, [id, internalsSignature, updateNodeInternals]);
 
-    const commitEdit = useCallback(() => {
+    const commitAction = useCallback(() => {
         data.onCommitLabel?.(editValue);
     }, [data, editValue]);
 
+    const handleBlur = useCallback(() => {
+        if (!isEditing) return;
+        // Just save the text without triggering backend run
+        data.onUpdateLabel?.(editValue);
+    }, [data, editValue, isEditing]);
+
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            commitEdit();
+            commitAction();
         } else if (e.key === 'Escape') {
             // Restore original or clear if it's a new empty node
             const defaultVal = data.label || '';
             setEditValue(defaultVal);
-            data.onCommitLabel?.(defaultVal);
+            data.onUpdateLabel?.(defaultVal);
         }
-    }, [commitEdit, data]);
+    }, [commitAction, data, editValue]);
 
     const handleMediaFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -328,7 +334,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                         ref={inputRef}
                                         value={editValue}
                                         onChange={(e) => setEditValue(e.target.value)}
-                                        onBlur={commitEdit}
+                                        onBlur={handleBlur}
                                         onKeyDown={handleKeyDown}
                                         placeholder="Ask a question..."
                                         className="flex-1 min-w-0 bg-transparent border-b border-primary outline-none text-[14px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-0.5"
@@ -415,7 +421,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                     ref={inputRef}
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
-                                    onBlur={commitEdit}
+                                    onBlur={handleBlur}
                                     onKeyDown={handleKeyDown}
                                     placeholder="Ask a question..."
                                     className="w-full bg-transparent border-b-2 border-primary outline-none text-[15px] font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-normal pb-1 mt-0.5"
@@ -887,7 +893,8 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                 ref={inputRef}
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
-                                onBlur={commitEdit}
+                                onBlur={handleBlur}
+
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ask a question..."
                                 className={`w-full bg-transparent border-b-2 border-primary outline-none text-foreground placeholder:text-muted-foreground/40 pb-1 ${isExpanded ? 'mt-1 text-base font-semibold' : 'text-[14px] font-medium'}`}

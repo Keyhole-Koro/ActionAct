@@ -124,6 +124,7 @@ export function useGraphCommands({ workspaceId }: Params) {
         expandBranch: expandBranchNode,
         runActFromNode,
         commitActNodeLabel,
+        updateActNodeLabel,
         addMediaContext,
         clearAct,
     };

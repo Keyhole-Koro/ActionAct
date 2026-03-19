@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FolderKanban, Plus, ArrowRight, Globe } from "lucide-react";
+import { FolderKanban, Plus, ArrowRight, Globe, Clock, Database, FileText } from "lucide-react";
 
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
@@ -11,6 +11,19 @@ import { createWorkspace } from "@/features/workspace/services/create-workspace"
 import { listUserWorkspaces } from "@/features/workspace/services/list-workspaces";
 import { listPublicWorkspaces } from "@/features/workspace/services/list-public-workspaces";
 import { type WorkspaceData } from "@/features/workspace/services/workspace-service";
+
+function formatRelativeTime(millis?: number): string {
+    if (!millis) return "Never";
+    const diff = Date.now() - millis;
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(mins / 60);
+    const days = Math.floor(hours / 24);
+
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+}
 
 function WorkspaceGrid({
     workspaces,
@@ -22,30 +35,62 @@ function WorkspaceGrid({
     showPublicBadge?: boolean;
 }) {
     return (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {workspaces.map((ws) => (
                 <button
                     key={ws.id}
                     onClick={() => onSelect(ws)}
-                    className="group flex items-center justify-between rounded-lg border bg-card p-4 text-left hover:border-primary/50 hover:bg-accent transition-colors"
+                    className="group flex flex-col rounded-xl border bg-card p-5 text-left hover:border-primary/40 hover:shadow-md transition-all duration-300"
                 >
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                            <FolderKanban className="h-4 w-4 text-primary" />
+                    <div className="flex items-start justify-between mb-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                            <FolderKanban className="h-5 w-5 text-primary" />
                         </div>
-                        <div>
-                            <div className="flex items-center gap-1.5">
-                                <p className="text-sm font-medium">{ws.name}</p>
-                                {showPublicBadge && (
-                                    <Globe className="h-3 w-3 text-muted-foreground" />
-                                )}
+                        {showPublicBadge && (
+                            <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                <Globe className="h-3 w-3" />
+                                Public
                             </div>
-                            <p className="text-xs text-muted-foreground font-mono truncate max-w-[130px]">
-                                {ws.id}
-                            </p>
-                        </div>
+                        )}
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                    <div className="mb-3">
+                        <h3 className="font-semibold text-base line-clamp-1">{ws.name}</h3>
+                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5 opacity-60">
+                            {ws.id}
+                        </p>
+                    </div>
+
+                    {/* Preview Text */}
+                    <div className="mb-5 flex-1">
+                        {ws.latestNodeSummary ? (
+                            <div className="flex gap-2">
+                                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/50" />
+                                <p className="text-xs text-muted-foreground line-clamp-2 italic leading-relaxed">
+                                    "{ws.latestNodeSummary}"
+                                </p>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground/40 italic">
+                                No activity recorded yet.
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Stats Footer */}
+                    <div className="flex items-center justify-between border-t pt-4 mt-auto">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
+                                <Database className="h-3 w-3 opacity-70" />
+                                {ws.nodeCount ?? 0}
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
+                                <Clock className="h-3 w-3 opacity-70" />
+                                {formatRelativeTime(ws.updatedAt)}
+                            </div>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
+                    </div>
                 </button>
             ))}
         </div>

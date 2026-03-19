@@ -536,11 +536,21 @@ export function GraphCanvas() {
             }));
             const graphState = useGraphStore.getState();
             const draftNodeIds = new Set(draftActNodes.map((node) => node.id));
+
+            // Nodes that were pending (streamed but not yet in Firestore) and now appear
+            // in the draft snapshot have been confirmed — remove them from pending.
+            const nowConfirmedIds = graphState.pendingNodeIds.filter((id) => draftNodeIds.has(id));
+            if (nowConfirmedIds.length > 0) {
+                useGraphStore.getState().removePendingNodes(nowConfirmedIds);
+            }
+
             const preservedLiveNodes = graphState.actNodes.filter((node) => {
                 if (draftNodeIds.has(node.id)) {
                     return false;
                 }
-                return graphState.streamingNodeIds.includes(node.id) || graphState.editingNodeId === node.id;
+                return graphState.streamingNodeIds.includes(node.id)
+                    || graphState.editingNodeId === node.id
+                    || graphState.pendingNodeIds.includes(node.id);
             });
             const nextActNodes = [...draftActNodes, ...preservedLiveNodes];
             const nextActEdges: Edge[] = nextActNodes.flatMap((node) => {
@@ -745,6 +755,9 @@ export function GraphCanvas() {
             onOpenReferencedNode: commands.openReferencedNode,
             onCommitLabel: (nodeId, label) => {
                 void commands.commitActNodeLabel(nodeId, label);
+            },
+            onUpdateLabel: (nodeId, label) => {
+                commands.updateActNodeLabel(nodeId, label);
             },
             onRunAction: commands.runActFromNode,
             onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
@@ -987,6 +1000,9 @@ export function GraphCanvas() {
             onCommitLabel: (nodeId, label) => {
                 void commands.commitActNodeLabel(nodeId, label);
             },
+            onUpdateLabel: (nodeId, label) => {
+                commands.updateActNodeLabel(nodeId, label);
+            },
             onRunAction: commands.runActFromNode,
             onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
         }).map((node) => ({
@@ -1142,10 +1158,14 @@ export function GraphCanvas() {
 
         // Precompute expanded node bboxes once — avoids calling getDisplayNodeDimensions
         // M×N times (once per pair). Now expanded nodes are O(M), test nodes are O(N).
+        // Prefer node.measured (actual rendered size) over statically computed dimensions
+        // so that expanded nodes with variable-length content are covered correctly.
         const MARGIN = 28;
         const expandedBBoxes = expandedNodes.map((n) => {
-            const { width, height } = getDisplayNodeDimensions(n as Node<Record<string, unknown>>);
-            return { id: n.id, x: n.position.x, y: n.position.y, w: width, h: height };
+            const fallback = getDisplayNodeDimensions(n as Node<Record<string, unknown>>);
+            const w = n.measured?.width ?? fallback.width;
+            const h = n.measured?.height ?? fallback.height;
+            return { id: n.id, x: n.position.x, y: n.position.y, w, h };
         });
 
         return normalizedDisplayNodes.map((node) => {
@@ -1157,7 +1177,9 @@ export function GraphCanvas() {
 
             let overlapsExpanded = false;
             if (!isExpanded && expandedNodes.length > 0) {
-                const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                const fallback = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                const width = node.measured?.width ?? fallback.width;
+                const height = node.measured?.height ?? fallback.height;
                 overlapsExpanded = expandedBBoxes.some((bbox) => (
                     bbox.id !== node.id
                     && node.position.x < bbox.x + bbox.w + MARGIN
@@ -1221,7 +1243,9 @@ export function GraphCanvas() {
         for (const [ownerId, nodes] of byOwner) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const node of nodes) {
-                const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                const fallback = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
+                const width = node.measured?.width ?? fallback.width;
+                const height = node.measured?.height ?? fallback.height;
                 minX = Math.min(minX, node.position.x);
                 minY = Math.min(minY, node.position.y);
                 maxX = Math.max(maxX, node.position.x + width);
@@ -1655,6 +1679,23 @@ export function GraphCanvas() {
         return () => window.clearInterval(id);
     }, [collapseUnusedNodes, recordNodeUsed, collapseThresholdMinutes]);
 
+    const handleWheel = useCallback((event: React.WheelEvent) => {
+        if (!event.ctrlKey && !event.metaKey) {
+            return;
+        }
+        // Discrete zoom steps [0.4, 0.65, 1.0, 1.5]
+        const currentZoom = reactFlowInstance.getZoom();
+        const nearestIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
+            Math.abs(level - currentZoom) < Math.abs(ZOOM_LEVELS[best] - currentZoom) ? idx : best, 0);
+
+        const delta = event.deltaY < 0 ? 1 : -1;
+        const nextIdx = Math.min(Math.max(nearestIdx + delta, 0), ZOOM_LEVELS.length - 1);
+
+        if (nextIdx !== nearestIdx) {
+            reactFlowInstance.zoomTo(ZOOM_LEVELS[nextIdx], { duration: 200 });
+        }
+    }, [reactFlowInstance]);
+
     const activateRadialNode = useCallback((nodeId: string) => {
         recordRecentClickedNode(nodeId);
         setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);
@@ -1770,7 +1811,7 @@ export function GraphCanvas() {
     }
 
     return (
-        <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
+        <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick} onWheel={handleWheel}>
             {layoutToggle}
             {recentClickedSelector}
             <SearchBar />
@@ -1812,6 +1853,9 @@ export function GraphCanvas() {
                     style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },
                 }}
                 onlyRenderVisibleElements={false}
+                zoomOnScroll={false}
+                zoomOnPinch={false}
+                zoomOnDoubleClick={false}
                 defaultViewport={{ x: 0, y: 0, zoom: 0.9 }}
                 proOptions={{ hideAttribution: true }}
                 onNodeClick={(event: React.MouseEvent, node: Node) => {
@@ -1924,7 +1968,6 @@ export function GraphCanvas() {
                 onPaneClick={() => {
                     setActiveNode(null);
                 }}
-                zoomOnDoubleClick={false}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 nodesDraggable={false}

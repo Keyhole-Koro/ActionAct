@@ -201,6 +201,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             activeNodeId,
             editingNodeId,
             streamingNodeIds: state.streamingNodeIds.filter((id) => !actNodeIds.has(id)),
+            pendingNodeIds: state.pendingNodeIds.filter((id) => !actNodeIds.has(id)),
         };
     }),
     clearSelection: () => set((state) => {
@@ -597,6 +598,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             nodeLastUsedAt: nextNodeLastUsedAt,
             selectedNodeIds: nextSelectedNodeIds,
             streamingNodeIds: state.streamingNodeIds.filter((id) => id !== nodeId),
+            pendingNodeIds: state.pendingNodeIds.filter((id) => id !== nodeId),
             activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
             editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
         };

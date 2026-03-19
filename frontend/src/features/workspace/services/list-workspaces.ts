@@ -20,11 +20,18 @@ export async function listUserWorkspaces(uid: string): Promise<WorkspaceData[]> 
         if (!workspaceSnap.exists()) continue;
 
         const data = workspaceSnap.data();
+        const updatedAt = data.updatedAt && typeof data.updatedAt.toMillis === "function"
+            ? data.updatedAt.toMillis()
+            : undefined;
+
         workspaces.push({
             id: workspaceSnap.id,
             name: typeof data.name === "string" && data.name.trim() ? data.name : workspaceSnap.id,
             visibility: data.visibility === 'public' ? 'public' : 'private',
             createdBy: typeof data.createdBy === 'string' ? data.createdBy : undefined,
+            latestNodeSummary: typeof data.latestNodeSummary === "string" ? data.latestNodeSummary : undefined,
+            nodeCount: typeof data.nodeCount === "number" ? data.nodeCount : undefined,
+            updatedAt,
         });
     }
 
