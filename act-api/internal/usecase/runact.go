@@ -205,6 +205,7 @@ func validateRequest(msg *actv1.RunActRequest) error {
 		value string
 	}{
 		{"workspace_id", msg.GetWorkspaceId()},
+		{"topic_id", msg.GetTopicId()},
 		{"request_id", msg.GetRequestId()},
 		{"user_message", msg.GetUserMessage()},
 	}
