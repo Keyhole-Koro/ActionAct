@@ -12,13 +12,13 @@ type ProjectActOverlayParams = {
     expandedNodeIds: string[];
 };
 
-// X distance from the rightmost persisted node to the first act lane
+// X distance from the rightmost persisted node to the root column (depth=0)
 const GLOBAL_X_OFFSET = 220;
-// Horizontal gap between lanes within a tree
-const LANE_WIDTH = 340;
-// Extra vertical gap between rows within a tree
-const ROW_GAP = 28;
-// Extra vertical gap between separate trees
+// Horizontal gap between depth levels (depth=0, depth=1, depth=2, …)
+const COLUMN_GAP = 320;
+// Vertical gap between sibling subtrees within a tree
+const SIBLING_GAP = 24;
+// Vertical gap between separate trees
 const TREE_GAP = 48;
 
 export function projectActOverlay({
@@ -51,6 +51,7 @@ export function projectActOverlay({
     if (floatNodes.length === 0) return fixedNodes;
 
     const floatIds = new Set(floatNodes.map((n) => n.id));
+    const nodeById = new Map(floatNodes.map((n) => [n.id, n]));
 
     // Build parent→children map (only among float nodes)
     const childrenMap = new Map<string, string[]>();
@@ -71,80 +72,81 @@ export function projectActOverlay({
         return !parentId || !floatIds.has(parentId);
     });
 
-    // ── Per-tree layout ──────────────────────────────────────────────────────
-    // Lanes and rows are LOCAL to each tree so that independent trees don't
-    // force each other into ever-wider lane numbers.
-
-    const laneMap = new Map<string, number>();   // nodeId → local lane within its tree
-    const localRowMap = new Map<string, number>(); // nodeId → depth from its root
-    const rootOf = new Map<string, string>();      // nodeId → rootId
+    // ── Depth assignment (BFS from each root, resets to 0 per tree) ──────────
+    // X = baseX + depth * COLUMN_GAP — depth is independent per tree
+    const depthMap = new Map<string, number>();
 
     for (const root of roots) {
-        // ── DFS lane assignment (local, resets per tree) ──
-        // Returns the next available lane after this subtree.
-        // First child inherits the parent's lane (vertical chain);
-        // subsequent siblings start immediately after their predecessor's subtree.
-        const assignLanes = (nodeId: string, startLane: number): number => {
-            laneMap.set(nodeId, startLane);
-            rootOf.set(nodeId, root.id);
-            const children = childrenMap.get(nodeId) ?? [];
-            if (children.length === 0) return startLane + 1;
-            let nextLane = startLane;
-            for (let i = 0; i < children.length; i++) {
-                nextLane = assignLanes(children[i], i === 0 ? startLane : nextLane);
-            }
-            return nextLane;
-        };
-
-        assignLanes(root.id, 0);
-
-        // ── BFS local row assignment ──
-        const bfsQueue = [root.id];
-        localRowMap.set(root.id, 0);
+        const queue = [root.id];
+        depthMap.set(root.id, 0);
         let qi = 0;
-        while (qi < bfsQueue.length) {
-            const nodeId = bfsQueue[qi++];
-            const row = localRowMap.get(nodeId)!;
+        while (qi < queue.length) {
+            const nodeId = queue[qi++];
+            const depth = depthMap.get(nodeId)!;
             for (const childId of childrenMap.get(nodeId) ?? []) {
-                if (!localRowMap.has(childId)) {
-                    localRowMap.set(childId, row + 1);
-                    bfsQueue.push(childId);
+                if (!depthMap.has(childId)) {
+                    depthMap.set(childId, depth + 1);
+                    queue.push(childId);
                 }
             }
         }
     }
 
-    // ── Per-tree row heights ─────────────────────────────────────────────────
-    const rowHeightsPerRoot = new Map<string, number[]>();
-    for (const node of floatNodes) {
-        const rootId = rootOf.get(node.id);
-        if (!rootId) continue;
-        const localRow = localRowMap.get(node.id) ?? 0;
-        const { height } = getNodeDimensions(node, expandedSet.has(node.id));
-        const heights = rowHeightsPerRoot.get(rootId) ?? [];
-        while (heights.length <= localRow) heights.push(0);
-        heights[localRow] = Math.max(heights[localRow], height);
-        rowHeightsPerRoot.set(rootId, heights);
-    }
+    // ── Subtree height (post-order) ───────────────────────────────────────────
+    // subtreeHeight(n) = max(ownHeight, sum(children subtreeHeights) + gaps)
+    const subtreeHeightCache = new Map<string, number>();
 
-    // ── Per-tree cumulative Y offsets ────────────────────────────────────────
-    const rowYOffsetsPerRoot = new Map<string, number[]>();
-    for (const [rootId, heights] of rowHeightsPerRoot) {
-        const offsets = [0];
-        for (let r = 1; r < heights.length; r++) {
-            offsets.push(offsets[r - 1] + heights[r - 1] + ROW_GAP);
+    const subtreeHeight = (nodeId: string): number => {
+        const cached = subtreeHeightCache.get(nodeId);
+        if (cached !== undefined) return cached;
+        const node = nodeById.get(nodeId);
+        const own = node ? getNodeDimensions(node, expandedSet.has(nodeId)).height : GRAPH_ACT_NODE_HEIGHT;
+        const children = childrenMap.get(nodeId) ?? [];
+        if (children.length === 0) {
+            subtreeHeightCache.set(nodeId, own);
+            return own;
         }
-        rowYOffsetsPerRoot.set(rootId, offsets);
-    }
-
-    // Total pixel height of a tree
-    const getTreeHeight = (rootId: string): number => {
-        const heights = rowHeightsPerRoot.get(rootId) ?? [GRAPH_ACT_NODE_HEIGHT];
-        const offsets = rowYOffsetsPerRoot.get(rootId) ?? [0];
-        return offsets[offsets.length - 1] + heights[heights.length - 1];
+        const childTotal = children.reduce((s, c) => s + subtreeHeight(c), 0)
+            + SIBLING_GAP * (children.length - 1);
+        const result = Math.max(own, childTotal);
+        subtreeHeightCache.set(nodeId, result);
+        return result;
     };
 
-    // ── Anchor Y per root (center of primary referenced persisted node) ───────
+    for (const root of roots) subtreeHeight(root.id);
+
+    // ── Y position (top-down): place children sequentially, center parent ─────
+    const posYMap = new Map<string, number>();
+
+    const assignY = (nodeId: string, subtreeTop: number): void => {
+        const node = nodeById.get(nodeId);
+        const own = node ? getNodeDimensions(node, expandedSet.has(nodeId)).height : GRAPH_ACT_NODE_HEIGHT;
+        const children = childrenMap.get(nodeId) ?? [];
+
+        if (children.length === 0) {
+            posYMap.set(nodeId, subtreeTop);
+            return;
+        }
+
+        // Place children sequentially from subtreeTop
+        let cursor = subtreeTop;
+        for (const childId of children) {
+            assignY(childId, cursor);
+            cursor += subtreeHeight(childId) + SIBLING_GAP;
+        }
+
+        // Center this node vertically within its children's combined span
+        const firstChildY = posYMap.get(children[0])!;
+        const lastChild = children[children.length - 1];
+        const lastChildNode = nodeById.get(lastChild);
+        const lastChildH = lastChildNode
+            ? getNodeDimensions(lastChildNode, expandedSet.has(lastChild)).height
+            : GRAPH_ACT_NODE_HEIGHT;
+        const lastChildY = posYMap.get(lastChild)!;
+        posYMap.set(nodeId, (firstChildY + lastChildY + lastChildH) / 2 - own / 2);
+    };
+
+    // ── Anchor Y per root ─────────────────────────────────────────────────────
     const anchorYPerRoot = new Map<string, number>();
     let fallbackY = 200;
     for (const root of roots) {
@@ -159,79 +161,68 @@ export function projectActOverlay({
             anchorYPerRoot.set(root.id, anchor.position.y + ad.height / 2);
         } else {
             anchorYPerRoot.set(root.id, fallbackY);
-            fallbackY += getTreeHeight(root.id) + TREE_GAP;
+            fallbackY += subtreeHeight(root.id) + TREE_GAP;
         }
     }
 
-    // ── Sort roots by anchor Y, assign final Y origins (bidirectional relaxation) ─
+    // ── Sort roots by anchor Y, then resolve overlaps ─────────────────────────
     const sortedRoots = [...roots].sort(
         (a, b) => (anchorYPerRoot.get(a.id) ?? 0) - (anchorYPerRoot.get(b.id) ?? 0),
     );
 
-    const idealYOf = (rootId: string): number => {
+    // Ideal tree origin Y: root node's top-left so its center aligns with anchor
+    const idealOriginY = (rootId: string): number => {
         const anchorY = anchorYPerRoot.get(rootId) ?? 200;
-        const firstRowH = (rowHeightsPerRoot.get(rootId) ?? [GRAPH_ACT_NODE_HEIGHT])[0];
-        return anchorY - firstRowH / 2;
+        const node = nodeById.get(rootId);
+        const rootH = node ? getNodeDimensions(node, expandedSet.has(rootId)).height : GRAPH_ACT_NODE_HEIGHT;
+        return anchorY - rootH / 2;
     };
 
-    // Initialize at ideal positions
     const treeOriginY = new Map<string, number>();
-    for (const root of sortedRoots) {
-        treeOriginY.set(root.id, idealYOf(root.id));
-    }
+    for (const root of sortedRoots) treeOriginY.set(root.id, idealOriginY(root.id));
 
-    // Alternate forward (push down) + backward (pull toward ideal) passes.
-    // Forward ensures trees don't overlap the tree above.
-    // Backward pulls trees that were shoved down back toward their anchor.
-    // 3 iterations converges for typical layouts.
+    // 3 iterations of forward+backward relaxation to resolve overlaps
     for (let iter = 0; iter < 3; iter++) {
         // Forward: push down if overlapping tree above
         let prevBottom = -Infinity;
         for (const root of sortedRoots) {
             const y = Math.max(treeOriginY.get(root.id)!, prevBottom + TREE_GAP);
             treeOriginY.set(root.id, y);
-            prevBottom = y + getTreeHeight(root.id);
+            prevBottom = y + subtreeHeight(root.id);
         }
-
-        // Backward: pull toward ideal, constrained only by tree below
+        // Backward: pull toward ideal, constrained by tree below
         let nextTop = Infinity;
         for (let i = sortedRoots.length - 1; i >= 0; i--) {
             const root = sortedRoots[i];
-            const maxAllowed = nextTop - TREE_GAP - getTreeHeight(root.id);
-            // Go to idealY if room permits; otherwise as high as maxAllowed allows
-            const newY = Math.min(idealYOf(root.id), maxAllowed);
-            treeOriginY.set(root.id, newY);
-            nextTop = newY;
+            const maxAllowed = nextTop - TREE_GAP - subtreeHeight(root.id);
+            treeOriginY.set(root.id, Math.min(idealOriginY(root.id), maxAllowed));
+            nextTop = treeOriginY.get(root.id)!;
         }
     }
-
-    // Final forward pass: guarantee no overlap from above after backward pulls
+    // Final forward pass
     let finalPrevBottom = -Infinity;
     for (const root of sortedRoots) {
         const y = Math.max(treeOriginY.get(root.id)!, finalPrevBottom + TREE_GAP);
         treeOriginY.set(root.id, y);
-        finalPrevBottom = y + getTreeHeight(root.id);
+        finalPrevBottom = y + subtreeHeight(root.id);
     }
 
-    // ── Final positions ──────────────────────────────────────────────────────
+    // ── Run assignY for each tree from its resolved origin ────────────────────
+    for (const root of sortedRoots) {
+        assignY(root.id, treeOriginY.get(root.id) ?? 0);
+    }
+
+    // ── Emit positioned nodes ─────────────────────────────────────────────────
     const baseX = maxPersistedRight + GLOBAL_X_OFFSET;
 
-    const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
-        const lane = laneMap.get(node.id) ?? 0;
-        const rootId = rootOf.get(node.id) ?? roots[0]?.id ?? '';
-        const localRow = localRowMap.get(node.id) ?? 0;
-        const offsets = rowYOffsetsPerRoot.get(rootId) ?? [0];
-        const originY = treeOriginY.get(rootId) ?? 0;
-
-        return {
-            ...node,
-            position: {
-                x: baseX + lane * LANE_WIDTH,
-                y: originY + (offsets[localRow] ?? 0),
-            },
-            data: { ...node.data, overlayPositioned: true },
-        };
-    });
+    const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => ({
+        ...node,
+        position: {
+            x: baseX + (depthMap.get(node.id) ?? 0) * COLUMN_GAP,
+            y: posYMap.get(node.id) ?? 0,
+        },
+        data: { ...node.data, overlayPositioned: true },
+    }));
 
     return [...positionedFloat, ...fixedNodes];
 }
