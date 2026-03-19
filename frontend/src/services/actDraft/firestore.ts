@@ -57,10 +57,10 @@ function expiredAt(data: DocumentData): boolean {
 }
 
 function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
-  const rawTitle = data.title;
+  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? nodeId;
   return {
     id: nodeId,
-    title: typeof rawTitle === "string" ? rawTitle : nodeId,
+    title: resolvedTitle,
     kind: readString(data.kind) ?? "act",
     createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
     authorUid: readString(data.authorUid),

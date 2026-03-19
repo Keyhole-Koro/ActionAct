@@ -91,6 +91,7 @@ export function projectActOverlay({
     if (floatNodes.length === 0) return fixedNodes;
 
     const floatIds = new Set(floatNodes.map((n) => n.id));
+    const fixedById = new Map(fixedNodes.map((n) => [n.id, n]));
     const nodeById = new Map(floatNodes.map((n) => [n.id, n]));
 
     // Build parent→children map (only among float nodes)
@@ -105,20 +106,40 @@ export function projectActOverlay({
         }
     }
 
-    // Roots: float nodes with no float-node parent
+    // Roots: float nodes with no float-node parent.
+    // This includes both free roots (no act parent) and attached roots (parent is a fixed node).
     const roots = floatNodes.filter((n) => {
         const parentId =
             typeof n.data?.parentId === 'string' ? n.data.parentId : undefined;
         return !parentId || !floatIds.has(parentId);
     });
 
+    // ── Per-root base X ───────────────────────────────────────────────────────
+    // Attached roots (parent is a fixed/manual node) anchor their X to the fixed
+    // parent's right edge rather than the global baseX. This keeps agent subtrees
+    // visually adjacent to the user-placed node that spawned them.
+    const globalBaseX = maxPersistedRight + GLOBAL_X_OFFSET;
+    const baseXPerRoot = new Map<string, number>();
+    for (const root of roots) {
+        const parentId = typeof root.data?.parentId === 'string' ? root.data.parentId : undefined;
+        const fixedParent = parentId ? fixedById.get(parentId) : undefined;
+        if (fixedParent) {
+            const pd = getNodeDimensions(fixedParent, expandedSet.has(fixedParent.id));
+            baseXPerRoot.set(root.id, fixedParent.position.x + pd.width + COLUMN_GAP);
+        } else {
+            baseXPerRoot.set(root.id, globalBaseX);
+        }
+    }
+
     // ── Depth assignment (BFS from each root, resets to 0 per tree) ──────────
-    // X = baseX + depth * COLUMN_GAP — depth is independent per tree
+    // X = baseXPerRoot[root] + depth * COLUMN_GAP — depth is independent per tree
     const depthMap = new Map<string, number>();
+    const rootOfNode = new Map<string, string>(); // nodeId → its tree's root id
 
     for (const root of roots) {
         const queue = [root.id];
         depthMap.set(root.id, 0);
+        rootOfNode.set(root.id, root.id);
         let qi = 0;
         while (qi < queue.length) {
             const nodeId = queue[qi++];
@@ -126,6 +147,7 @@ export function projectActOverlay({
             for (const childId of childrenMap.get(nodeId) ?? []) {
                 if (!depthMap.has(childId)) {
                     depthMap.set(childId, depth + 1);
+                    rootOfNode.set(childId, root.id);
                     queue.push(childId);
                 }
             }
@@ -190,6 +212,16 @@ export function projectActOverlay({
     const anchorYPerRoot = new Map<string, number>();
     let fallbackY = 200;
     for (const root of roots) {
+        // Attached root: anchor to fixed parent's vertical center
+        const parentId = typeof root.data?.parentId === 'string' ? root.data.parentId : undefined;
+        const fixedParent = parentId ? fixedById.get(parentId) : undefined;
+        if (fixedParent) {
+            const pd = getNodeDimensions(fixedParent, expandedSet.has(fixedParent.id));
+            anchorYPerRoot.set(root.id, fixedParent.position.y + pd.height / 2);
+            continue;
+        }
+
+        // Free root: anchor to referenced persisted node, or fallback
         const referencedIds: string[] = Array.isArray(root.data?.referencedNodeIds)
             ? (root.data.referencedNodeIds as unknown[]).filter(
                   (v): v is string => typeof v === 'string',
@@ -253,16 +285,18 @@ export function projectActOverlay({
     }
 
     // ── Emit positioned nodes ─────────────────────────────────────────────────
-    const baseX = maxPersistedRight + GLOBAL_X_OFFSET;
-
-    const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => ({
-        ...node,
-        position: {
-            x: baseX + (depthMap.get(node.id) ?? 0) * COLUMN_GAP,
-            y: posYMap.get(node.id) ?? 0,
-        },
-        data: { ...node.data, overlayPositioned: true },
-    }));
+    const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
+        const rootId = rootOfNode.get(node.id);
+        const nodeBaseX = rootId != null ? (baseXPerRoot.get(rootId) ?? globalBaseX) : globalBaseX;
+        return {
+            ...node,
+            position: {
+                x: nodeBaseX + (depthMap.get(node.id) ?? 0) * COLUMN_GAP,
+                y: posYMap.get(node.id) ?? 0,
+            },
+            data: { ...node.data, overlayPositioned: true },
+        };
+    });
 
     const result = [...positionedFloat, ...fixedNodes];
     _overlayCache = { actKey, maxPersistedRight, expandedKey, result };

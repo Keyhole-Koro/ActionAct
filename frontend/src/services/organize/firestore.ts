@@ -81,12 +81,13 @@ function mapTopicNode(
   data: Record<string, unknown>,
 ): TopicNode {
   const nodeId = readString(data.nodeId) ?? docId;
+  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? nodeId;
 
   return {
     id: nodeId,
     topicId: readString(data.topicId),
     inputId: readString(data.sourceInputId),
-    title: readString(data.title) ?? nodeId,
+    title: resolvedTitle,
     kind: readString(data.kind),
     parentId: readString(data.parentId),
     contextSummary: readString(data.contextSummary),
