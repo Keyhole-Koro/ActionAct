@@ -27,7 +27,7 @@ export const config: FrontendConfig = {
   firebaseApiKey: readRequiredString(staticConfig.firebaseApiKey, "firebaseApiKey"),
   firebaseAuthDomain: readRequiredString(staticConfig.firebaseAuthDomain, "firebaseAuthDomain"),
   firebaseAppId: readRequiredString(staticConfig.firebaseAppId, "firebaseAppId"),
-  firebaseAuthEmulatorHost: readRequiredString(staticConfig.firebaseAuthEmulatorHost, "firebaseAuthEmulatorHost"),
-  firestoreEmulatorHost: readRequiredString(staticConfig.firestoreEmulatorHost, "firestoreEmulatorHost"),
+  firebaseAuthEmulatorHost: typeof staticConfig.firebaseAuthEmulatorHost === "string" ? staticConfig.firebaseAuthEmulatorHost : "",
+  firestoreEmulatorHost: typeof staticConfig.firestoreEmulatorHost === "string" ? staticConfig.firestoreEmulatorHost : "",
   gcloudProject: readRequiredString(staticConfig.gcloudProject, "gcloudProject"),
 };

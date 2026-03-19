@@ -1,10 +1,10 @@
 {
-  "rpcBaseUrl": "",
-  "actApiBaseUrl": "",
-  "firebaseApiKey": "replace-me",
-  "firebaseAuthDomain": "replace-me.firebaseapp.com",
-  "firebaseAppId": "replace-me",
+  "rpcBaseUrl": "https://action-490203.web.app",
+  "actApiBaseUrl": "https://action-490203.web.app",
+  "firebaseApiKey": "AIzaSyA-MSO2v8tcqKMUXjAgAUaRxN9oZ5KUpPU",
+  "firebaseAuthDomain": "action-490203.firebaseapp.com",
+  "firebaseAppId": "1:301828560850:web:be17d322d116410fc49a0b",
   "firebaseAuthEmulatorHost": "",
   "firestoreEmulatorHost": "",
-  "gcloudProject": "prod"
+  "gcloudProject": "action-490203"
 }
