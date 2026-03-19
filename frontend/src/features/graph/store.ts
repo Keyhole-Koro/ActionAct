@@ -390,6 +390,7 @@ export const useGraphStore = create<GraphState>((set) => ({
 
     addOrUpdateActNode: (nodeId, payload) => set((state) => {
         const exists = state.actNodes.find(n => n.id === nodeId);
+        const now = Date.now();
         if (exists) {
             const nextReferencedNodeIds = payload.referencedNodeIds !== undefined
                 ? payload.referencedNodeIds
@@ -417,6 +418,8 @@ export const useGraphStore = create<GraphState>((set) => ({
                         : n
                 ),
                 actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
+                // Update recency even on updates from agent to keep it visible while streaming
+                nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: now },
             };
         }
 
@@ -457,11 +460,16 @@ export const useGraphStore = create<GraphState>((set) => ({
             ]
             : newEdges;
 
-        return { actNodes: [...state.actNodes, newNode], actEdges: nextActEdges };
+        return {
+            actNodes: [...state.actNodes, newNode],
+            actEdges: nextActEdges,
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: now },
+        };
     }),
 
     addEmptyActNode: (position) => {
         const id = `user-node-${++_nodeCounter}-${Date.now()}`;
+        const now = Date.now();
         set((state) => ({
             actNodes: [...state.actNodes, {
                 id,
@@ -474,12 +482,14 @@ export const useGraphStore = create<GraphState>((set) => ({
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, [id]: now },
         }));
         return id;
     },
 
     addQueryActNode: (position, initialLabel, options) => {
         const id = `act-node-${++_nodeCounter}-${Date.now()}`;
+        const now = Date.now();
         set((state) => ({
             actNodes: [...state.actNodes, {
                 id,
@@ -501,6 +511,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, [id]: now },
         }));
         return id;
     },

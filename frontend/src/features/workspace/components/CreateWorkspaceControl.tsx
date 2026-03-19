@@ -27,7 +27,8 @@ export function CreateWorkspaceControl() {
         email: user.email,
         displayName: user.displayName,
       });
-      router.push(`/workspace/${workspaceId}?topicId=${topicId}`);
+      if (typeof window !== 'undefined') window.localStorage.setItem('run_context.topicId', topicId);
+      router.push(`/workspace/${workspaceId}`);
       toast.success("Workspace created");
     } catch (error) {
       console.error("Failed to create workspace", error);

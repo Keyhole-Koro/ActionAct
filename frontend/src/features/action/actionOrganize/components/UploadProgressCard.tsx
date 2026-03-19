@@ -1,14 +1,12 @@
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { useUploadStore, type UploadTask } from "../store/useUploadStore";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
-import { emitAuthContext } from "@/features/auth/session";
 
 const phaseLabel: Record<string, string> = {
     uploaded: "Queued",
     extracting: "Extracting text…",
     atomizing: "Atomizing claims…",
-    resolving_topic: "Resolving topic…",
     updating_draft: "Updating draft…",
     completed: "Done",
     failed: "Failed",
@@ -32,36 +30,24 @@ export function UploadProgressList() {
 
 function UploadProgressCard({ task }: { task: UploadTask }) {
     const removeUpload = useUploadStore((state) => state.removeUpload);
-    const { id, filename, status, progressPercentage, workspaceId, resolvedTopicId } = task;
+    const { id, filename, status, progressPercentage, resolvedTopicId } = task;
 
     const isDone = status === "completed";
     const isError = status === "failed";
     const isProcessing = !isDone && !isError;
-    const canNavigate = isDone && !!resolvedTopicId;
 
-    const handleCardClick = useCallback(() => {
-        if (!canNavigate) return;
-        emitAuthContext({ workspaceId, topicId: resolvedTopicId! });
-        window.dispatchEvent(new CustomEvent('action:focus-node', { detail: { nodeId: resolvedTopicId } }));
-        removeUpload(id);
-    }, [canNavigate, workspaceId, resolvedTopicId, removeUpload, id]);
-
-    // Auto-navigate on completion
+    // On completion, focus the resolved node and auto-dismiss.
     useEffect(() => {
-        if (canNavigate) {
-            const timer = setTimeout(() => {
-                handleCardClick();
-            }, 800); // Small delay to let user see "Done"
-            return () => clearTimeout(timer);
-        }
-    }, [canNavigate, handleCardClick]);
+        if (!isDone || !resolvedTopicId) return;
+        const timer = setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('action:focus-node', { detail: { nodeId: resolvedTopicId } }));
+            removeUpload(id);
+        }, 600);
+        return () => clearTimeout(timer);
+    }, [isDone, resolvedTopicId, removeUpload, id]);
 
     return (
-        <div
-            className={`flex items-center gap-2 rounded-lg border border-border/50 bg-background/90 backdrop-blur-sm px-2.5 py-1.5 shadow-sm w-56 animate-in slide-in-from-left-2${canNavigate ? ' cursor-pointer hover:bg-accent/50 transition-colors' : ''}`}
-            onClick={handleCardClick}
-            role={canNavigate ? "button" : undefined}
-        >
+        <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/90 backdrop-blur-sm px-2.5 py-1.5 shadow-sm w-56 animate-in slide-in-from-left-2">
             {/* status icon */}
             <div className="shrink-0">
                 {isProcessing && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
@@ -73,20 +59,20 @@ function UploadProgressCard({ task }: { task: UploadTask }) {
             <div className="flex-1 min-w-0">
                 <p className="truncate text-xs font-medium text-foreground leading-none mb-0.5">{filename}</p>
                 <p className={`text-[10px] leading-none ${isError ? "text-destructive" : isDone ? "text-green-600" : "text-muted-foreground"}`}>
-                    {canNavigate ? "Opening..." : (phaseLabel[status] ?? status)}
+                    {isDone ? "Opening…" : (phaseLabel[status] ?? status)}
                 </p>
             </div>
 
-            {/* dismiss button (done/error) or progress bar (in-progress) */}
-            {(isDone || isError) ? (
+            {/* dismiss button (error) or progress bar (in-progress) */}
+            {isError ? (
                 <button
                     className="shrink-0 p-0.5 rounded hover:bg-muted/50 text-muted-foreground cursor-pointer"
-                    onClick={(e) => { e.stopPropagation(); removeUpload(id); }}
+                    onClick={() => removeUpload(id)}
                     aria-label="Dismiss"
                 >
                     <X className="w-3 h-3" />
                 </button>
-            ) : (
+            ) : isProcessing ? (
                 <div className="w-10 shrink-0">
                     <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
                         <div
@@ -96,7 +82,7 @@ function UploadProgressCard({ task }: { task: UploadTask }) {
                     </div>
                     <p className="text-[9px] text-muted-foreground text-right mt-0.5">{progressPercentage}%</p>
                 </div>
-            )}
+            ) : null}
         </div>
     );
 }

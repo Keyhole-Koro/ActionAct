@@ -67,7 +67,8 @@ export function AuthGate({ children }: AuthGateProps) {
             displayName: user.displayName,
           });
           if (cancelled) return;
-          router.push(`/workspace/${result.workspaceId}?topicId=${result.topicId}`);
+          if (typeof window !== 'undefined') window.localStorage.setItem('run_context.topicId', result.topicId);
+          router.push(`/workspace/${result.workspaceId}`);
           return;
         }
 

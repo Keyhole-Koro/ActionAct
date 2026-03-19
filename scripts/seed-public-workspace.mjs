@@ -40,6 +40,7 @@ const BASE_URL = USE_PROD
 function sv(s) { return { stringValue: s }; }
 function bv(b) { return { booleanValue: b }; }
 function nv()  { return { nullValue: 'NULL_VALUE' }; }
+function av(items) { return { arrayValue: { values: items } }; }
 
 async function upsertDoc(path, fields) {
   const url = `${BASE_URL}/${path}?updateMask.fieldPaths=${Object.keys(fields).join('&updateMask.fieldPaths=')}`;
@@ -108,6 +109,7 @@ const SUBCLUSTER_LABELS = [
 
 function buildMockNodes(topicId) {
   const nodes = [];
+  const claimIds = [];
 
   for (const root of ROOTS) {
     nodes.push({ id: root.id, label: root.label, kind: 'topic', parentId: null, contextSummary: root.summary });
@@ -147,9 +149,21 @@ function buildMockNodes(topicId) {
             parentId: subclusterId,
             contextSummary: `${claimLabel} within ${clusterLabel.toLowerCase()} depends on repeated operational choices and local constraints.`,
           });
+          claimIds.push(claimId);
         }
       });
     });
+  });
+
+  // Add referencedNodeIds to claims to mirror the dotted edges in persistedGraphMockHundred.ts
+  claimIds.forEach((sourceId, index) => {
+    const targetId = claimIds[(index + 7) % claimIds.length];
+    if (sourceId !== targetId) {
+      const node = nodes.find(n => n.id === sourceId);
+      if (node) {
+        node.referencedNodeIds = [targetId];
+      }
+    }
   });
 
   return nodes;
@@ -211,6 +225,9 @@ async function main() {
     };
     if (node.parentId) {
       fields.parentId = sv(node.parentId);
+    }
+    if (node.referencedNodeIds) {
+      fields.referencedNodeIds = av(node.referencedNodeIds.map(sv));
     }
     writes.push(write(`workspaces/${WORKSPACE_ID}/topics/${TOPIC_ID}/nodes/${node.id}`, fields));
   }

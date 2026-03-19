@@ -415,7 +415,6 @@ export function GraphCanvas() {
     const { workspaceId, topicId, isReadOnly } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
-    const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
     const selectionGroups = useAgentInteractionStore((state) => state.groups);
     const toggleSelectionOption = useAgentInteractionStore((state) => state.toggleOptionSelection);
     const confirmSelection = useAgentInteractionStore((state) => state.confirmSelection);
@@ -463,23 +462,19 @@ export function GraphCanvas() {
     }, [searchParams]);
     const persistedLayoutMode = useMemo(() => {
         const layout = searchParams.get('layout');
-        if (layout === 'orbit') return 'orbit' as const;
-        return 'radial' as const;
+        if (layout === 'radial') return 'radial' as const;
+        return 'orbit' as const;
     }, [searchParams]);
+
+    const effectiveWorkspaceId = useMemo(() => (usePersistedGraphMock ? 'ws-mock-public' : workspaceId), [usePersistedGraphMock, workspaceId]);
+    const effectiveTopicId = useMemo(() => (usePersistedGraphMock ? 'topic-mock-1' : topicId), [usePersistedGraphMock, topicId]);
 
     useEffect(() => {
         setPersistedGraphRef.current = setPersistedGraph;
     }, [setPersistedGraph]);
 
     useEffect(() => {
-        if (usePersistedGraphMock) {
-            const mock = createPersistedGraphMockHundred(topicId);
-            persistedNodeCountRef.current = mock.nodes.length;
-            setPersistedGraphRef.current(mock.nodes, mock.edges);
-            return;
-        }
-
-        const unsubscribe = organizeService.subscribeTree(workspaceId, topicId, (topicNodes) => {
+        const unsubscribe = organizeService.subscribeTree(effectiveWorkspaceId, effectiveTopicId, (topicNodes) => {
             const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -517,10 +512,10 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [topicId, usePersistedGraphMock, workspaceId]);
+    }, [effectiveTopicId, effectiveWorkspaceId]);
 
     useEffect(() => {
-        const unsubscribe = actDraftService.subscribeDrafts(workspaceId, topicId, (draftNodes) => {
+        const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, effectiveTopicId, (draftNodes) => {
             const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -528,7 +523,7 @@ export function GraphCanvas() {
                 data: {
                     nodeSource: 'act',
                     createdBy: node.createdBy ?? 'agent',
-                    topicId: node.topicId ?? topicId,
+                    topicId: node.topicId ?? effectiveTopicId,
                     label: node.title,
                     kind: 'act',
                     contentMd: node.contentMd,
@@ -563,7 +558,7 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [setActGraph, topicId, workspaceId]);
+    }, [effectiveTopicId, effectiveWorkspaceId, setActGraph]);
 
     // Strip act nodes down to layout-relevant fields only.
     // parentId and referencedNodeIds are included because they directly determine
@@ -1742,17 +1737,6 @@ export function GraphCanvas() {
         </div>
     ) : null;
 
-    const setLayoutMode = useCallback((nextLayout: 'radial' | 'orbit') => {
-        const nextParams = new URLSearchParams(searchParams.toString());
-        if (nextLayout === 'radial') {
-            nextParams.delete('layout');
-        } else {
-            nextParams.set('layout', nextLayout);
-        }
-        const nextQuery = nextParams.toString();
-        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-    }, [pathname, router, searchParams]);
-
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
             <button
@@ -1763,38 +1747,6 @@ export function GraphCanvas() {
                 <Search className="h-3.5 w-3.5" />
                 <span>Search</span>
                 <kbd className="ml-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">⌘F</kbd>
-            </button>
-            <div className="mx-1 h-4 w-px bg-slate-200" />
-            {(['orbit'] as const).map((mode) => {
-                const active = persistedLayoutMode === mode;
-                return (
-                    <button
-                        key={mode}
-                        type="button"
-                        className={[
-                            'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200',
-                            active
-                                ? 'bg-slate-900 text-white'
-                                : 'text-slate-600 hover:bg-slate-100',
-                        ].join(' ')}
-                        onClick={() => setLayoutMode(mode)}
-                    >
-                        Orbit
-                    </button>
-                );
-            })}
-            <button
-                type="button"
-                className={[
-                    'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-200 border',
-                    autoRouteEdgeHandles
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-100',
-                ].join(' ')}
-                onClick={() => setStreamPreferences({ autoRouteEdgeHandles: !autoRouteEdgeHandles })}
-                title="Toggle nearest-side edge routing"
-            >
-                Auto Side
             </button>
         </div>
     );

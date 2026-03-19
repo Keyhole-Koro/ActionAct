@@ -192,7 +192,10 @@ function buildSimCacheKey(
     const actParts = actNodes.map((n) => {
         const refs = Array.isArray(n.data.referencedNodeIds) ? (n.data.referencedNodeIds as string[]).join('+') : '';
         const parentId = typeof n.data.parentId === 'string' ? n.data.parentId : '';
-        return `${n.id}:${refs}:${parentId}`;
+        const manual = n.data?.isManualPosition === true
+            ? `@${Math.round(n.position.x)},${Math.round(n.position.y)}`
+            : '';
+        return `${n.id}:${refs}:${parentId}${manual}`;
     });
     const persistedIds = [...homePositions.keys()].sort().join(',');
     return `${actParts.join('|')}||${persistedIds}`;
@@ -236,10 +239,15 @@ function runCombinedSimulation(
     const allSimNodes: SimNode[] = [
         // Persisted: start at home position, will be pulled back by forceX/Y
         ...[...homePositions.entries()].map(([id, pos]) => ({ id, x: pos.x, y: pos.y } as SimNode)),
-        // Act: start at seed position
+        // Act: start at seed position; pin manually-placed nodes
         ...actNodes.map((node) => {
             const seed = actSeedPositions.get(node.id) ?? { x: ORBIT_CENTER_X, y: ORBIT_CENTER_Y };
-            return { id: node.id, x: seed.x, y: seed.y } as SimNode;
+            const simNode: SimNode = { id: node.id, x: seed.x, y: seed.y };
+            if (node.data?.isManualPosition === true && node.position) {
+                simNode.fx = node.position.x;
+                simNode.fy = node.position.y;
+            }
+            return simNode;
         }),
     ];
 

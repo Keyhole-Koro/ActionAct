@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { workspaceService, type WorkspaceData } from '@/features/workspace/services/workspace-service';
-import { CreateWorkspaceControl } from '@/features/workspace/components/CreateWorkspaceControl';
 import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
 import { FolderKanban, LayoutGrid, Globe, Lock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,6 +14,8 @@ import { useAuthState } from '@/features/auth/hooks/useAuthState';
 export function FloatingHeader() {
     const { workspaceId, isReadOnly } = useRunContextStore();
     const { user } = useAuthState();
+    const searchParams = useSearchParams();
+    const usePersistedGraphMock = searchParams.get('graphMock') === '1';
     const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState("");
@@ -122,12 +124,6 @@ export function FloatingHeader() {
                                 {workspace?.name ?? workspaceId}
                             </span>
                         )}
-
-                        {workspace?.visibility === 'public' && (
-                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium">
-                                Public
-                            </span>
-                        )}
                     </div>
 
                     <div className="h-5 w-px bg-border/60 mx-1" />
@@ -139,23 +135,32 @@ export function FloatingHeader() {
                     >
                         <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
                     </Link>
-                    {!isReadOnly && (
+                    {!isReadOnly && !usePersistedGraphMock && (
                         <>
                             {isOwner && (
                                 <button
                                     type="button"
                                     onClick={() => void handleToggleVisibility()}
                                     disabled={updatingVisibility}
-                                    className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                                    className="flex h-7 px-2 items-center gap-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-50"
                                     title={workspace?.visibility === 'public' ? 'Make private' : 'Make public'}
                                 >
                                     {workspace?.visibility === 'public'
-                                        ? <Globe className="h-3.5 w-3.5 text-primary" />
-                                        : <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                        ? (
+                                            <>
+                                                <Globe className="h-3.5 w-3.5 text-primary" />
+                                                <span className="text-xs font-medium text-primary">Public</span>
+                                            </>
+                                        )
+                                        : (
+                                            <>
+                                                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span className="text-xs font-medium text-muted-foreground">Private</span>
+                                            </>
+                                        )
                                     }
                                 </button>
                             )}
-                            <CreateWorkspaceControl />
                             <AddMemberControl workspaceId={workspaceId} />
                         </>
                     )}

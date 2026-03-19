@@ -1,7 +1,7 @@
 "use client";
 
 import React, { ReactNode, useEffect } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { AuthGate } from '@/features/auth/components/AuthGate';
 import { FloatingHeader } from './FloatingHeader';
 import { AskForm } from '@/components/ui/AskForm';
@@ -17,28 +17,24 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
     const router = useRouter();
     const params = useParams<{ id: string }>();
-    const searchParams = useSearchParams();
-    const { topicId: storedTopicId, setContext } = useRunContextStore();
+    const { setContext } = useRunContextStore();
 
     const workspaceId = params?.id ?? '';
 
-    // Sync workspaceId (from path) and topicId (from query param or localStorage) into the store.
+    // Sync workspaceId into the store; topicId comes from localStorage.
     useEffect(() => {
         if (!workspaceId) return;
 
-        const urlTopicId = searchParams.get('topicId')?.trim();
         const persistedTopicId = typeof window !== 'undefined'
             ? window.localStorage.getItem('run_context.topicId')
             : null;
-        const nextTopicId = urlTopicId || persistedTopicId || storedTopicId;
 
-        setContext(workspaceId, nextTopicId);
+        setContext(workspaceId, persistedTopicId ?? undefined);
 
         if (typeof window !== 'undefined') {
             window.localStorage.setItem('run_context.workspaceId', workspaceId);
-            if (nextTopicId) window.localStorage.setItem('run_context.topicId', nextTopicId);
         }
-    }, [workspaceId, searchParams, setContext, storedTopicId]);
+    }, [workspaceId, setContext]);
 
     // Handle auth-context events (e.g., clicking a completed upload to jump to a topic).
     useEffect(() => {
@@ -49,7 +45,8 @@ export function AppShell({ children }: AppShellProps) {
             const nextWsId = e.detail?.workspaceId?.trim();
             const nextTopicId = e.detail?.topicId?.trim();
             if (!nextWsId || !nextTopicId) return;
-            router.push(`/workspace/${nextWsId}?topicId=${nextTopicId}`);
+            if (typeof window !== 'undefined') window.localStorage.setItem('run_context.topicId', nextTopicId);
+            router.push(`/workspace/${nextWsId}`);
         };
 
         window.addEventListener('action:auth-context', onAuthContext);
