@@ -3,19 +3,19 @@
 import { actDraftService } from '@/services/actDraft/firestore';
 import { useGraphStore } from '@/features/graph/store';
 
-export async function removeActNodeAndDraft(workspaceId: string, topicId: string, nodeId: string) {
+export async function removeActNodeAndDraft(workspaceId: string, nodeId: string) {
     useGraphStore.getState().removeActNode(nodeId);
-    await actDraftService.deleteDraft(workspaceId, topicId, nodeId).catch((error) => {
+    await actDraftService.deleteDraft(workspaceId, nodeId).catch((error) => {
         console.error('Failed to delete act draft', { nodeId, error });
     });
 }
 
-export async function clearAllActNodes(workspaceId: string, topicId: string) {
+export async function clearAllActNodes(workspaceId: string) {
     const nodeIds = useGraphStore.getState().actNodes.map((node) => node.id);
     useGraphStore.getState().clearActGraph();
 
     await Promise.all(
-        nodeIds.map((nodeId) => actDraftService.deleteDraft(workspaceId, topicId, nodeId).catch((error) => {
+        nodeIds.map((nodeId) => actDraftService.deleteDraft(workspaceId, nodeId).catch((error) => {
             console.error('Failed to delete act draft', { nodeId, error });
         })),
     );

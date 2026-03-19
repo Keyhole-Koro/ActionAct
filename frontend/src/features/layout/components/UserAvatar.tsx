@@ -34,12 +34,10 @@ export function UserAvatar({
 }) {
     const { user } = useAuthState();
     const [language, setLanguage] = React.useState<ResponseLanguage>("ja");
-    const [menuOpen, setMenuOpen] = React.useState(false);
     const [accountOpen, setAccountOpen] = React.useState(false);
     const [userSettingsOpen, setUserSettingsOpen] = React.useState(false);
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const setStreamPreferences = useStreamPreferencesStore((state) => state.setPreferences);
-    const closeTimerRef = React.useRef<number | null>(null);
     const userInitial = user?.displayName?.trim().charAt(0) || user?.email?.trim().charAt(0) || 'U';
 
     React.useEffect(() => {
@@ -50,38 +48,6 @@ export function UserAvatar({
             setLanguage(updatedLanguage);
         });
     }, []);
-
-    React.useEffect(() => {
-        return () => {
-            if (closeTimerRef.current !== null && typeof window !== "undefined") {
-                window.clearTimeout(closeTimerRef.current);
-            }
-        };
-    }, []);
-
-    const clearCloseTimer = () => {
-        if (closeTimerRef.current !== null && typeof window !== "undefined") {
-            window.clearTimeout(closeTimerRef.current);
-            closeTimerRef.current = null;
-        }
-    };
-
-    const openMenu = () => {
-        clearCloseTimer();
-        setMenuOpen(true);
-    };
-
-    const scheduleCloseMenu = () => {
-        clearCloseTimer();
-        if (typeof window === "undefined") {
-            setMenuOpen(false);
-            return;
-        }
-        closeTimerRef.current = window.setTimeout(() => {
-            setMenuOpen(false);
-            closeTimerRef.current = null;
-        }, 140);
-    };
 
     const handleLanguageChange = (value: string) => {
         if (value !== "ja" && value !== "en") {
@@ -99,12 +65,9 @@ export function UserAvatar({
     }
 
     return (
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenu>
             <DropdownMenuTrigger
                 className={cn("rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary ring-offset-2 transition-all group", className)}
-                onMouseEnter={openMenu}
-                onMouseLeave={scheduleCloseMenu}
-                onFocus={openMenu}
             >
                 <Avatar className="h-10 w-10 border border-border/50 shadow-sm cursor-pointer group-hover:scale-105 transition-transform bg-muted">
                     <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User avatar"} />
@@ -117,9 +80,6 @@ export function UserAvatar({
                 align={dropdownAlign}
                 side={dropdownSide}
                 className="w-56 p-2 rounded-xl shadow-lg border-border/40 mb-2 ml-2"
-                onMouseEnter={openMenu}
-                onMouseLeave={scheduleCloseMenu}
-                onFocus={openMenu}
             >
                 <DropdownMenuGroup>
                     <DropdownMenuLabel className="font-normal">

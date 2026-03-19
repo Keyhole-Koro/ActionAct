@@ -412,7 +412,7 @@ export function GraphCanvas() {
         nodeLastUsedAt,
         nodeUseCount,
     } = useGraphStore();
-    const { workspaceId, topicId, isReadOnly } = useRunContextStore();
+    const { workspaceId, isReadOnly } = useRunContextStore();
     const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const selectionGroups = useAgentInteractionStore((state) => state.groups);
@@ -420,7 +420,7 @@ export function GraphCanvas() {
     const confirmSelection = useAgentInteractionStore((state) => state.confirmSelection);
     const clearSelectionGroup = useAgentInteractionStore((state) => state.clearSelection);
     const cancelSelectionGroup = useAgentInteractionStore((state) => state.cancelGroup);
-    const commands = useGraphCommands({ workspaceId, topicId });
+    const commands = useGraphCommands({ workspaceId });
     const reactFlowInstance = useReactFlow();
 
     const setPersistedGraphRef = useRef(setPersistedGraph);
@@ -467,14 +467,14 @@ export function GraphCanvas() {
     }, [searchParams]);
 
     const effectiveWorkspaceId = useMemo(() => (usePersistedGraphMock ? 'ws-mock-public' : workspaceId), [usePersistedGraphMock, workspaceId]);
-    const effectiveTopicId = useMemo(() => (usePersistedGraphMock ? 'topic-mock-1' : topicId), [usePersistedGraphMock, topicId]);
+    const effectiveTopicId = usePersistedGraphMock ? 'topic-mock-1' : undefined;
 
     useEffect(() => {
         setPersistedGraphRef.current = setPersistedGraph;
     }, [setPersistedGraph]);
 
     useEffect(() => {
-        const unsubscribe = organizeService.subscribeTree(effectiveWorkspaceId, effectiveTopicId, (topicNodes) => {
+        const unsubscribe = organizeService.subscribeTree(effectiveWorkspaceId, (topicNodes) => {
             const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -512,10 +512,10 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [effectiveTopicId, effectiveWorkspaceId]);
+    }, [effectiveWorkspaceId]);
 
     useEffect(() => {
-        const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, effectiveTopicId, (draftNodes) => {
+        const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, (draftNodes) => {
             const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -523,7 +523,7 @@ export function GraphCanvas() {
                 data: {
                     nodeSource: 'act',
                     createdBy: node.createdBy ?? 'agent',
-                    topicId: node.topicId ?? effectiveTopicId,
+                    topicId: node.topicId,
                     label: node.title,
                     kind: 'act',
                     contentMd: node.contentMd,
@@ -558,7 +558,7 @@ export function GraphCanvas() {
         });
 
         return () => unsubscribe();
-    }, [effectiveTopicId, effectiveWorkspaceId, setActGraph]);
+    }, [effectiveWorkspaceId, setActGraph]);
 
     // Strip act nodes down to layout-relevant fields only.
     // parentId and referencedNodeIds are included because they directly determine
@@ -797,11 +797,11 @@ export function GraphCanvas() {
             if (appliedBriefActIds.current.has(actNode.id)) continue;
             const refs = actNode.data?.referencedNodeIds;
             const targetNodeId = Array.isArray(refs) && typeof refs[0] === 'string' ? refs[0] : null;
-            if (!targetNodeId || !workspaceId || !topicId) continue;
+            if (!targetNodeId || !workspaceId) continue;
             appliedBriefActIds.current.add(actNode.id);
-            void organizeService.updateNodeSummary(workspaceId, topicId, targetNodeId, actNode.data.contentMd);
+            void organizeService.updateNodeSummary(workspaceId, targetNodeId, actNode.data.contentMd);
         }
-    }, [actNodes, workspaceId, topicId]);
+    }, [actNodes, workspaceId]);
 
     const canvasNodes = useMemo(
         () => [

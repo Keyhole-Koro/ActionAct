@@ -17,12 +17,12 @@ import type { TopicNode } from "@/services/organize/port";
 
 const DRAFT_TTL_MS = 72 * 60 * 60 * 1000;
 
-function draftsCollection(workspaceId: string, topicId: string) {
-  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/actDrafts`);
+function draftsCollection(workspaceId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/actDrafts`);
 }
 
-function draftDoc(workspaceId: string, topicId: string, nodeId: string) {
-  return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/actDrafts/${nodeId}`);
+function draftDoc(workspaceId: string, nodeId: string) {
+  return doc(firestore, `workspaces/${workspaceId}/actDrafts/${nodeId}`);
 }
 
 function readString(value: unknown): string | undefined {
@@ -65,8 +65,8 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
 }
 
 export const actDraftService = {
-  subscribeDrafts(workspaceId: string, topicId: string, callback: (nodes: TopicNode[]) => void) {
-    const q = query(draftsCollection(workspaceId, topicId), orderBy("lastTouchedAt", "desc"));
+  subscribeDrafts(workspaceId: string, callback: (nodes: TopicNode[]) => void) {
+    const q = query(draftsCollection(workspaceId), orderBy("lastTouchedAt", "desc"));
 
     return onSnapshot(q, (snapshot) => {
       const nextNodes = snapshot.docs.flatMap((draftSnapshot) => {
@@ -83,15 +83,14 @@ export const actDraftService = {
 
   async saveDraftSnapshot(
     workspaceId: string,
-    topicId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; parentId?: string },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; parentId?: string; topicId?: string },
   ) {
     await setDoc(
-      draftDoc(workspaceId, topicId, nodeId),
+      draftDoc(workspaceId, nodeId),
       {
         nodeId,
-        topicId,
+        topicId: draft.topicId ?? '',
         title: draft.title ?? nodeId,
         kind: draft.kind ?? "act",
         createdBy: draft.createdBy ?? "agent",
@@ -108,10 +107,10 @@ export const actDraftService = {
     );
   },
 
-  async applyPatch(workspaceId: string, topicId: string, patch: PatchOp, queryText: string) {
+  async applyPatch(workspaceId: string, patch: PatchOp, queryText: string) {
     const payload = {
       nodeId: patch.nodeId,
-      topicId,
+      topicId: patch.data?.topicId ?? '',
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
       createdBy: patch.data?.createdBy ?? "agent",
@@ -123,18 +122,18 @@ export const actDraftService = {
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
       pinned: false,
     };
-    await setDoc(draftDoc(workspaceId, topicId, patch.nodeId), payload, { merge: true });
+    await setDoc(draftDoc(workspaceId, patch.nodeId), payload, { merge: true });
   },
 
-  async touchDraft(workspaceId: string, topicId: string, nodeId: string) {
-    await updateDoc(draftDoc(workspaceId, topicId, nodeId), {
+  async touchDraft(workspaceId: string, nodeId: string) {
+    await updateDoc(draftDoc(workspaceId, nodeId), {
       lastTouchedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
     });
   },
 
-  async renameDraft(workspaceId: string, topicId: string, nodeId: string, newTitle: string) {
-    await updateDoc(draftDoc(workspaceId, topicId, nodeId), {
+  async renameDraft(workspaceId: string, nodeId: string, newTitle: string) {
+    await updateDoc(draftDoc(workspaceId, nodeId), {
       title: newTitle,
       updatedAt: serverTimestamp(),
       lastTouchedAt: serverTimestamp(),
@@ -142,7 +141,7 @@ export const actDraftService = {
     });
   },
 
-  async deleteDraft(workspaceId: string, topicId: string, nodeId: string) {
-    await deleteDoc(draftDoc(workspaceId, topicId, nodeId));
+  async deleteDraft(workspaceId: string, nodeId: string) {
+    await deleteDoc(draftDoc(workspaceId, nodeId));
   },
 };

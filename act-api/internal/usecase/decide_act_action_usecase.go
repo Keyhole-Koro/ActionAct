@@ -29,9 +29,6 @@ func (u *DecideActActionUsecase) Execute(ctx context.Context, authHeader string,
 	if input.WorkspaceID == "" {
 		return domain.ActDecisionResult{}, fmt.Errorf("%w: workspace_id is required", domain.ErrInvalidArgument)
 	}
-	if input.TopicID == "" {
-		return domain.ActDecisionResult{}, fmt.Errorf("%w: topic_id is required", domain.ErrInvalidArgument)
-	}
 	if input.UserMessage == "" {
 		return domain.ActDecisionResult{}, fmt.Errorf("%w: user_message is required", domain.ErrInvalidArgument)
 	}

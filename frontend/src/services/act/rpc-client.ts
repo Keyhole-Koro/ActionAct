@@ -206,7 +206,7 @@ export function createRpcActService(): ActPort {
         try {
           const runContext = useRunContextStore.getState();
           const workspaceId = options?.workspaceId ?? runContext.workspaceId;
-          const topicId = options?.topicId ?? runContext.topicId;
+          const topicId = options?.topicId ?? '';
           const queryWithLanguagePreference = applyResponseLanguagePreference(query);
           const model = resolveLlmModel(options?.modelProfile);
           const headers = await buildHeaders();

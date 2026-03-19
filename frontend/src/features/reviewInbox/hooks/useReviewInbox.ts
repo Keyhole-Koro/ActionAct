@@ -16,20 +16,20 @@ const stateOrder: Record<ReviewOpItem['state'], number> = {
 };
 
 export function useReviewInbox() {
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId } = useRunContextStore();
     const [items, setItems] = useState<ReviewOpItem[]>([]);
     const [filter, setFilter] = useState<ReviewInboxFilter>('all');
 
     useEffect(() => {
-        if (!workspaceId || !topicId) {
+        if (!workspaceId) {
             return;
         }
 
-        return organizeService.subscribeOrganizeOps(workspaceId, topicId, setItems);
-    }, [topicId, workspaceId]);
+        return organizeService.subscribeOrganizeOps(workspaceId, setItems);
+    }, [workspaceId]);
 
     const filteredItems = useMemo(() => {
-        if (!workspaceId || !topicId) {
+        if (!workspaceId) {
             return [];
         }
 
@@ -54,7 +54,7 @@ export function useReviewInbox() {
             }
             return (right.createdAt ?? 0) - (left.createdAt ?? 0);
         });
-    }, [filter, items, topicId, workspaceId]);
+    }, [filter, items, workspaceId]);
 
     return {
         filter,

@@ -171,7 +171,7 @@ function buildMockNodes(topicId) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log(`\nSeeding public workspace`);
+  console.log(`\nSeeding public workspace (flat structure)`);
   console.log(`  Project:     ${PROJECT}`);
   console.log(`  Target:      ${USE_PROD ? 'PRODUCTION' : `emulator (${EMULATOR_HOST})`}`);
   console.log(`  Workspace:   ${WORKSPACE_ID}`);
@@ -200,18 +200,7 @@ async function main() {
     role: sv('owner'),
   }));
 
-  // Topic doc
-  writes.push(write(`workspaces/${WORKSPACE_ID}/topics/${TOPIC_ID}`, {
-    workspaceId:           sv(WORKSPACE_ID),
-    topicId:               sv(TOPIC_ID),
-    title:                 sv('Mock Topic'),
-    status:                sv('active'),
-    latestDraftVersion:    { integerValue: '0' },
-    latestOutlineVersion:  { integerValue: '0' },
-    schemaVersion:         { integerValue: '0' },
-  }));
-
-  // Node docs
+  // Node docs - NOW STORED DIRECTLY UNDER WORKSPACE
   for (const node of nodes) {
     const fields = {
       nodeId:         sv(node.id),
@@ -229,7 +218,8 @@ async function main() {
     if (node.referencedNodeIds) {
       fields.referencedNodeIds = av(node.referencedNodeIds.map(sv));
     }
-    writes.push(write(`workspaces/${WORKSPACE_ID}/topics/${TOPIC_ID}/nodes/${node.id}`, fields));
+    // New Path: workspaces/{workspaceId}/nodes/{nodeId}
+    writes.push(write(`workspaces/${WORKSPACE_ID}/nodes/${node.id}`, fields));
   }
 
   // Commit in batches of 500 (Firestore limit)
@@ -241,7 +231,7 @@ async function main() {
   }
 
   console.log('\nDone!');
-  console.log(`  Open: /workspace/${WORKSPACE_ID}?topicId=${TOPIC_ID}`);
+  console.log(`  Open: /workspace/${WORKSPACE_ID}`);
 }
 
 main().catch((err) => {

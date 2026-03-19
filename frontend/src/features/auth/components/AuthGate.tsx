@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { doc, getDoc } from "firebase/firestore";
 
@@ -20,7 +20,6 @@ type AuthGateProps = {
 export function AuthGate({ children }: AuthGateProps) {
   const { user, loading, error, isAuthenticated } = useRequireAuth();
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const setReadOnly = useRunContextStore((s) => s.setReadOnly);
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -67,7 +66,6 @@ export function AuthGate({ children }: AuthGateProps) {
             displayName: user.displayName,
           });
           if (cancelled) return;
-          if (typeof window !== 'undefined') window.localStorage.setItem('run_context.topicId', result.topicId);
           router.push(`/workspace/${result.workspaceId}`);
           return;
         }
@@ -76,10 +74,7 @@ export function AuthGate({ children }: AuthGateProps) {
 
         if (cancelled) return;
 
-        const topicId = searchParams.get('topicId') ??
-          (typeof window !== 'undefined' ? window.localStorage.getItem('run_context.topicId') : null) ?? '';
-
-        await ensureLocalWorkspaceAccess(user, workspaceId, topicId);
+        await ensureLocalWorkspaceAccess(user, workspaceId);
 
         const idToken = await user.getIdToken();
         if (!idToken) {
@@ -112,7 +107,7 @@ export function AuthGate({ children }: AuthGateProps) {
     return () => {
       cancelled = true;
     };
-  }, [user, workspaceId, searchParams, router]);
+  }, [user, workspaceId, router]);
 
   if (loading) {
     return <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">Loading auth...</div>;

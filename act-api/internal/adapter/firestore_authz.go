@@ -24,29 +24,27 @@ func NewFirestoreAuthzVerifier(ctx context.Context, project string) (*FirestoreA
 }
 
 func (v *FirestoreAuthzVerifier) AuthorizeRunAct(ctx context.Context, uid, workspaceID, topicID string) error {
+	// 1. Check if user is a member of the workspace
 	memberPath := fmt.Sprintf("workspaces/%s/members/%s", workspaceID, uid)
 	memberSnap, err := v.client.Doc(memberPath).Get(ctx)
-	if err != nil {
-		if status.Code(err) == codes.NotFound {
+	isMember := err == nil && memberSnap.Exists()
+
+	if !isMember {
+		// 2. If not a member, check if the workspace is public
+		wsPath := fmt.Sprintf("workspaces/%s", workspaceID)
+		wsSnap, err := v.client.Doc(wsPath).Get(ctx)
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				return domain.ErrPermissionDenied
+			}
+			return fmt.Errorf("%w: read workspace: %v", domain.ErrUnavailable, err)
+		}
+		vis, _ := wsSnap.Data()["visibility"].(string)
+		if vis != "public" {
 			return domain.ErrPermissionDenied
 		}
-		return fmt.Errorf("%w: read workspace member: %v", domain.ErrUnavailable, err)
-	}
-	if !memberSnap.Exists() {
-		return domain.ErrPermissionDenied
 	}
 
-	topicPath := fmt.Sprintf("workspaces/%s/topics/%s", workspaceID, topicID)
-	topicSnap, err := v.client.Doc(topicPath).Get(ctx)
-	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			return domain.ErrPermissionDenied
-		}
-		return fmt.Errorf("%w: read topic: %v", domain.ErrUnavailable, err)
-	}
-	if !topicSnap.Exists() {
-		return domain.ErrPermissionDenied
-	}
 	return nil
 }
 

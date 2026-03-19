@@ -145,7 +145,7 @@ export async function createClarificationSelectionGroup(
   const runContext = useRunContextStore.getState();
   const resolved = await resolveNodeCandidates({
     workspaceId: runContext.workspaceId,
-    topicId: runContext.topicId,
+    topicId: '',
     userMessage: params.query,
     nodes: visibleGraphNodes,
     activeNodeId,

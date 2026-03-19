@@ -1,6 +1,5 @@
 export type AuthContextPayload = {
   workspaceId: string;
-  topicId: string;
 };
 
 const AUTH_CONTEXT_EVENT = "action:auth-context";

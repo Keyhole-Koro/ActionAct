@@ -170,15 +170,25 @@ async function resolveContextNodeIds(
     return { status: "ready", contextNodeIds: [] };
   }
   const runContext = useRunContextStore.getState();
-  const decision = await decideActAction({
-    workspaceId: runContext.workspaceId,
-    topicId: runContext.topicId,
-    userMessage,
-    nodes: visibleGraph.nodes,
-    activeNodeId: visibleGraph.activeNodeId,
-    selectedNodeIds: visibleGraph.selectedNodeIds,
-    availableTools: [...toolNames],
-  });
+  if (!runContext.workspaceId) {
+    return { status: "ready", contextNodeIds: [] };
+  }
+
+  let decision;
+  try {
+    decision = await decideActAction({
+      workspaceId: runContext.workspaceId,
+      topicId: '',
+      userMessage,
+      nodes: visibleGraph.nodes,
+      activeNodeId: visibleGraph.activeNodeId,
+      selectedNodeIds: visibleGraph.selectedNodeIds,
+      availableTools: [...toolNames],
+    });
+  } catch (err) {
+    console.warn("[ACT] decideActAction failed, proceeding without context decision:", err);
+    return { status: "ready", contextNodeIds: [] };
+  }
 
   if (decision.action === "run") {
     return {

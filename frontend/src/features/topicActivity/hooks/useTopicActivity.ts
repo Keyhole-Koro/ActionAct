@@ -16,21 +16,21 @@ function priority(item: TopicActivityItem) {
 }
 
 export function useTopicActivity() {
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId } = useRunContextStore();
     const uploads = useUploadStore((state) => state.uploads);
     const [items, setItems] = useState<TopicActivityItem[]>([]);
     const [filter, setFilter] = useState<TopicActivityFilter>('all');
 
     useEffect(() => {
-        if (!workspaceId || !topicId) {
+        if (!workspaceId) {
             return;
         }
 
-        return organizeService.subscribeTopicActivity(workspaceId, topicId, setItems);
-    }, [topicId, workspaceId]);
+        return organizeService.subscribeTopicActivity(workspaceId, setItems);
+    }, [workspaceId]);
 
     const filteredItems = useMemo(() => {
-        if (!workspaceId || !topicId) {
+        if (!workspaceId) {
             return [];
         }
 
@@ -64,7 +64,7 @@ export function useTopicActivity() {
             }
             return (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
         });
-    }, [filter, items, topicId, uploads, workspaceId]);
+    }, [filter, items, uploads, workspaceId]);
 
     return {
         filter,

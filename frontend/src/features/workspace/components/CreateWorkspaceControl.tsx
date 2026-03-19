@@ -22,12 +22,11 @@ export function CreateWorkspaceControl() {
     }
     setSubmitting(true);
     try {
-      const { workspaceId, topicId } = await createWorkspace({
+      const { workspaceId } = await createWorkspace({
         uid: user.uid,
         email: user.email,
         displayName: user.displayName,
       });
-      if (typeof window !== 'undefined') window.localStorage.setItem('run_context.topicId', topicId);
       router.push(`/workspace/${workspaceId}`);
       toast.success("Workspace created");
     } catch (error) {

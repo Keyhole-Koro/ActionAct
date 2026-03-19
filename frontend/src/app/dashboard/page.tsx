@@ -61,6 +61,7 @@ export default function DashboardPage() {
     const [publicWorkspaces, setPublicWorkspaces] = useState<WorkspaceData[]>([]);
     const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
     const [loadingPublic, setLoadingPublic] = useState(false);
+    const [creating, setCreating] = useState(false);
 
     useEffect(() => {
         if (!user) return;
@@ -82,6 +83,22 @@ export default function DashboardPage() {
 
     const handleSelect = (ws: WorkspaceData) => {
         router.push(`/workspace/${ws.id}`);
+    };
+
+    const handleCreate = async () => {
+        if (!user || creating) return;
+        setCreating(true);
+        try {
+            const result = await createWorkspace({
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+            });
+            router.push(`/workspace/${result.workspaceId}`);
+        } catch (error) {
+            console.error("Failed to create workspace", error);
+            setCreating(false);
+        }
     };
 
     if (loading) {
@@ -123,6 +140,16 @@ export default function DashboardPage() {
                             Select a workspace to open
                         </p>
                     </div>
+                    {!usePersistedGraphMock && (
+                        <button
+                            onClick={() => void handleCreate()}
+                            disabled={creating}
+                            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                        >
+                            <Plus className="h-4 w-4" />
+                            {creating ? "Creating..." : "New Workspace"}
+                        </button>
+                    )}
                 </div>
 
                 {loadingWorkspaces ? (

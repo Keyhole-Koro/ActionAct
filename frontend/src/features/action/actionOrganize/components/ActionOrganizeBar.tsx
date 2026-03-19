@@ -6,15 +6,14 @@ import { useActionOrganize } from '../hooks/useActionOrganize';
 
 interface ActionOrganizeBarProps {
     workspaceId: string;
-    topicId: string;
     nodeId: string;
     nodeSource: 'persisted' | 'act';
     currentTitle: string;
     onDeleteSuccess?: () => void;
 }
 
-export function ActionOrganizeBar({ workspaceId, topicId, nodeId, nodeSource, currentTitle, onDeleteSuccess }: ActionOrganizeBarProps) {
-    const { renameNode, deleteNode, isRenaming, isDeleting } = useActionOrganize(workspaceId, topicId, nodeSource);
+export function ActionOrganizeBar({ workspaceId, nodeId, nodeSource, currentTitle, onDeleteSuccess }: ActionOrganizeBarProps) {
+    const { renameNode, deleteNode, isRenaming, isDeleting } = useActionOrganize(workspaceId, nodeSource);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editModeVal, setEditModeVal] = useState(currentTitle);
 

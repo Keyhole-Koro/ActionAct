@@ -1,7 +1,7 @@
 "use client";
 
-import React, { ReactNode, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { type ReactNode, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { AuthGate } from '@/features/auth/components/AuthGate';
 import { FloatingHeader } from './FloatingHeader';
 import { AskForm } from '@/components/ui/AskForm';
@@ -15,43 +15,18 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-    const router = useRouter();
     const params = useParams<{ id: string }>();
     const { setContext } = useRunContextStore();
 
     const workspaceId = params?.id ?? '';
 
-    // Sync workspaceId into the store; topicId comes from localStorage.
     useEffect(() => {
         if (!workspaceId) return;
-
-        const persistedTopicId = typeof window !== 'undefined'
-            ? window.localStorage.getItem('run_context.topicId')
-            : null;
-
-        setContext(workspaceId, persistedTopicId ?? undefined);
-
+        setContext(workspaceId);
         if (typeof window !== 'undefined') {
             window.localStorage.setItem('run_context.workspaceId', workspaceId);
         }
     }, [workspaceId, setContext]);
-
-    // Handle auth-context events (e.g., clicking a completed upload to jump to a topic).
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        const onAuthContext = (event: Event) => {
-            const e = event as CustomEvent<{ workspaceId?: string; topicId?: string }>;
-            const nextWsId = e.detail?.workspaceId?.trim();
-            const nextTopicId = e.detail?.topicId?.trim();
-            if (!nextWsId || !nextTopicId) return;
-            if (typeof window !== 'undefined') window.localStorage.setItem('run_context.topicId', nextTopicId);
-            router.push(`/workspace/${nextWsId}`);
-        };
-
-        window.addEventListener('action:auth-context', onAuthContext);
-        return () => window.removeEventListener('action:auth-context', onAuthContext);
-    }, [router]);
 
     // Restore in-progress uploads for the current workspace after reload or workspace switch.
     useEffect(() => {

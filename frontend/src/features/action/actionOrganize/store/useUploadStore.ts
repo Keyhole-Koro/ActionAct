@@ -61,7 +61,6 @@ export const useUploadStore = create<UploadStoreState>()(
         uploads: {},
 
         addUpload: (workspaceId, topicId, inputId, filename) => {
-            // Persist to localStorage so reload can recover in-progress uploads.
             const existing = loadPending().filter(e => e.inputId !== inputId);
             savePending([...existing, { workspaceId, topicId, inputId, filename, addedAt: Date.now() }]);
 
@@ -79,7 +78,7 @@ export const useUploadStore = create<UploadStoreState>()(
                 },
             }));
 
-            const unsubscribe = organizeService.subscribeInputProgress(workspaceId, topicId, inputId, (progress) => {
+            const unsubscribe = organizeService.subscribeInputProgress(workspaceId, inputId, (progress) => {
                 get().updateProgress(inputId, progress);
             });
             unsubscribers.set(inputId, unsubscribe);
@@ -144,7 +143,7 @@ export const useUploadStore = create<UploadStoreState>()(
                         },
                     },
                 }));
-                const unsubscribe = organizeService.subscribeInputProgress(workspaceId, topicId, inputId, (progress) => {
+                const unsubscribe = organizeService.subscribeInputProgress(workspaceId, inputId, (progress) => {
                     get().updateProgress(inputId, progress);
                 });
                 unsubscribers.set(inputId, unsubscribe);
