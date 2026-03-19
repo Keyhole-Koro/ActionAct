@@ -20,8 +20,6 @@ import (
 	"act-api/internal/usecase"
 )
 
-const devFrontendOrigin = "http://localhost:3000"
-
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
@@ -70,7 +68,17 @@ func main() {
 		os.Exit(1)
 	}
 	defer actRunRecorder.Close()
-	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
+	workerAuthorizer, err := adapter.NewADKWorkerRequestAuthorizer(
+		ctx,
+		cfg.ADKWorkerURL,
+		cfg.ADKWorkerAuthMode,
+		cfg.ADKWorkerAudience,
+	)
+	if err != nil {
+		slog.Error("worker request authorizer init failed", "err", err)
+		os.Exit(1)
+	}
+	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, workerAuthorizer, actRunRecorder, idempotencyGate)
 
 	// ── GCS ──
 	gcsClient, err := storage.NewClient(ctx)
@@ -108,9 +116,9 @@ func main() {
 	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
 	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
 	addWorkspaceMemberUC := usecase.NewAddWorkspaceMemberUsecase(authVerifier, workspaceMemberManager)
-	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL)
+	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL, workerAuthorizer)
 	resolveNodeCandidatesUC := usecase.NewResolveNodeCandidatesUsecase(authVerifier, authzVerifier, nodeCandidateResolver)
-	actDecisionResolver := adapter.NewADKWorkerActDecisionResolver(cfg.ADKWorkerURL)
+	actDecisionResolver := adapter.NewADKWorkerActDecisionResolver(cfg.ADKWorkerURL, workerAuthorizer)
 	decideActActionUC := usecase.NewDecideActActionUsecase(authVerifier, authzVerifier, actDecisionResolver)
 
 	// ── Handler layer ──
@@ -144,7 +152,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: withCORS(h2c.NewHandler(mux, &http2.Server{})),
+		Handler: withCORS(h2c.NewHandler(mux, &http2.Server{}), cfg.AllowedOrigins),
 	}
 
 	slog.Info("act-api listening", "addr", srv.Addr, "adk_worker_url", cfg.ADKWorkerURL)
@@ -154,10 +162,20 @@ func main() {
 	}
 }
 
-func withCORS(next http.Handler) http.Handler {
+func withCORS(next http.Handler, allowedOrigins []string) http.Handler {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowed[origin] = struct{}{}
+	}
+
+	isAllowed := func(origin string) bool {
+		_, ok := allowed[origin]
+		return ok
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == devFrontendOrigin {
+		if isAllowed(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -167,7 +185,7 @@ func withCORS(next http.Handler) http.Handler {
 		}
 
 		if r.Method == http.MethodOptions {
-			if origin != devFrontendOrigin {
+			if !isAllowed(origin) {
 				http.Error(w, "origin not allowed", http.StatusForbidden)
 				return
 			}

@@ -12,14 +12,20 @@ import (
 )
 
 type ADKWorkerActDecisionResolver struct {
-	workerURL  string
-	httpClient *http.Client
+	workerURL         string
+	httpClient        *http.Client
+	requestAuthorizer ADKWorkerRequestAuthorizer
 }
 
-func NewADKWorkerActDecisionResolver(workerURL string) *ADKWorkerActDecisionResolver {
+func NewADKWorkerActDecisionResolver(workerURL string, requestAuthorizer ADKWorkerRequestAuthorizer) *ADKWorkerActDecisionResolver {
+	if requestAuthorizer == nil {
+		requestAuthorizer = noopADKWorkerRequestAuthorizer{}
+	}
+
 	return &ADKWorkerActDecisionResolver{
-		workerURL:  workerURL,
-		httpClient: &http.Client{},
+		workerURL:         workerURL,
+		httpClient:        &http.Client{},
+		requestAuthorizer: requestAuthorizer,
 	}
 }
 
@@ -56,6 +62,9 @@ func (r *ADKWorkerActDecisionResolver) Resolve(ctx context.Context, input domain
 		return domain.ActDecisionResult{}, fmt.Errorf("build act decision request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if err := r.requestAuthorizer.Authorize(ctx, req); err != nil {
+		return domain.ActDecisionResult{}, fmt.Errorf("%w: add worker authorization: %v", domain.ErrUnavailable, err)
+	}
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {

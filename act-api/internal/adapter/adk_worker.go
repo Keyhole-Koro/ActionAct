@@ -21,20 +21,26 @@ import (
 // ADKWorkerExecutor implements domain.ActExecutor by forwarding requests
 // to the act-adk-worker service via HTTP and streaming ndjson responses.
 type ADKWorkerExecutor struct {
-	workerURL  string
-	httpClient *http.Client
-	recorder   domain.ActRunRecorder
-	idem       domain.IdempotencyGate
+	workerURL         string
+	httpClient        *http.Client
+	requestAuthorizer ADKWorkerRequestAuthorizer
+	recorder          domain.ActRunRecorder
+	idem              domain.IdempotencyGate
 }
 
-func NewADKWorkerExecutor(workerURL string, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
+func NewADKWorkerExecutor(workerURL string, requestAuthorizer ADKWorkerRequestAuthorizer, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
+	if requestAuthorizer == nil {
+		requestAuthorizer = noopADKWorkerRequestAuthorizer{}
+	}
+
 	return &ADKWorkerExecutor{
 		workerURL: workerURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
-		recorder: recorder,
-		idem:     idem,
+		requestAuthorizer: requestAuthorizer,
+		recorder:          recorder,
+		idem:              idem,
 	}
 }
 
@@ -178,6 +184,11 @@ func (e *ADKWorkerExecutor) Execute(
 		return fmt.Errorf("create http request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if err := e.requestAuthorizer.Authorize(ctx, httpReq); err != nil {
+		log.Error("failed to authorize request to ADK Worker", "err", err)
+		e.finishWithWorkerError(ctx, input, "UNAVAILABLE", "failed to authorize request to ADK Worker", true, "AUTHORIZE_WORKER_REQUEST")
+		return sendWorkerError(stream, "UNAVAILABLE", "failed to authorize request to ADK Worker", true, "AUTHORIZE_WORKER_REQUEST", input.TraceID)
+	}
 
 	resp, err := e.httpClient.Do(httpReq)
 	if err != nil {

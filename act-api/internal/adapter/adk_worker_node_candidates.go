@@ -12,14 +12,20 @@ import (
 )
 
 type ADKWorkerNodeCandidateResolver struct {
-	workerURL   string
-	httpClient  *http.Client
+	workerURL         string
+	httpClient        *http.Client
+	requestAuthorizer ADKWorkerRequestAuthorizer
 }
 
-func NewADKWorkerNodeCandidateResolver(workerURL string) *ADKWorkerNodeCandidateResolver {
+func NewADKWorkerNodeCandidateResolver(workerURL string, requestAuthorizer ADKWorkerRequestAuthorizer) *ADKWorkerNodeCandidateResolver {
+	if requestAuthorizer == nil {
+		requestAuthorizer = noopADKWorkerRequestAuthorizer{}
+	}
+
 	return &ADKWorkerNodeCandidateResolver{
-		workerURL: workerURL,
-		httpClient: &http.Client{},
+		workerURL:         workerURL,
+		httpClient:        &http.Client{},
+		requestAuthorizer: requestAuthorizer,
 	}
 }
 
@@ -60,6 +66,9 @@ func (r *ADKWorkerNodeCandidateResolver) Resolve(ctx context.Context, input doma
 		return nil, fmt.Errorf("build candidate request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if err := r.requestAuthorizer.Authorize(ctx, req); err != nil {
+		return nil, fmt.Errorf("%w: add worker authorization: %v", domain.ErrUnavailable, err)
+	}
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
