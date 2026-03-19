@@ -51,6 +51,7 @@ interface GraphState {
         parentId?: string;
         referencedNodeIds?: string[];
         createdBy?: 'user' | 'agent';
+        authorUid?: string;
         usedContextNodeIds?: string[];
         usedSelectedNodeContexts?: Array<{
             nodeId: string;
@@ -409,6 +410,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                                 ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
+                                ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
                                 ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
                                 ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
                                 ...(payload.usedTools !== undefined ? { usedTools: payload.usedTools } : {}),
@@ -432,6 +434,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                 label: payload.label ?? '',
                 nodeSource: 'act',
                 createdBy: payload.createdBy ?? 'agent',
+                ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
                 kind: payload.kind ?? 'act',
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: '',

@@ -54,6 +54,7 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
     title: readString(data.title) ?? nodeId,
     kind: readString(data.kind) ?? "act",
     createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
+    authorUid: readString(data.authorUid),
     topicId: readString(data.topicId),
     parentId: readString(data.parentId),
     referencedNodeIds: readStringArray(data.referencedNodeIds),
@@ -84,7 +85,7 @@ export const actDraftService = {
   async saveDraftSnapshot(
     workspaceId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; parentId?: string; topicId?: string },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string },
   ) {
     await setDoc(
       draftDoc(workspaceId, nodeId),
@@ -94,6 +95,7 @@ export const actDraftService = {
         title: draft.title ?? nodeId,
         kind: draft.kind ?? "act",
         createdBy: draft.createdBy ?? "agent",
+        ...(draft.authorUid !== undefined ? { authorUid: draft.authorUid } : {}),
         contentMd: draft.contentMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
         ...(draft.parentId !== undefined ? { parentId: draft.parentId } : {}),
@@ -107,13 +109,14 @@ export const actDraftService = {
     );
   },
 
-  async applyPatch(workspaceId: string, patch: PatchOp, queryText: string) {
+  async applyPatch(workspaceId: string, patch: PatchOp, queryText: string, authorUid?: string) {
     const payload = {
       nodeId: patch.nodeId,
       topicId: patch.data?.topicId ?? '',
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
       createdBy: patch.data?.createdBy ?? "agent",
+      ...(authorUid !== undefined ? { authorUid } : {}),
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],
       ...(patch.data?.parentId !== undefined ? { parentId: patch.data.parentId } : {}),
       ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),

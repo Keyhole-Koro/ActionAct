@@ -42,8 +42,25 @@ const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; 
     act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  ringActive: 'ring-violet-500/80',  ringDescendant: 'ring-violet-400/50',  bgTint: 'bg-violet-50/50',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
 };
 
-// User-created act nodes use a neutral palette regardless of act type
-const actUserConfig = { bar: 'bg-slate-400', dot: 'bg-slate-400', accent: 'text-slate-500', ring: 'ring-slate-400/35', ringActive: 'ring-slate-400/70', ringDescendant: 'ring-slate-300/50', bgTint: 'bg-slate-50/50', topGrad: 'from-slate-300 via-slate-200 to-slate-300' };
+// Per-author color palette for user-created act nodes
+const AUTHOR_PALETTES = [
+    { bar: 'bg-slate-400',   dot: 'bg-slate-400',   accent: 'text-slate-500',   ring: 'ring-slate-400/35',   ringActive: 'ring-slate-400/70',   ringDescendant: 'ring-slate-300/50',   bgTint: 'bg-slate-50/50',   topGrad: 'from-slate-300 via-slate-200 to-slate-300' },
+    { bar: 'bg-rose-400',    dot: 'bg-rose-400',    accent: 'text-rose-500',    ring: 'ring-rose-400/35',    ringActive: 'ring-rose-400/70',    ringDescendant: 'ring-rose-300/50',    bgTint: 'bg-rose-50/50',    topGrad: 'from-rose-300 via-pink-200 to-rose-300' },
+    { bar: 'bg-amber-400',   dot: 'bg-amber-400',   accent: 'text-amber-500',   ring: 'ring-amber-400/35',   ringActive: 'ring-amber-400/70',   ringDescendant: 'ring-amber-300/50',   bgTint: 'bg-amber-50/50',   topGrad: 'from-amber-300 via-yellow-200 to-amber-300' },
+    { bar: 'bg-teal-400',    dot: 'bg-teal-400',    accent: 'text-teal-500',    ring: 'ring-teal-400/35',    ringActive: 'ring-teal-400/70',    ringDescendant: 'ring-teal-300/50',    bgTint: 'bg-teal-50/50',    topGrad: 'from-teal-300 via-emerald-200 to-teal-300' },
+    { bar: 'bg-indigo-400',  dot: 'bg-indigo-400',  accent: 'text-indigo-500',  ring: 'ring-indigo-400/35',  ringActive: 'ring-indigo-400/70',  ringDescendant: 'ring-indigo-300/50',  bgTint: 'bg-indigo-50/50',  topGrad: 'from-indigo-300 via-violet-200 to-indigo-300' },
+    { bar: 'bg-fuchsia-400', dot: 'bg-fuchsia-400', accent: 'text-fuchsia-500', ring: 'ring-fuchsia-400/35', ringActive: 'ring-fuchsia-400/70', ringDescendant: 'ring-fuchsia-300/50', bgTint: 'bg-fuchsia-50/50', topGrad: 'from-fuchsia-300 via-pink-200 to-fuchsia-300' },
+    { bar: 'bg-cyan-400',    dot: 'bg-cyan-400',    accent: 'text-cyan-500',    ring: 'ring-cyan-400/35',    ringActive: 'ring-cyan-400/70',    ringDescendant: 'ring-cyan-300/50',    bgTint: 'bg-cyan-50/50',    topGrad: 'from-cyan-300 via-sky-200 to-cyan-300' },
+    { bar: 'bg-orange-400',  dot: 'bg-orange-400',  accent: 'text-orange-500',  ring: 'ring-orange-400/35',  ringActive: 'ring-orange-400/70',  ringDescendant: 'ring-orange-300/50',  bgTint: 'bg-orange-50/50',  topGrad: 'from-orange-300 via-amber-200 to-orange-300' },
+];
+
+function uidToAuthorPalette(uid: string) {
+    let hash = 0;
+    for (let i = 0; i < uid.length; i++) {
+        hash = uid.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return AUTHOR_PALETTES[Math.abs(hash) % AUTHOR_PALETTES.length];
+}
 
 const typeConfig: Record<string, { gradient: string; accent: string; glow: string }> = {
     explore: { gradient: 'from-violet-500/10 via-indigo-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
@@ -68,6 +85,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const isExpanded = data.isExpanded === true;
     const isNodeStreaming = data.isStreaming === true;
     const createdBy = data.createdBy;
+    const authorUid = typeof data.authorUid === 'string' ? data.authorUid : undefined;
     const referencedNodes = Array.isArray(data.referencedNodes) ? data.referencedNodes : [];
     const hasChildNodes = data.hasChildNodes === true;
     const branchExpanded = data.branchExpanded === true;
@@ -225,7 +243,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
 
     if (isActNode) {
         const atc = createdBy === 'user'
-            ? actUserConfig
+            ? (authorUid ? uidToAuthorPalette(authorUid) : AUTHOR_PALETTES[0])
             : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
         const statusDot = isDraftAct
             ? 'bg-slate-300'
@@ -360,12 +378,17 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                 )}
                                 <div className="ml-auto flex items-center gap-1.5">
                                     {!isDraftAct && createdBy && (
-                                        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-                                            createdBy === 'agent' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                        }`}>
-                                            {createdBy === 'agent' ? <Bot className="h-2.5 w-2.5" /> : <UserRound className="h-2.5 w-2.5" />}
-                                            {createdBy === 'agent' ? 'AI' : 'You'}
-                                        </span>
+                                        createdBy === 'agent' ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                                                <Bot className="h-2.5 w-2.5" />
+                                                AI
+                                            </span>
+                                        ) : (
+                                            <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${atc.accent} border-current/20 ${atc.bgTint}`}>
+                                                <span className={`h-2 w-2 rounded-full ${atc.dot}`} />
+                                                You
+                                            </span>
+                                        )
                                     )}
                                     {isNodeStreaming && (
                                         <span className="flex h-2 w-2">
@@ -813,17 +836,17 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                     </span>
                                 )}
                                 {isExpanded && !isDraftAct && createdBy && (
-                                    <span
-                                        className={[
-                                            `inline-flex items-center gap-1 rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium`,
-                                            createdBy === 'agent'
-                                                ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                                : 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                                        ].join(' ')}
-                                    >
-                                        {createdBy === 'agent' ? <Bot className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
-                                        {createdBy === 'agent' ? 'AI' : 'You'}
-                                    </span>
+                                    createdBy === 'agent' ? (
+                                        <span className={`inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium text-blue-700`}>
+                                            <Bot className="h-3 w-3" />
+                                            AI
+                                        </span>
+                                    ) : (
+                                        <span className={`inline-flex items-center gap-1 rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium ${atc.accent} border-current/20 ${atc.bgTint}`}>
+                                            <span className={`h-2.5 w-2.5 rounded-full ${atc.dot}`} />
+                                            You
+                                        </span>
+                                    )
                                 )}
                                 {(data.detailHtml || data.contentMd) && (
                                     <span className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/50 ${isActNode ? 'px-1 py-0.5' : 'px-1.5 py-0.5'} text-slate-500`}>

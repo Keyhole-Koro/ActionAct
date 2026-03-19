@@ -354,6 +354,7 @@ export function RadialOverview({
             >
             <svg className="absolute inset-0" width={scaledCanvasWidth} height={scaledCanvasHeight}>
                 {segments.map((segment, index) => {
+                    const isSelected = selectedNodeIdSet.has(segment.node.id);
                     const isFocused = hoveredNodeId !== null
                         && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
                     const isMuted = hoveredNodeId !== null && !isFocused;
@@ -370,7 +371,7 @@ export function RadialOverview({
                     }
 
                     return (
-                        <g key={`segment-${segment.node.id}`}>
+                        <g key={`segment-${segment.node.id}`} className="group">
                             <path
                                 d={describeAnnularSector(
                                     scaledCenterX,
@@ -381,101 +382,54 @@ export function RadialOverview({
                                     segment.endAngle,
                                 )}
                                 fill={palette[0]}
-                                fillOpacity={isMuted ? 0.18 : (isFocused ? 0.96 : 0.74)}
-                                stroke={palette[1]}
-                                strokeOpacity={isMuted ? 0.22 : 0.92}
-                                strokeWidth={isFocused ? 2.2 : 1.2}
-                                className="cursor-pointer transition-all duration-500 ease-out"
+                                fillOpacity={isMuted ? 0.12 : (isFocused ? 0.98 : 0.85)}
+                                stroke={isSelected ? 'var(--color-primary)' : palette[1]}
+                                strokeOpacity={isMuted ? 0.15 : (isSelected ? 1 : 0.92)}
+                                strokeWidth={isSelected ? 3.5 : (isFocused ? 2.2 : 1.2)}
+                                className="cursor-pointer transition-all duration-500 ease-out hover:brightness-95"
                                 onMouseEnter={() => {
                                     setHoveredNodeId(segment.node.id);
                                     focusViewportOnPoint(segmentCenterPoint.x, segmentCenterPoint.y);
                                     onHoverNode?.(segment.node.id);
                                 }}
-                                onClick={() => onActivateNode(segment.node.id)}
+                                onClick={(e) => {
+                                    if (e.detail === 2) {
+                                        onToggleBranch(segment.node.id);
+                                    } else {
+                                        onActivateNode(segment.node.id);
+                                    }
+                                }}
                             />
-                            {(!compactMode || isFocused || segment.depth <= 1) ? (
-                                <path
-                                    d={describeRadialGuide(
-                                        scaledCenterX,
-                                        scaledCenterY,
-                                        segment.innerRadius * effectiveZoom,
-                                        segment.outerRadius * effectiveZoom,
-                                        getSegmentMidAngle(segment),
-                                    )}
-                                    stroke={isMuted ? 'rgba(148,163,184,0.08)' : 'rgba(71,85,105,0.16)'}
-                                    strokeWidth={isFocused ? 1.6 : 1}
-                                    strokeLinecap="round"
-                                />
-                            ) : null}
+                            {/* Segment Label (Multi-line, Horizontal) */}
+                            <text
+                                x={segmentCenterPoint.x}
+                                y={segmentCenterPoint.y}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                className="pointer-events-none select-none font-bold tracking-tight fill-slate-800 transition-opacity duration-500"
+                                style={{
+                                    fontSize: (segment.depth === 0 ? 13 : (segment.depth === 1 ? 11 : 9.5)) * effectiveZoom,
+                                    opacity: isMuted ? 0.1 : 1,
+                                }}
+                            >
+                                {wrapText(
+                                    segment.node.data?.label ?? segment.node.id,
+                                    segment.depth,
+                                    isFocused,
+                                ).map((line, i, all) => (
+                                    <tspan
+                                        key={i}
+                                        x={segmentCenterPoint.x}
+                                        dy={i === 0 ? `-${(all.length - 1) * 0.6}em` : '1.15em'}
+                                    >
+                                        {line}
+                                    </tspan>
+                                ))}
+                            </text>
                         </g>
                     );
                 })}
             </svg>
-
-            {segments.map((segment) => {
-                const point = getSegmentCenterPoint(segment, scaledCenterX, scaledCenterY, effectiveZoom);
-                const isSelected = selectedNodeIdSet.has(segment.node.id);
-                const isFocused = hoveredNodeId !== null
-                    && (ancestorSet.has(segment.node.id) || descendantSet.has(segment.node.id));
-                const isMuted = hoveredNodeId !== null && !isFocused;
-                const depth = segment.depth;
-                const scale = hoveredNodeId === null
-                    ? (depth === 0 ? 1 : (depth === 1 ? 0.88 : 0.78))
-                    : (isFocused ? (depth <= 1 ? 1.22 : 1.48) : (depth <= 1 ? 0.82 : 0.58));
-                const baseSize = depth === 0 ? 66 : (depth === 1 ? 40 : (depth === 2 ? 24 : 18));
-                const size = Math.round(baseSize * scale);
-                const baseFontSize = hoveredNodeId !== null && isFocused
-                    ? (depth === 0 ? 11.5 : (depth === 1 ? 10 : 8.5))
-                    : (depth === 0 ? 8.5 : (depth === 1 ? 7.5 : 6.5));
-                const fontSize = baseFontSize * Math.max(scale, 0.85);
-                const shouldRenderNode = !compactMode || hoveredNodeId !== null || depth <= 2 || isSelected;
-
-                if (!shouldRenderNode) {
-                    return null;
-                }
-
-                return (
-                    <button
-                        key={`node-${segment.node.id}`}
-                        type="button"
-                        className={[
-                            'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border text-center shadow-sm transition-all duration-500 ease-out',
-                            isSelected
-                                ? 'border-primary bg-white text-slate-900 ring-2 ring-primary/60'
-                                : 'border-white/90 bg-white text-slate-700',
-                        ].join(' ')}
-                        style={{
-                            left: point.x,
-                            top: point.y,
-                            width: size,
-                            height: size,
-                            transform: 'translate(-50%, -50%)',
-                            opacity: isMuted ? (depth <= 1 ? 0.36 : 0.08) : 1,
-                            zIndex: isFocused ? 40 : (isSelected ? 35 : 20),
-                        }}
-                        onMouseEnter={() => {
-                            setHoveredNodeId(segment.node.id);
-                            focusViewportOnPoint(point.x, point.y);
-                            onHoverNode?.(segment.node.id);
-                        }}
-                        onFocus={() => setHoveredNodeId(segment.node.id)}
-                        onBlur={() => setHoveredNodeId(null)}
-                        onClick={() => onActivateNode(segment.node.id)}
-                        onDoubleClick={() => onToggleBranch(segment.node.id)}
-                    >
-                        <span
-                            className="block px-1 font-semibold leading-tight"
-                            style={{ fontSize }}
-                        >
-                            {formatRadialLabel(
-                                segment.node.data?.label ?? segment.node.id,
-                                depth,
-                                hoveredNodeId !== null && isFocused,
-                            )}
-                        </span>
-                    </button>
-                );
-            })}
 
             {segments
                 .filter((segment) => segment.depth === 0)
@@ -680,12 +634,39 @@ function formatRootLabel(label: string) {
     return truncateLabel(label, 20);
 }
 
-function formatRadialLabel(label: string, depth: number, isFocused: boolean) {
-    if (isFocused) {
-        return depth <= 1 ? truncateLabel(label, 24) : truncateLabel(label, 18);
+function wrapText(label: string, depth: number, isFocused: boolean): string[] {
+    const maxLength = isFocused
+        ? (depth === 0 ? 18 : (depth === 1 ? 14 : 12))
+        : (depth === 0 ? 12 : (depth === 1 ? 8 : 6));
+
+    if (label.length <= maxLength) {
+        return [label];
     }
 
-    return truncateLabel(label, depth === 0 ? 14 : (depth === 1 ? 10 : 7));
+    const lines: string[] = [];
+    let current = label;
+
+    while (current.length > 0 && lines.length < 3) {
+        if (current.length <= maxLength) {
+            lines.push(current);
+            break;
+        }
+        let splitIdx = maxLength;
+        // Try to split at space if possible
+        const lastSpace = current.lastIndexOf(' ', maxLength);
+        if (lastSpace > maxLength / 2) {
+            splitIdx = lastSpace;
+        }
+
+        lines.push(current.slice(0, splitIdx));
+        current = current.slice(splitIdx).trim();
+
+        if (lines.length === 3 && current.length > 0) {
+            lines[2] = truncateLabel(lines[2], maxLength);
+        }
+    }
+
+    return lines;
 }
 
 function truncateLabel(label: string, maxLength: number) {

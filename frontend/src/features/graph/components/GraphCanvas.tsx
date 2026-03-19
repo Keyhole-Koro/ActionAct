@@ -523,6 +523,7 @@ export function GraphCanvas() {
                 data: {
                     nodeSource: 'act',
                     createdBy: node.createdBy ?? 'agent',
+                    ...(node.authorUid !== undefined ? { authorUid: node.authorUid } : {}),
                     topicId: node.topicId,
                     label: node.title,
                     kind: 'act',

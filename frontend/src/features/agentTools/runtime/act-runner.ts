@@ -1,6 +1,7 @@
 "use client";
 
 import { v4 as uuidv4 } from "uuid";
+import { getAuth } from "firebase/auth";
 
 import { actService } from "@/services/act";
 import { actDraftService } from "@/services/actDraft/firestore";
@@ -107,6 +108,7 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
   const graphStore = useGraphStore.getState();
   const runContext = useRunContextStore.getState();
   const preferences = useStreamPreferencesStore.getState();
+  const currentUserUid = getAuth().currentUser?.uid;
   const requestId = options?.requestId ?? uuidv4();
   const isExistingActTarget = targetNodeId ? graphStore.actNodes.some((node) => node.id === targetNodeId) : false;
   const frontendRootNodeId = isExistingActTarget && targetNodeId ? targetNodeId : `act-${requestId}`;
@@ -159,6 +161,7 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
           title: typeof node.data?.label === "string" ? node.data.label : query,
           kind: typeof node.data?.kind === "string" ? node.data.kind : "act",
           createdBy: node.data?.createdBy === "user" ? "user" : "agent",
+          authorUid: typeof node.data?.authorUid === "string" ? node.data.authorUid : undefined,
           contentMd: typeof node.data?.contentMd === "string" ? node.data.contentMd : "",
           referencedNodeIds: Array.isArray(node.data?.referencedNodeIds)
             ? node.data.referencedNodeIds.filter((value): value is string => typeof value === "string")
@@ -192,12 +195,14 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
         const resolvedParentId = patch.data.parentId
           ? resolveFrontendNodeId(patch.data.parentId)
           : undefined;
+        const resolvedCreatedBy = patch.data.createdBy ?? (existingNode ? undefined : "agent");
         useGraphStore.getState().addOrUpdateActNode(normalizedNodeId, {
           label:
             patch.data.label ??
             (existingNode ? undefined : query),
           kind: patch.data.kind ?? "act",
-          createdBy: patch.data.createdBy ?? (existingNode ? undefined : "agent"),
+          createdBy: resolvedCreatedBy,
+          ...(resolvedCreatedBy === 'user' && currentUserUid ? { authorUid: currentUserUid } : {}),
           referencedNodeIds:
             patch.data.referencedNodeIds ??
             (existingNode

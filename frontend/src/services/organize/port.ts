@@ -12,6 +12,7 @@ export interface TopicNode {
     title: string;
     kind?: string;
     createdBy?: 'user' | 'agent';
+    authorUid?: string;
     parentId?: string;
     referencedNodeIds?: string[];
 
