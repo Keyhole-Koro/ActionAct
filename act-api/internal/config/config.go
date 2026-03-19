@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
 	Port              string
 	RedisAddr         string
 	RedisDB           int
+	CORSAllowedOrigins []string
 	ADKWorkerURL      string
 	GCloudProject     string
 	GCSBucket         string
@@ -33,6 +35,7 @@ func MustLoad() *Config {
 		Port:              mustEnv("PORT"),
 		RedisAddr:         mustEnv("REDIS_ADDR"),
 		RedisDB:           mustIntEnv("REDIS_DB"),
+		CORSAllowedOrigins: mustCSVEnv("CORS_ALLOWED_ORIGINS"),
 		ADKWorkerURL:      mustEnv("ACT_ADK_WORKER_URL"),
 		GCloudProject:     mustEnv("GOOGLE_CLOUD_PROJECT"),
 		GCSBucket:         mustEnv("GCS_BUCKET"),
@@ -83,4 +86,26 @@ func mustBoolEnv(key string) bool {
 		panic(fmt.Sprintf("environment variable %q must be a boolean: %v", key, err))
 	}
 	return b
+}
+
+func mustCSVEnv(key string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		panic(fmt.Sprintf("required environment variable %q is not set", key))
+	}
+
+	rawItems := strings.Split(v, ",")
+	items := make([]string, 0, len(rawItems))
+	for _, item := range rawItems {
+		trimmed := strings.TrimSpace(item)
+		if trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+
+	if len(items) == 0 {
+		panic(fmt.Sprintf("environment variable %q must contain at least one origin", key))
+	}
+
+	return items
 }

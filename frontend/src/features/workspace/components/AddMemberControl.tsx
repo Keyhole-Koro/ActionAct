@@ -7,25 +7,27 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   addWorkspaceMember,
   searchWorkspaceUsers,
   type WorkspaceMemberRole,
   type WorkspaceSearchUser,
 } from "@/features/workspace/services/workspace-member-service";
+import { useAuthState } from "@/features/auth/hooks/useAuthState";
 
 type AddMemberControlProps = {
   workspaceId: string;
 };
 
 export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
+  const { user: currentUser } = useAuthState();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<WorkspaceMemberRole>("editor");
@@ -33,6 +35,7 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
   const [addingUid, setAddingUid] = useState<string | null>(null);
   const [didSearch, setDidSearch] = useState(false);
   const [results, setResults] = useState<WorkspaceSearchUser[]>([]);
+  const [addedUids, setAddedUids] = useState<Set<string>>(new Set());
   const searchSeq = useRef(0);
 
   const canSearch = useMemo(() => query.trim().length >= 2, [query]);
@@ -57,7 +60,13 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
         if (searchSeq.current !== currentSeq) {
           return;
         }
-        setResults(users);
+
+        // Filter out the current user just in case, although the backend should also handle it.
+        const filteredUsers = currentUser 
+          ? users.filter(u => u.uid !== currentUser.uid)
+          : users;
+
+        setResults(filteredUsers);
         setDidSearch(true);
       } catch (error) {
         if (searchSeq.current !== currentSeq) {
@@ -76,12 +85,13 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [open, canSearch, query, workspaceId]);
+  }, [open, canSearch, query, workspaceId, currentUser]);
 
   useEffect(() => {
     if (!open) {
       setQuery("");
       setResults([]);
+      setAddedUids(new Set());
       setRole("editor");
       setLoading(false);
       setDidSearch(false);
@@ -93,6 +103,11 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
     setAddingUid(user.uid);
     try {
       await addWorkspaceMember(workspaceId, user.uid, role);
+      setAddedUids((prev) => {
+        const next = new Set(prev);
+        next.add(user.uid);
+        return next;
+      });
       toast.success("メンバーを追加しました");
     } catch (error) {
       console.error("Failed to add workspace member", error);
@@ -103,21 +118,21 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
   };
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger render={<Button variant="outline" size="sm" />}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger className="inline-flex shrink-0 items-center justify-center border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs font-medium gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
         <UserPlus className="w-3.5 h-3.5" />
         Share
-      </SheetTrigger>
+      </DialogTrigger>
 
-      <SheetContent side="right" className="w-full sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Workspace Share</SheetTitle>
-          <SheetDescription>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Workspace Share</DialogTitle>
+          <DialogDescription>
             アカウントを検索して、この workspace のメンバーに追加します。
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="flex flex-col gap-4 px-4 pb-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <label className="text-xs font-medium text-muted-foreground">Role</label>
             <div className="inline-flex rounded-lg border border-border/70 p-1">
@@ -175,12 +190,18 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
                     </div>
                     <Button
                       size="sm"
-                      variant="secondary"
+                      variant={addedUids.has(user.uid) ? "ghost" : "secondary"}
                       onClick={() => void handleAdd(user)}
-                      disabled={addingUid === user.uid}
+                      disabled={addingUid === user.uid || addedUids.has(user.uid)}
                     >
-                      {addingUid === user.uid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                      Add
+                      {addingUid === user.uid ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : addedUids.has(user.uid) ? (
+                        <Check className="h-3.5 w-3.5 text-green-600" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      {addedUids.has(user.uid) ? "Added" : "Add"}
                     </Button>
                   </li>
                 ))}
@@ -188,7 +209,7 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
             )}
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

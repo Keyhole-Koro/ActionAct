@@ -64,6 +64,10 @@ func (m *FirestoreWorkspaceMemberManager) SearchUsers(
 		displayName := strings.TrimSpace(record.DisplayName)
 		uid := strings.TrimSpace(record.UID)
 
+		if uid == requesterUID {
+			continue
+		}
+
 		if !containsFold(uid, normalizedQuery) && !containsFold(email, normalizedQuery) && !containsFold(displayName, normalizedQuery) {
 			continue
 		}
@@ -85,6 +89,10 @@ func (m *FirestoreWorkspaceMemberManager) AddMember(
 	targetUID string,
 	role string,
 ) error {
+	if requesterUID == targetUID {
+		return fmt.Errorf("%w: cannot add yourself as a member", domain.ErrInvalidArgument)
+	}
+
 	if err := m.ensureWorkspaceOwner(ctx, requesterUID, workspaceID); err != nil {
 		return err
 	}

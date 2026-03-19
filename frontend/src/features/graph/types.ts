@@ -68,7 +68,9 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     onOpenReferencedNode?: (nodeId: string) => void;
     onNavigateToNode?: (nodeId: string) => void;
     onCommitLabel?: (label: string) => void;
-    onRunAction?: (label: string) => void;
+    onUpdateLabel?: (label: string) => void;
+    onRunAction?: (query: string) => void;
+
     onAddMedia?: (file: File) => Promise<void> | void;
     onGenerateBrief?: () => void;
     briefGenerating?: boolean;

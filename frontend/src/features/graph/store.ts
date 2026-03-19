@@ -18,6 +18,7 @@ interface GraphState {
     editingNodeId: string | null;
     isStreaming: boolean;
     streamingNodeIds: string[];
+    pendingNodeIds: string[];
     nodeLastUsedAt: Record<string, number>;
     nodeUseCount: Record<string, number>;
     pinnedExpandedNodeIds: string[];
@@ -39,6 +40,7 @@ interface GraphState {
     setStreamRunning: (value: boolean) => void;
     addStreamingNode: (nodeId: string) => void;
     clearStreamingNodes: (nodeIds?: string[]) => void;
+    removePendingNodes: (nodeIds: string[]) => void;
     recordNodeUsed: (nodeId: string) => void;
     pinExpandedNode: (nodeId: string) => void;
     unpinExpandedNode: (nodeId: string) => void;
@@ -150,6 +152,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     editingNodeId: null,
     isStreaming: false,
     streamingNodeIds: [],
+    pendingNodeIds: [],
     nodeLastUsedAt: {},
     nodeUseCount: {},
     pinnedExpandedNodeIds: [],
@@ -198,6 +201,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             activeNodeId,
             editingNodeId,
             streamingNodeIds: state.streamingNodeIds.filter((id) => !actNodeIds.has(id)),
+            pendingNodeIds: state.pendingNodeIds.filter((id) => !actNodeIds.has(id)),
         };
     }),
     clearSelection: () => set((state) => {
@@ -290,11 +294,21 @@ export const useGraphStore = create<GraphState>((set) => ({
     )),
     clearStreamingNodes: (nodeIds?: string[]) => set((state) => {
         if (!nodeIds || nodeIds.length === 0) {
-            return { streamingNodeIds: [] };
+            return {
+                streamingNodeIds: [],
+                pendingNodeIds: uniqueIds([...state.pendingNodeIds, ...state.streamingNodeIds]),
+            };
         }
         const toClear = new Set(nodeIds);
         return {
             streamingNodeIds: state.streamingNodeIds.filter((nodeId) => !toClear.has(nodeId)),
+            pendingNodeIds: uniqueIds([...state.pendingNodeIds, ...nodeIds]),
+        };
+    }),
+    removePendingNodes: (nodeIds) => set((state) => {
+        const toRemove = new Set(nodeIds);
+        return {
+            pendingNodeIds: state.pendingNodeIds.filter((id) => !toRemove.has(id)),
         };
     }),
     recordNodeUsed: (nodeId) => set((state) => ({
@@ -584,6 +598,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             nodeLastUsedAt: nextNodeLastUsedAt,
             selectedNodeIds: nextSelectedNodeIds,
             streamingNodeIds: state.streamingNodeIds.filter((id) => id !== nodeId),
+            pendingNodeIds: state.pendingNodeIds.filter((id) => id !== nodeId),
             activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
             editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
         };

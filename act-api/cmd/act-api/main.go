@@ -23,8 +23,6 @@ import (
 	"act-api/internal/usecase"
 )
 
-const devFrontendOrigin = "http://localhost:3000"
-
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
@@ -167,7 +165,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: withCORS(h2c.NewHandler(mux, &http2.Server{})),
+		Handler: withCORS(h2c.NewHandler(mux, &http2.Server{}), cfg.CORSAllowedOrigins),
 	}
 
 	slog.Info("act-api listening", "addr", srv.Addr, "adk_worker_url", cfg.ADKWorkerURL)
@@ -177,10 +175,16 @@ func main() {
 	}
 }
 
-func withCORS(next http.Handler) http.Handler {
+func withCORS(next http.Handler, allowedOrigins []string) http.Handler {
+	allowedOriginSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowedOriginSet[origin] = struct{}{}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == devFrontendOrigin {
+		_, allowed := allowedOriginSet[origin]
+		if allowed {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -190,7 +194,7 @@ func withCORS(next http.Handler) http.Handler {
 		}
 
 		if r.Method == http.MethodOptions {
-			if origin != devFrontendOrigin {
+			if !allowed {
 				http.Error(w, "origin not allowed", http.StatusForbidden)
 				return
 			}

@@ -13,6 +13,9 @@ export interface WorkspaceData {
     name: string;
     visibility: 'public' | 'private';
     createdBy?: string;
+    latestNodeSummary?: string;
+    nodeCount?: number;
+    updatedAt?: number; // timestamp in millis
 }
 
 function workspaceDoc(workspaceId: string) {
@@ -25,11 +28,18 @@ function readString(value: unknown, fallback: string): string {
 
 function toWorkspaceData(workspaceId: string, data: DocumentData): WorkspaceData {
     const rawVisibility = data.visibility;
+    const updatedAt = data.updatedAt && typeof data.updatedAt.toMillis === "function"
+        ? data.updatedAt.toMillis()
+        : undefined;
+
     return {
         id: workspaceId,
         name: readString(data.name, workspaceId),
         visibility: rawVisibility === 'public' ? 'public' : 'private',
         createdBy: typeof data.createdBy === 'string' ? data.createdBy : undefined,
+        latestNodeSummary: typeof data.latestNodeSummary === "string" ? data.latestNodeSummary : undefined,
+        nodeCount: typeof data.nodeCount === "number" ? data.nodeCount : undefined,
+        updatedAt,
     };
 }
 

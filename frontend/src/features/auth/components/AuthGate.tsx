@@ -5,10 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 
 import { doc, getDoc } from "firebase/firestore";
 
+import { toast } from "sonner";
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-local-workspace-access";
-import { createWorkspace } from "@/features/workspace/services/create-workspace";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
 import { firestore } from "@/services/firebase/firestore";
@@ -59,13 +59,9 @@ export function AuthGate({ children }: AuthGateProps) {
             return;
           }
 
-          const result = await createWorkspace({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-          });
           if (cancelled) return;
-          router.push(`/workspace/${result.workspaceId}`);
+          toast.error("この workspace へのアクセス権限がありません。");
+          router.push("/dashboard");
           return;
         }
 
