@@ -20,12 +20,14 @@ import {
   type WorkspaceMemberRole,
   type WorkspaceSearchUser,
 } from "@/features/workspace/services/workspace-member-service";
+import { useAuthState } from "@/features/auth/hooks/useAuthState";
 
 type AddMemberControlProps = {
   workspaceId: string;
 };
 
 export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
+  const { user: currentUser } = useAuthState();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<WorkspaceMemberRole>("editor");
@@ -58,7 +60,13 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
         if (searchSeq.current !== currentSeq) {
           return;
         }
-        setResults(users);
+
+        // Filter out the current user just in case, although the backend should also handle it.
+        const filteredUsers = currentUser 
+          ? users.filter(u => u.uid !== currentUser.uid)
+          : users;
+
+        setResults(filteredUsers);
         setDidSearch(true);
       } catch (error) {
         if (searchSeq.current !== currentSeq) {
@@ -77,7 +85,7 @@ export function AddMemberControl({ workspaceId }: AddMemberControlProps) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [open, canSearch, query, workspaceId]);
+  }, [open, canSearch, query, workspaceId, currentUser]);
 
   useEffect(() => {
     if (!open) {

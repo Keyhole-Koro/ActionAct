@@ -114,8 +114,15 @@ export default function DashboardPage() {
         setLoadingWorkspaces(true);
         listUserWorkspaces(user.uid)
             .then((all) => {
-                const owned = all.filter((ws) => ws.createdBy === user.uid);
+                console.log("[Debug] All workspaces returned to dashboard:", all);
+                const owned = all.filter((ws) => {
+                    const isOwned = ws.createdBy === user.uid;
+                    console.log(`[Debug] Workspace ${ws.id}: createdBy=${ws.createdBy}, user.uid=${user.uid}, isOwned=${isOwned}`);
+                    return isOwned;
+                });
                 const shared = all.filter((ws) => ws.createdBy !== user.uid);
+                console.log("[Debug] Owned workspaces:", owned);
+                console.log("[Debug] Shared workspaces:", shared);
                 setWorkspaces(owned);
                 setSharedWorkspaces(shared);
             })

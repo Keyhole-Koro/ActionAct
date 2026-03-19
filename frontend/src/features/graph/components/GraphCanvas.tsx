@@ -24,8 +24,10 @@ import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import { projectSelectionGroups } from '@/features/agentInteraction/selectors/projectSelectionGroups';
+import { getAuth } from 'firebase/auth';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
+import { presenceService, type PresenceUser } from '@/services/presence/firestore';
 import {
     CAMERA_CONFIG,
     createSingleNodeFocusOptions,
@@ -469,6 +471,31 @@ export function GraphCanvas() {
     const effectiveWorkspaceId = useMemo(() => (usePersistedGraphMock ? 'ws-mock-public' : workspaceId), [usePersistedGraphMock, workspaceId]);
     const effectiveTopicId = usePersistedGraphMock ? 'topic-mock-1' : undefined;
 
+    // ── Multiplayer cursors ───────────────────────────────────────────────────
+    const [otherCursors, setOtherCursors] = React.useState<PresenceUser[]>([]);
+    const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const viewport = useViewport();
+
+    useEffect(() => {
+        if (!effectiveWorkspaceId) return;
+        return presenceService.subscribePresence(effectiveWorkspaceId, (users) => {
+            const myUid = getAuth().currentUser?.uid;
+            setOtherCursors(users.filter((u) => u.uid !== myUid && u.cursor != null));
+        });
+    }, [effectiveWorkspaceId]);
+
+    const handleCursorMove = useCallback((e: React.MouseEvent) => {
+        if (!effectiveWorkspaceId) return;
+        const myUid = getAuth().currentUser?.uid;
+        if (!myUid) return;
+        if (cursorThrottleRef.current) return;
+        cursorThrottleRef.current = setTimeout(() => {
+            cursorThrottleRef.current = null;
+        }, 100);
+        const pos = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        presenceService.writeCursor(effectiveWorkspaceId, myUid, pos.x, pos.y);
+    }, [effectiveWorkspaceId, reactFlowInstance]);
+
     useEffect(() => {
         setPersistedGraphRef.current = setPersistedGraph;
     }, [setPersistedGraph]);
@@ -571,17 +598,22 @@ export function GraphCanvas() {
         return () => unsubscribe();
     }, [effectiveWorkspaceId, setActGraph]);
 
-    // Strip act nodes down to layout-relevant fields only.
-    // parentId and referencedNodeIds are included because they directly determine
-    // tree structure and Y anchors — changes to these must trigger layout recomputation.
-    const actNodesLayoutKey = (actNodes as GraphNodeBase[]).map((n) => {
+    // Structural key: only fields that affect tree topology and Y-anchoring.
+    // label/topicId are intentionally excluded — they don't influence overlay positions
+    // (label affects node width but the packing algorithm uses height only).
+    // Keeping the key minimal means layout recalculates only on genuine structural
+    // changes (new node, parentId/referencedNodeIds update), never on streaming tokens.
+    // This also makes useDeferredValue unnecessary: structural changes are infrequent
+    // so there is no performance concern in applying them synchronously.
+    const actNodesStructuralKey = (actNodes as GraphNodeBase[]).map((n) => {
         const refs = Array.isArray(n.data?.referencedNodeIds)
             ? (n.data.referencedNodeIds as unknown[])
                 .filter((v): v is string => typeof v === 'string')
                 .join(',')
             : '';
         const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
-        return `${n.id}:${n.data?.label ?? ''}:${(n.data?.topicId as string | undefined) ?? ''}:${parentId}:${refs}`;
+        const kind = typeof n.data?.kind === 'string' ? n.data.kind : '';
+        return `${n.id}:${kind}:${parentId}:${refs}`;
     }).join('|');
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({
@@ -595,9 +627,7 @@ export function GraphCanvas() {
             parentId: n.data?.parentId,
             isManualPosition: n.data?.isManualPosition,
         },
-    } as GraphNodeBase)), [actNodesLayoutKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const deferredActNodes = useDeferredValue(actNodesForLayout);
+    } as GraphNodeBase)), [actNodesStructuralKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const deferredExpandedBranchNodeIds = useDeferredValue(expandedBranchNodeIds);
 
@@ -677,11 +707,11 @@ export function GraphCanvas() {
     const positionedActNodes = useMemo(() => {
         if (persistedLayoutMode !== 'orbit') return [];
         return projectActOverlay({
-            actNodes: deferredActNodes,
+            actNodes: actNodesForLayout,
             persistedNodes: persistedGraph.positionedNodes,
             expandedNodeIds,
         });
-    }, [deferredActNodes, expandedNodeIds, persistedGraph.positionedNodes, persistedLayoutMode]);
+    }, [actNodesForLayout, expandedNodeIds, persistedGraph.positionedNodes, persistedLayoutMode]);
 
     const regularGraphNodes = useMemo(
         () => [...persistedGraph.positionedNodes, ...positionedActNodes],
@@ -1811,7 +1841,7 @@ export function GraphCanvas() {
     }
 
     return (
-        <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick} onWheel={handleWheel}>
+        <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick} onWheel={handleWheel} onMouseMove={handleCursorMove}>
             {layoutToggle}
             {recentClickedSelector}
             <SearchBar />
@@ -1991,6 +2021,54 @@ export function GraphCanvas() {
                     nodeColor={() => 'var(--primary)'}
                 />
             </ReactFlow>
+
+            {/* Multiplayer cursors — pointer-events-none overlay in ReactFlow coordinate space */}
+            {otherCursors.map((user) => {
+                if (!user.cursor) return null;
+                // Convert flow coords to screen coords using viewport transform
+                const cssX = user.cursor.x * viewport.zoom + viewport.x;
+                const cssY = user.cursor.y * viewport.zoom + viewport.y;
+                const hue = user.uid.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 360;
+                const color = `hsl(${hue}, 70%, 50%)`;
+                const displayName = user.displayName || 'Guest';
+
+                return (
+                    <div
+                        key={user.uid}
+                        className="pointer-events-none absolute top-0 left-0 z-50"
+                        style={{
+                            transform: `translate(${cssX}px, ${cssY}px)`,
+                            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
+                        }}
+                    >
+                        {/* Isosceles Triangle Cursor */}
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'rotate(-22deg)', transformOrigin: 'top left' }}>
+                            <path
+                                d="M0 0L16 6L6 16L0 0Z"
+                                fill={color}
+                                stroke="white"
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+
+                        {/* User Name Label */}
+                        <div
+                            className="ml-4 mt-1 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                            style={{ backgroundColor: color }}
+                        >
+                            {user.photoURL && (
+                                <img
+                                    src={user.photoURL}
+                                    alt=""
+                                    className="h-3 w-3 rounded-full border border-white/40"
+                                />
+                            )}
+                            {displayName}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }

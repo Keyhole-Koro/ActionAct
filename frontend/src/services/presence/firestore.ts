@@ -5,6 +5,7 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 
 import { firestore } from "@/services/firebase/firestore";
@@ -16,6 +17,7 @@ export interface PresenceUser {
   displayName: string | null;
   photoURL: string | null;
   lastSeen: number; // Date.now() ms
+  cursor?: { x: number; y: number }; // ReactFlow flow coordinates
 }
 
 function presenceCollection(workspaceId: string) {
@@ -45,6 +47,10 @@ export const presenceService = {
     await deleteDoc(presenceDoc(workspaceId, uid));
   },
 
+  writeCursor(workspaceId: string, uid: string, x: number, y: number): void {
+    updateDoc(presenceDoc(workspaceId, uid), { cursor: { x, y } }).catch(() => {});
+  },
+
   subscribePresence(
     workspaceId: string,
     callback: (users: PresenceUser[]) => void,
@@ -61,11 +67,19 @@ export const presenceService = {
         const lastSeenMs = lastSeenTs.toMillis() as number;
         if (now - lastSeenMs > PRESENCE_STALE_MS) return;
 
+        const cursorData = data.cursor;
+        const cursor = cursorData
+          && typeof cursorData.x === 'number'
+          && typeof cursorData.y === 'number'
+          ? { x: cursorData.x as number, y: cursorData.y as number }
+          : undefined;
+
         users.push({
           uid: d.id,
           displayName: typeof data.displayName === "string" ? data.displayName : null,
           photoURL: typeof data.photoURL === "string" ? data.photoURL : null,
           lastSeen: lastSeenMs,
+          cursor,
         });
       });
 
