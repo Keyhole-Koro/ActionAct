@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { useGraphStore } from '@/features/graph/store';
 import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
+import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
 
 export function AskForm() {
     const { startStream } = useAgentInteractionStore();
     const { isStreaming } = useGraphStore();
+    const { isReadOnly } = useRunContextStore();
     const [query, setQuery] = useState('');
     const [mediaFiles, setMediaFiles] = useState<File[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +48,8 @@ export function AskForm() {
     const removeFile = (index: number) => {
         setMediaFiles((prev) => prev.filter((_, i) => i !== index));
     };
+
+    if (isReadOnly) return null;
 
     return (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-10 pointer-events-none">

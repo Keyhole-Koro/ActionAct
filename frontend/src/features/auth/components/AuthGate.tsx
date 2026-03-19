@@ -40,11 +40,10 @@ export function AuthGate({ children }: AuthGateProps) {
 
     void (async () => {
       try {
-        const isMember =
-          workspaceId.length > 0 &&
-          (await getDoc(
-            doc(firestore, `workspaces/${workspaceId}/members/${user.uid}`),
-          ).then((s) => s.exists()).catch(() => false));
+        const memberSnap = workspaceId.length > 0
+          ? await getDoc(doc(firestore, `workspaces/${workspaceId}/members/${user.uid}`)).catch(() => null)
+          : null;
+        const isMember = memberSnap?.exists() ?? false;
 
         if (!isMember) {
           // Check if workspace is public — if so, allow read-only access
@@ -70,7 +69,8 @@ export function AuthGate({ children }: AuthGateProps) {
           return;
         }
 
-        setReadOnly(false);
+        const memberRole = memberSnap?.data()?.role as string | undefined;
+        setReadOnly(memberRole === 'viewer');
 
         if (cancelled) return;
 

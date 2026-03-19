@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/grpc/codes"
@@ -29,22 +30,27 @@ func (v *FirestoreAuthzVerifier) AuthorizeRunAct(ctx context.Context, uid, works
 	memberSnap, err := v.client.Doc(memberPath).Get(ctx)
 	isMember := err == nil && memberSnap.Exists()
 
-	if !isMember {
-		// 2. If not a member, check if the workspace is public
-		wsPath := fmt.Sprintf("workspaces/%s", workspaceID)
-		wsSnap, err := v.client.Doc(wsPath).Get(ctx)
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				return domain.ErrPermissionDenied
-			}
-			return fmt.Errorf("%w: read workspace: %v", domain.ErrUnavailable, err)
-		}
-		vis, _ := wsSnap.Data()["visibility"].(string)
-		if vis != "public" {
+	if isMember {
+		role, _ := memberSnap.Data()["role"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "viewer" {
 			return domain.ErrPermissionDenied
 		}
+		return nil
 	}
 
+	// 2. If not a member, check if the workspace is public
+	wsPath := fmt.Sprintf("workspaces/%s", workspaceID)
+	wsSnap, err := v.client.Doc(wsPath).Get(ctx)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return domain.ErrPermissionDenied
+		}
+		return fmt.Errorf("%w: read workspace: %v", domain.ErrUnavailable, err)
+	}
+	vis, _ := wsSnap.Data()["visibility"].(string)
+	if vis != "public" {
+		return domain.ErrPermissionDenied
+	}
 	return nil
 }
 
