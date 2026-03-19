@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import AsyncIterator, Callable, Awaitable
+from typing import AsyncIterator
 
 from google import genai
 from google.genai.types import (
@@ -18,6 +18,7 @@ from google.genai.types import (
     Tool,
 )
 
+from app.adapter.discord_tools import ToolExecutor, run_discord_agentic_loop
 from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
 logger = logging.getLogger(__name__)
@@ -72,58 +73,6 @@ _START_ACT_DECL = FunctionDeclaration(
 
 _ACT_TOOLS = Tool(function_declarations=[_SUGGEST_DEEP_DIVES_DECL, _START_ACT_DECL])
 
-# ── Discord tool declarations ────────────────────────────────────────────────
-
-DISCORD_TOOLS = [
-    FunctionDeclaration(
-        name="list_discord_structure",
-        description=(
-            "List all Discord channels and threads available in this workspace. "
-            "Use this first to understand what topics are discussed where."
-        ),
-        parameters=Schema(
-            type="OBJECT",
-            properties={},
-            required=[],
-        ),
-    ),
-    FunctionDeclaration(
-        name="read_discord_messages",
-        description=(
-            "Read messages from a specific Discord channel or thread. "
-            "Specify either channel_id or thread_id (thread takes priority). "
-            "Use this to read the actual conversation."
-        ),
-        parameters=Schema(
-            type="OBJECT",
-            properties={
-                "channel_id": Schema(type="STRING", description="The Discord channel ID to read from"),
-                "thread_id": Schema(type="STRING", description="The Discord thread ID to read from"),
-                "limit": Schema(type="INTEGER", description="Max messages to return (default 100)"),
-            },
-            required=[],
-        ),
-    ),
-    FunctionDeclaration(
-        name="search_discord_messages",
-        description=(
-            "Search Discord messages by keyword across all channels/threads, "
-            "or within a specific channel or thread."
-        ),
-        parameters=Schema(
-            type="OBJECT",
-            properties={
-                "query": Schema(type="STRING", description="Keywords to search for"),
-                "channel_id": Schema(type="STRING", description="Limit search to this channel ID"),
-                "thread_id": Schema(type="STRING", description="Limit search to this thread ID"),
-                "limit": Schema(type="INTEGER", description="Max results (default 50)"),
-            },
-            required=["query"],
-        ),
-    ),
-]
-
-ToolExecutor = Callable[[str, dict, str], Awaitable[object]]
 
 
 def _build_system_instruction(bundle: PromptBundle) -> str | None:
@@ -239,81 +188,12 @@ class GeminiLLM:
         tool_executor: ToolExecutor,
         config: LLMConfig,
     ) -> AsyncIterator[LLMChunk]:
-        """Agentic loop: Gemini calls Discord tools until it can answer."""
-        model_name = config.model or "gemini-2.0-flash"
-        discord_tool = Tool(functionDeclarations=DISCORD_TOOLS)
-
-        gen_config = GenerateContentConfig(
-            systemInstruction=system_instruction,
-            tools=[discord_tool],
-        )
-
-        contents: list[Content] = [
-            Content(role="user", parts=[Part.from_text(text=user_message)])
-        ]
-
-        max_rounds = 5
-        for round_num in range(max_rounds):
-            logger.info("Discord agentic round %d", round_num + 1)
-
-            # Non-streaming call to detect function_call vs text
-            response = await self._client.aio.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=gen_config,
-            )
-
-            candidate = response.candidates[0] if response.candidates else None
-            if not candidate:
-                break
-
-            # Collect function calls from this response
-            function_calls = [
-                part.function_call
-                for part in candidate.content.parts
-                if part.function_call is not None
-            ]
-
-            if not function_calls:
-                # No more tool calls — stream final answer
-                final_text = ""
-                for part in candidate.content.parts:
-                    if part.text:
-                        final_text += part.text
-
-                if final_text:
-                    # Stream in chunks
-                    chunk_size = 200
-                    for i in range(0, len(final_text), chunk_size):
-                        yield LLMChunk(text=final_text[i:i + chunk_size], is_thought=False)
-                yield LLMChunk(text="", is_done=True)
-                return
-
-            # Add model response to history
-            contents.append(candidate.content)
-
-            # Execute all function calls and collect responses
-            tool_response_parts = []
-            for fc in function_calls:
-                fn_name = fc.name
-                fn_args = dict(fc.args) if fc.args else {}
-                logger.info("Executing tool %s args=%r", fn_name, fn_args)
-
-                try:
-                    result = await tool_executor(fn_name, fn_args, workspace_id)
-                except Exception as e:
-                    result = {"error": str(e)}
-
-                tool_response_parts.append(
-                    Part.from_function_response(
-                        name=fn_name,
-                        response={"result": result},
-                    )
-                )
-
-            # Add tool responses to history
-            contents.append(Content(role="user", parts=tool_response_parts))
-
-        # Fallback if max rounds exceeded
-        yield LLMChunk(text="(max tool rounds reached — partial answer above)", is_thought=False)
-        yield LLMChunk(text="", is_done=True)
+        async for chunk in run_discord_agentic_loop(
+            client=self._client,
+            user_message=user_message,
+            system_instruction=system_instruction,
+            workspace_id=workspace_id,
+            tool_executor=tool_executor,
+            config=config,
+        ):
+            yield chunk

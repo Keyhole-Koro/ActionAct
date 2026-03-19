@@ -87,79 +87,83 @@ class RunActUsecase:
 
         # ── Step 2: Choose generation path ───────────────────────────────────
         if self._discord_store is not None:
-            # Build system instruction: include structured context if assembly succeeded
-            if bundle and bundle.context_blocks:
-                context_text = "\n\n---\n\n".join(bundle.context_blocks)
-                system_instruction = (
-                    "You are a helpful assistant. "
-                    f"The following structured knowledge is available:\n\n{context_text}\n\n"
-                    "You also have Discord tools to look up raw conversation history "
-                    "when the structured knowledge above is insufficient."
-                )
-            else:
-                system_instruction = (
-                    "You are a helpful assistant. "
-                    "Use the provided Discord tools to find relevant information. "
-                    "Start by calling list_discord_structure to see available channels and threads."
-                )
+            async for event in self._run_discord_path(input, node_id, bundle, assembly_error, llm_config):
+                yield event
+            return
 
-            logger.info(
-                "Using hybrid Discord+Assembly path workspace=%s assembly_ok=%s",
-                input.workspace_id,
-                assembly_error is None,
+    async def _run_discord_path(self, input: RunActInput, node_id: str, bundle, assembly_error, llm_config: LLMConfig) -> AsyncIterator[RunActEvent]:
+        """Hybrid Discord+Assembly generation path."""
+        if bundle and bundle.context_blocks:
+            context_text = "\n\n---\n\n".join(bundle.context_blocks)
+            system_instruction = (
+                "You are a helpful assistant. "
+                f"The following structured knowledge is available:\n\n{context_text}\n\n"
+                "You also have Discord tools to look up raw conversation history "
+                "when the structured knowledge above is insufficient."
+            )
+        else:
+            system_instruction = (
+                "You are a helpful assistant. "
+                "Use the provided Discord tools to find relevant information. "
+                "Start by calling list_discord_structure to see available channels and threads."
             )
 
-            try:
-                accumulated = ""
-                seq = 0
-                async for chunk in self._llm.generate_with_discord_tools(
-                    user_message=input.user_message,
-                    system_instruction=system_instruction,
-                    workspace_id=input.workspace_id,
-                    tool_executor=self._exec_discord_tool,
-                    config=llm_config,
-                ):
-                    if chunk.is_done:
-                        break
-                    yield RunActEvent(type="text_delta", text=chunk.text, is_thought=chunk.is_thought)
-                    if not chunk.is_thought and chunk.text:
-                        seq += 1
-                        yield RunActEvent(
-                            type="patch_ops",
-                            ops=[PatchOp(
-                                op="append_md",
-                                node_id=node_id,
-                                content=chunk.text,
-                                seq=seq,
-                                expected_offset=len(accumulated),
-                            )],
-                        )
-                        accumulated += chunk.text
-            except Exception as e:
-                logger.exception("Hybrid LLM generation failed")
-                yield RunActEvent(
-                    type="terminal",
-                    error=ErrorInfo(
-                        code="UNAVAILABLE",
-                        message=str(e),
-                        retryable=True,
-                        stage="GENERATE_WITH_MODEL",
-                        trace_id=input.trace_id,
-                    ),
-                )
-                return
+        logger.info(
+            "Using hybrid Discord+Assembly path workspace=%s assembly_ok=%s",
+            input.workspace_id,
+            assembly_error is None,
+        )
 
+        try:
+            accumulated = ""
+            seq = 0
+            async for chunk in self._llm.generate_with_discord_tools(
+                user_message=input.user_message,
+                system_instruction=system_instruction,
+                workspace_id=input.workspace_id,
+                tool_executor=self._exec_discord_tool,
+                config=llm_config,
+            ):
+                if chunk.is_done:
+                    break
+                yield RunActEvent(type="text_delta", text=chunk.text, is_thought=chunk.is_thought)
+                if not chunk.is_thought and chunk.text:
+                    seq += 1
+                    yield RunActEvent(
+                        type="patch_ops",
+                        ops=[PatchOp(
+                            op="append_md",
+                            node_id=node_id,
+                            content=chunk.text,
+                            seq=seq,
+                            expected_offset=len(accumulated),
+                        )],
+                    )
+                    accumulated += chunk.text
+        except Exception as e:
+            logger.exception("Hybrid LLM generation failed")
             yield RunActEvent(
                 type="terminal",
-                done=True,
-                used_tools=["assembly", "discord_store", "llm.generate_with_discord_tools"],
-                used_sources=[],
-                used_context_node_ids=input.context_node_ids,
-                used_selected_node_contexts=input.selected_node_contexts,
+                error=ErrorInfo(
+                    code="UNAVAILABLE",
+                    message=str(e),
+                    retryable=True,
+                    stage="GENERATE_WITH_MODEL",
+                    trace_id=input.trace_id,
+                ),
             )
             return
 
-        # ── Legacy path: assembly only (no discord_store) ─────────────────────
+        yield RunActEvent(
+            type="terminal",
+            done=True,
+            used_tools=["assembly", "discord_store", "llm.generate_with_discord_tools"],
+            used_sources=[],
+            used_context_node_ids=input.context_node_ids,
+            used_selected_node_contexts=input.selected_node_contexts,
+        )
+
+    # ── Legacy path: assembly only (no discord_store) ─────────────────────
         if assembly_error is not None:
             yield RunActEvent(
                 type="terminal",
