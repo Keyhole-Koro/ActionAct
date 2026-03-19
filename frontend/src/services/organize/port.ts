@@ -15,6 +15,9 @@ export interface TopicNode {
     authorUid?: string;
     parentId?: string;
     referencedNodeIds?: string[];
+    isManualPosition?: boolean;
+    positionX?: number;
+    positionY?: number;
 
     // Detailed fields (often populated by A7 summary agent)
     contextSummary?: string;

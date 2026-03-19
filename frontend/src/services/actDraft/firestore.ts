@@ -37,6 +37,14 @@ function readStringArray(value: unknown): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function expiredAt(data: DocumentData): boolean {
   if (data.pinned) {
     return false;
@@ -49,15 +57,19 @@ function expiredAt(data: DocumentData): boolean {
 }
 
 function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
+  const rawTitle = data.title;
   return {
     id: nodeId,
-    title: readString(data.title) ?? nodeId,
+    title: typeof rawTitle === "string" ? rawTitle : nodeId,
     kind: readString(data.kind) ?? "act",
     createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
     authorUid: readString(data.authorUid),
     topicId: readString(data.topicId),
     parentId: readString(data.parentId),
     referencedNodeIds: readStringArray(data.referencedNodeIds),
+    isManualPosition: readBoolean(data.isManualPosition),
+    positionX: readNumber(data.positionX),
+    positionY: readNumber(data.positionY),
     contentMd: readString(data.contentMd),
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
@@ -85,7 +97,7 @@ export const actDraftService = {
   async saveDraftSnapshot(
     workspaceId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
   ) {
     await setDoc(
       draftDoc(workspaceId, nodeId),
@@ -99,6 +111,9 @@ export const actDraftService = {
         contentMd: draft.contentMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
         ...(draft.parentId !== undefined ? { parentId: draft.parentId } : {}),
+        ...(draft.isManualPosition !== undefined ? { isManualPosition: draft.isManualPosition } : {}),
+        ...(draft.positionX !== undefined ? { positionX: draft.positionX } : {}),
+        ...(draft.positionY !== undefined ? { positionY: draft.positionY } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastTouchedAt: serverTimestamp(),

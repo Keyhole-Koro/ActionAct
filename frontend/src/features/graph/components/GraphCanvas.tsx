@@ -2,14 +2,13 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Search, Trash2, Keyboard, HelpCircle } from 'lucide-react';
+import { Search, Trash2 } from 'lucide-react';
 import {
     Background,
     Edge,
     MarkerType,
     MiniMap,
     Node,
-    Panel,
     ReactFlow,
     SelectionMode,
     useReactFlow,
@@ -38,17 +37,21 @@ import {
 
 import { ActTreeGroupNode } from './ActTreeGroupNode';
 import { BundledEdge } from './BundledEdge';
-import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import { SelectedNodePanel } from './SelectedNodePanel';
 import { FilePreviewPanel } from './FilePreviewPanel';
 import { SearchBar } from './SearchBar';
+import { GraphNodeCardWithBoundary } from './graphCanvas/GraphNodeCardWithBoundary';
+import { KeyboardShortcutsHint, NavControl } from './graphCanvas/GraphCanvasControls';
 import {
-    getCollapsedNodeWidth,
-    getExpandedNodeWidth,
-    getLayoutDimensionsForNodeType,
-} from '../constants/nodeDimensions';
+    getDisplayNodeDimensions,
+    isRenderableCoordinate,
+    overlapsWithMargin,
+    readClientPoint,
+    resolveNearestSides,
+    sameSortedIds,
+} from './graphCanvas/graphCanvasUtils';
 import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
 import { projectActOverlay } from '../selectors/projectActOverlay';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
@@ -58,220 +61,7 @@ import { truncate } from '@/lib/string';
 
 const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
 const RECENT_CLICKED_NODE_LIMIT = 8;
-
-class GraphNodeRenderBoundary extends React.Component<
-    { children: React.ReactNode; nodeId?: string; label?: string },
-    { hasError: boolean; errorMessage: string | null }
-> {
-    constructor(props: { children: React.ReactNode; nodeId?: string; label?: string }) {
-        super(props);
-        this.state = { hasError: false, errorMessage: null };
-    }
-
-    static getDerivedStateFromError(error: Error) {
-        return {
-            hasError: true,
-            errorMessage: error instanceof Error ? error.message : String(error),
-        };
-    }
-
-    componentDidCatch(error: Error) {
-        console.error('[GraphNodeCard DEBUG] render error', {
-            nodeId: this.props.nodeId,
-            label: this.props.label,
-            error,
-        });
-    }
-
-    render() {
-        if (this.state.hasError) {
-            return (
-                <div className="w-[340px] rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive shadow-sm">
-                    <div className="font-semibold">GraphNodeCard render failed</div>
-                    <div className="mt-1 break-all">nodeId: {this.props.nodeId ?? 'unknown'}</div>
-                    <div className="mt-1 break-all">label: {this.props.label ?? ''}</div>
-                    <div className="mt-1 break-all">{this.state.errorMessage}</div>
-                </div>
-            );
-        }
-        return this.props.children;
-    }
-}
-
-function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeCard>) {
-    const label = typeof props.data?.label === 'string' ? props.data.label : '';
-    return (
-        <GraphNodeRenderBoundary nodeId={props.id} label={label}>
-            <GraphNodeCard {...props} />
-        </GraphNodeRenderBoundary>
-    );
-}
-
 const ZOOM_LEVELS = [0.4, 0.65, 1.0, 1.5] as const;
-
-type NavControlProps = {
-    actNodeIds: string[];
-    activeNodeId: string | null;
-    onFocusActNode: (nodeId: string) => void;
-};
-
-function NavControl({ actNodeIds, activeNodeId, onFocusActNode }: NavControlProps) {
-    const { zoomTo, fitView } = useReactFlow();
-    const { zoom } = useViewport();
-
-    // ── Zoom ─────────────────────────────────────────────────────────────────
-    const zoomIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
-        Math.abs(level - zoom) < Math.abs(ZOOM_LEVELS[best] - zoom) ? idx : best, 0);
-
-    const zoomStep = (delta: 1 | -1) => {
-        const next = Math.min(Math.max(zoomIdx + delta, 0), ZOOM_LEVELS.length - 1);
-        zoomTo(ZOOM_LEVELS[next], { duration: 220 });
-    };
-
-    // ── Act node navigation ───────────────────────────────────────────────────
-    const actIdx = actNodeIds.indexOf(activeNodeId ?? '');
-    const hasAct = actNodeIds.length > 0;
-
-    const focusAct = (delta: 1 | -1) => {
-        if (!hasAct) return;
-        const base = actIdx < 0 ? (delta === 1 ? -1 : actNodeIds.length) : actIdx;
-        const next = (base + delta + actNodeIds.length) % actNodeIds.length;
-        onFocusActNode(actNodeIds[next]);
-    };
-
-    const iconBtn = 'flex h-7 w-7 items-center justify-center rounded-md transition-colors';
-    const activeBtn = `${iconBtn} text-slate-600 hover:bg-slate-100`;
-    const disabledBtn = `${iconBtn} text-slate-300 cursor-default`;
-
-    return (
-        <Panel position="bottom-left" className="!m-3">
-            <div className="flex flex-col items-center gap-0.5 rounded-lg border border-border/40 bg-white shadow-sm p-1 select-none">
-
-                {/* Zoom in */}
-                <button type="button" onClick={() => zoomStep(1)} disabled={zoomIdx >= ZOOM_LEVELS.length - 1}
-                    className={zoomIdx >= ZOOM_LEVELS.length - 1 ? disabledBtn : activeBtn} title="Zoom in">
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/>
-                    </svg>
-                </button>
-
-                {/* Zoom level dots */}
-                <div className="flex flex-col items-center gap-0.5 py-0.5">
-                    {ZOOM_LEVELS.map((level, idx) => (
-                        <button key={level} type="button" onClick={() => zoomTo(level, { duration: 220 })}
-                            className={`h-1.5 w-1.5 rounded-full transition-all ${idx === zoomIdx ? 'bg-primary scale-125' : 'bg-slate-300 hover:bg-slate-400'}`}
-                            title={`${Math.round(level * 100)}%`} />
-                    ))}
-                </div>
-
-                {/* Zoom out */}
-                <button type="button" onClick={() => zoomStep(-1)} disabled={zoomIdx <= 0}
-                    className={zoomIdx <= 0 ? disabledBtn : activeBtn} title="Zoom out">
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <line x1="1" y1="6" x2="11" y2="6"/>
-                    </svg>
-                </button>
-
-                <div className="my-0.5 w-6 border-t border-border/40" />
-
-                {/* Act node navigation — left / counter / right */}
-                <div className="flex items-center gap-0.5">
-                    <button type="button" onClick={() => focusAct(-1)} disabled={!hasAct}
-                        className={!hasAct ? disabledBtn : activeBtn} title="Previous act node">
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="7,1 3,5 7,9"/>
-                        </svg>
-                    </button>
-                    <span className="w-6 text-center text-[10px] font-medium text-slate-400 tabular-nums">
-                        {hasAct ? `${actIdx >= 0 ? actIdx + 1 : '–'}/${actNodeIds.length}` : '–'}
-                    </span>
-                    <button type="button" onClick={() => focusAct(1)} disabled={!hasAct}
-                        className={!hasAct ? disabledBtn : activeBtn} title="Next act node">
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3,1 7,5 3,9"/>
-                        </svg>
-                    </button>
-                </div>
-
-                <div className="my-0.5 w-6 border-t border-border/40" />
-
-                {/* Fit view */}
-                <button type="button" onClick={() => fitView({ duration: 300, padding: 0.12 })}
-                    className={activeBtn} title="Fit view">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M1 5V2h3M15 5V2h-3M1 11v3h3M15 11v3h-3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                </button>
-            </div>
-        </Panel>
-    );
-}
-
-const SHORTCUTS = [
-    { keys: ['↑', '↓'],           desc: 'ズームイン / アウト' },
-    { keys: ['←', '→'],           desc: 'Act ノード切り替え' },
-    { keys: ['⌘', 'F'],           desc: 'ノード検索 (部分一致)' },
-    { keys: ['文字入力'],          desc: 'ノード選択中 → Act 作成' },
-    { keys: ['クリック'],          desc: 'ノード展開 / フォーカス' },
-    { keys: ['⌘', 'クリック'],    desc: '複数選択' },
-    { keys: ['ダブルクリック'],    desc: 'ズームイン' },
-    { keys: ['Space', 'ドラッグ'], desc: 'パン' },
-] as const;
-
-function KeyboardShortcutsHint() {
-    return (
-        <div className="fixed right-0 top-1/3 z-[100] group">
-            {/* Expanded panel — absolutely positioned to the left of the trigger, visible on hover */}
-            <div className="
-                absolute right-full top-0 mr-2 w-64 origin-right scale-95 rounded-2xl border border-slate-200
-                bg-white/98 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)]
-                opacity-0 pointer-events-none
-                transition-all duration-300 ease-out
-                group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto
-                group-hover:-translate-x-2
-            ">
-                <div className="px-4 pt-4 pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                        <Keyboard className="h-4 w-4 text-primary" />
-                        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
-                            Shortcuts & Help
-                        </p>
-                    </div>
-                </div>
-                <ul className="px-4 py-3 flex flex-col gap-2.5">
-                    {SHORTCUTS.map(({ keys, desc }, i) => (
-                        <li key={i} className="flex items-center justify-between gap-4">
-                            <span className="text-[11px] font-semibold text-slate-500">{desc}</span>
-                            <span className="flex items-center gap-1 shrink-0">
-                                {keys.map((k) => (
-                                    <kbd key={k} className="
-                                        inline-flex items-center justify-center rounded-md
-                                        border border-slate-200 bg-slate-50
-                                        px-1.5 py-0.5 text-[10px] font-bold
-                                        text-slate-700 shadow-sm
-                                        leading-none whitespace-nowrap
-                                    ">{k}</kbd>
-                                ))}
-                            </span>
-                        </li>
-                    ))}
-                </ul>
-                <div className="px-4 py-2 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
-                    <p className="text-[10px] text-slate-400 font-medium">Tip: Press <span className="font-bold text-slate-600">/</span> to search anywhere</p>
-                </div>
-            </div>
-
-            {/* Trigger handle — Sticks out from the edge */}
-            <div className="
-                flex flex-col items-center gap-2 rounded-l-2xl border border-r-0 border-slate-200 bg-white py-4 px-2 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]
-                text-slate-400 hover:text-primary transition-all cursor-help select-none group-hover:bg-slate-50/80
-            ">
-                <HelpCircle className="h-5 w-5" />
-                <span className="[writing-mode:vertical-lr] text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-primary">Shortcuts</span>
-            </div>
-        </div>
-    );
-}
 
 const edgeTypes = {
     bundled: BundledEdge,
@@ -283,104 +73,6 @@ const nodeTypes = {
     selectionHeader: SelectionHeaderNodeCard,
     selectionNode: SelectionOptionNodeCard,
 };
-
-function isRenderableCoordinate(value: number | undefined) {
-    return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
-}
-
-function getDisplayNodeDimensions(node: Node<Record<string, unknown>>) {
-    const data = (node.data ?? {}) as Partial<GraphNodeRender['data']>;
-
-    if (data.layoutMode === 'radial' && data.nodeSource === 'persisted') {
-        const radialDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
-        const size = radialDepth === 0 ? 132 : (radialDepth === 1 ? 120 : (radialDepth === 2 ? 110 : 96));
-        return { width: size, height: size };
-    }
-
-    const nodeKind = typeof data.kind === 'string' ? data.kind : undefined;
-    const label = typeof data.label === 'string' ? data.label : undefined;
-    const isExpanded = data.isExpanded === true;
-    const hasChildNodes = data.hasChildNodes === true;
-    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
-
-    return {
-        width: node.type === 'customTask'
-            ? (isExpanded
-                ? getExpandedNodeWidth(label, nodeKind)
-                : getCollapsedNodeWidth(label, nodeKind, hasChildNodes))
-            : layoutDimensions.width,
-        height: layoutDimensions.height,
-    };
-}
-
-function overlapsWithMargin(left: Node<Record<string, unknown>>, right: Node<Record<string, unknown>>, margin = 28) {
-    const leftDimensions = getDisplayNodeDimensions(left);
-    const rightDimensions = getDisplayNodeDimensions(right);
-
-    return !(
-        left.position.x + leftDimensions.width + margin < right.position.x - margin
-        || left.position.x - margin > right.position.x + rightDimensions.width + margin
-        || left.position.y + leftDimensions.height + margin < right.position.y - margin
-        || left.position.y - margin > right.position.y + rightDimensions.height + margin
-    );
-}
-
-function sameSortedIds(left: string[], right: string[]) {
-    if (left.length !== right.length) {
-        return false;
-    }
-    return left.every((id, index) => id === right[index]);
-}
-
-function readClientPoint(event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent): { x: number; y: number } | null {
-    const nativeEvent = 'nativeEvent' in event ? event.nativeEvent : event;
-
-    if ('touches' in nativeEvent) {
-        const touch = nativeEvent.touches[0] ?? nativeEvent.changedTouches[0];
-        if (!touch) {
-            return null;
-        }
-        return { x: touch.clientX, y: touch.clientY };
-    }
-
-    if ('clientX' in nativeEvent && 'clientY' in nativeEvent) {
-        return { x: nativeEvent.clientX, y: nativeEvent.clientY };
-    }
-
-    return null;
-}
-
-type NodeSide = 'left' | 'right' | 'top' | 'bottom';
-
-function oppositeSide(side: NodeSide): NodeSide {
-    if (side === 'left') return 'right';
-    if (side === 'right') return 'left';
-    if (side === 'top') return 'bottom';
-    return 'top';
-}
-
-function resolveNearestSides(sourceNode: Node<Record<string, unknown>>, targetNode: Node<Record<string, unknown>>) {
-    const sourceDimensions = getDisplayNodeDimensions(sourceNode);
-    const targetDimensions = getDisplayNodeDimensions(targetNode);
-
-    const sourceCenterX = sourceNode.position.x + (sourceDimensions.width / 2);
-    const sourceCenterY = sourceNode.position.y + (sourceDimensions.height / 2);
-    const targetCenterX = targetNode.position.x + (targetDimensions.width / 2);
-    const targetCenterY = targetNode.position.y + (targetDimensions.height / 2);
-
-    const deltaX = targetCenterX - sourceCenterX;
-    const deltaY = targetCenterY - sourceCenterY;
-    const useHorizontal = Math.abs(deltaX) >= Math.abs(deltaY);
-
-    const sourceSide: NodeSide = useHorizontal
-        ? (deltaX >= 0 ? 'right' : 'left')
-        : (deltaY >= 0 ? 'bottom' : 'top');
-
-    return {
-        sourceSide,
-        targetSide: oppositeSide(sourceSide),
-    };
-}
 
 export function GraphCanvas() {
     const router = useRouter();
@@ -397,7 +89,6 @@ export function GraphCanvas() {
         expandNode,
         expandBranchNode,
         clearAllFocus,
-        addOrUpdateActNode,
         addQueryActNode,
         addEmptyActNode,
         removeActNode,
@@ -553,7 +244,10 @@ export function GraphCanvas() {
             const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
-                position: { x: 420, y: index * 180 + 120 },
+                position: {
+                    x: typeof node.positionX === 'number' ? node.positionX : 420,
+                    y: typeof node.positionY === 'number' ? node.positionY : (index * 180 + 120),
+                },
                 data: {
                     nodeSource: 'act',
                     createdBy: node.createdBy ?? 'agent',
@@ -566,6 +260,7 @@ export function GraphCanvas() {
                     detailHtml: node.detailHtml,
                     referencedNodeIds: node.referencedNodeIds,
                     parentId: node.parentId,
+                    ...(node.isManualPosition ? { isManualPosition: true } : {}),
                 },
             }));
             const graphState = useGraphStore.getState();
@@ -1173,6 +868,7 @@ export function GraphCanvas() {
         const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
             const x = node.position?.x;
             const y = node.position?.y;
+            const isManualPosition = node.data?.isManualPosition === true;
             const safe = isRenderableCoordinate(x) && isRenderableCoordinate(y)
                 ? node
                 : {
@@ -1182,10 +878,14 @@ export function GraphCanvas() {
                         y: 100 + (Math.floor(index / 4) * 220),
                     },
                 };
-            if (safe.position.x < minX) minX = safe.position.x;
-            if (safe.position.y < minY) minY = safe.position.y;
+            if (!isManualPosition) {
+                if (safe.position.x < minX) minX = safe.position.x;
+                if (safe.position.y < minY) minY = safe.position.y;
+            }
             return safe;
         });
+
+        if (!Number.isFinite(minX) || !Number.isFinite(minY)) return safeDisplayNodes;
 
         const offsetX = minX < 120 ? 120 - minX : 0;
         const offsetY = minY < 100 ? 100 - minY : 0;
@@ -1193,7 +893,9 @@ export function GraphCanvas() {
 
         return safeDisplayNodes.map((node) => ({
             ...node,
-            position: { x: node.position.x + offsetX, y: node.position.y + offsetY },
+            position: node.data?.isManualPosition === true
+                ? node.position
+                : { x: node.position.x + offsetX, y: node.position.y + offsetY },
         }));
     }, [layoutAwareDisplayNodes]);
 
@@ -1493,13 +1195,16 @@ export function GraphCanvas() {
         focusNode(nodeId);
     }, [focusNode, setSelectedNodes]);
 
-    const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
         if (isReadOnly) return;
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
             return;
         }
-        const pane = target.closest('.react-flow__pane');
+
+        // Check if double-click landed on something other than the pane background
+        // When radial layout is active, we just check that we didn't hit a control
+        const pane = target.closest('.react-flow__pane') || isRadialLayout;
         const node = target.closest('.react-flow__node');
         const control = target.closest('button, input, textarea, [role="button"]');
         if (!pane || node || control) {
@@ -1511,15 +1216,32 @@ export function GraphCanvas() {
             y: event.clientY,
         });
 
+        const myUid = getAuth().currentUser?.uid;
+
         if (selectedNodeIds.length > 0) {
             // Create act node at clicked position referencing currently selected nodes.
             // isManualPosition: true prevents the overlay from overriding the user-chosen position.
             const composerNodeId = addQueryActNode(flowPosition, '', { isManualPosition: true });
-            addOrUpdateActNode(composerNodeId, { referencedNodeIds: selectedNodeIds, kind: 'act', createdBy: 'user' });
+            if (effectiveWorkspaceId) {
+                void upsertActNodeDraft(effectiveWorkspaceId, composerNodeId, {
+                    referencedNodeIds: selectedNodeIds,
+                    kind: 'act',
+                    createdBy: 'user',
+                    authorUid: myUid ?? undefined,
+                });
+            }
         } else {
-            addEmptyActNode(flowPosition);
+            const composerNodeId = addEmptyActNode(flowPosition);
+            if (effectiveWorkspaceId) {
+                void upsertActNodeDraft(effectiveWorkspaceId, composerNodeId, {
+                    kind: 'act',
+                    createdBy: 'user',
+                    authorUid: myUid ?? undefined,
+                    label: '',
+                });
+            }
         }
-    }, [addEmptyActNode, addOrUpdateActNode, addQueryActNode, selectedNodeIds, reactFlowInstance, isReadOnly]);
+    }, [addEmptyActNode, addQueryActNode, selectedNodeIds, reactFlowInstance, isReadOnly, effectiveWorkspaceId, isRadialLayout]);
 
     const viewSignature = useMemo(
         () => JSON.stringify({
@@ -1856,7 +1578,7 @@ export function GraphCanvas() {
 
     if (isRadialLayout) {
         return (
-            <div className="relative h-full w-full">
+            <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
                 {layoutToggle}
                 {recentClickedSelector}
                 <RadialOverview
@@ -1872,7 +1594,7 @@ export function GraphCanvas() {
     }
 
     return (
-        <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick} onWheel={handleWheel} onMouseMove={handleCursorMove}>
+        <div className="relative h-full w-full" onWheel={handleWheel} onMouseMove={handleCursorMove}>
             {layoutToggle}
             {recentClickedSelector}
             <SearchBar />
@@ -1910,6 +1632,7 @@ export function GraphCanvas() {
             <ReactFlow
                 nodes={[...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[]}
                 edges={displayEdges}
+                onDoubleClick={handlePaneDoubleClick}
                 defaultEdgeOptions={{
                     style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },
                 }}

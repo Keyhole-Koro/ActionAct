@@ -31,6 +31,9 @@ export async function upsertActNodeDraft(
         contentMd: payload.contentMd ?? (node.data?.contentMd as string),
         referencedNodeIds: payload.referencedNodeIds ?? (node.data?.referencedNodeIds as string[]),
         parentId: payload.parentId ?? (node.data?.parentId as string),
+        isManualPosition: node.data?.isManualPosition === true,
+        positionX: node.position?.x,
+        positionY: node.position?.y,
     }).catch((error) => {
         console.error('Failed to save act draft', { nodeId, error });
     });
