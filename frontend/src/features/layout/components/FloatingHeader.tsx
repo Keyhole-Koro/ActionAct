@@ -9,7 +9,9 @@ import { AddMemberControl } from '@/features/workspace/components/AddMemberContr
 import { FolderKanban, LayoutGrid, Globe, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserAvatar } from './UserAvatar';
+import { PresenceAvatars } from './PresenceAvatars';
 import { useAuthState } from '@/features/auth/hooks/useAuthState';
+import { usePresence } from '@/features/layout/hooks/usePresence';
 
 export function FloatingHeader() {
     const { workspaceId, isReadOnly } = useRunContextStore();
@@ -23,6 +25,9 @@ export function FloatingHeader() {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const isOwner = !!user && !!workspace?.createdBy && workspace.createdBy === user.uid;
+
+    // Presence: 自分のオンライン状態を書き込む
+    usePresence(workspaceId, user?.uid, user?.displayName, user?.photoURL);
 
     // Subscribe to workspace changes
     useEffect(() => {
@@ -100,6 +105,9 @@ export function FloatingHeader() {
                 {/* Account Avatar */}
                 <UserAvatar className="h-10 w-10 rounded-xl shadow-md backdrop-blur-sm" />
 
+                {/* 他のオンラインユーザー */}
+                {workspaceId && <PresenceAvatars workspaceId={workspaceId} currentUid={user?.uid} />}
+
                 {/* Workspace Name & Actions */}
                 <div className="flex items-center gap-1.5 bg-background/95 backdrop-blur-sm border shadow-sm rounded-xl px-2 h-10">
                     <div className="flex items-center gap-2 px-2 group">
@@ -161,7 +169,7 @@ export function FloatingHeader() {
                                     }
                                 </button>
                             )}
-                            <AddMemberControl workspaceId={workspaceId} />
+                            {isOwner && <AddMemberControl workspaceId={workspaceId} />}
                         </>
                     )}
                 </div>

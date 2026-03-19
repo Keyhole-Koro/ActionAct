@@ -58,6 +58,7 @@ export default function DashboardPage() {
     const searchParams = useSearchParams();
     const usePersistedGraphMock = searchParams.get('graphMock') === '1';
     const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
+    const [sharedWorkspaces, setSharedWorkspaces] = useState<WorkspaceData[]>([]);
     const [publicWorkspaces, setPublicWorkspaces] = useState<WorkspaceData[]>([]);
     const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
     const [loadingPublic, setLoadingPublic] = useState(false);
@@ -67,7 +68,12 @@ export default function DashboardPage() {
         if (!user) return;
         setLoadingWorkspaces(true);
         listUserWorkspaces(user.uid)
-            .then(setWorkspaces)
+            .then((all) => {
+                const owned = all.filter((ws) => ws.createdBy === user.uid);
+                const shared = all.filter((ws) => ws.createdBy !== user.uid);
+                setWorkspaces(owned);
+                setSharedWorkspaces(shared);
+            })
             .catch(console.error)
             .finally(() => setLoadingWorkspaces(false));
 
@@ -152,35 +158,53 @@ export default function DashboardPage() {
                     )}
                 </div>
 
-                {loadingWorkspaces ? (
-                    <div className="text-sm text-muted-foreground">Loading workspaces...</div>
-                ) : workspaces.length === 0 ? (
-                    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
-                        <FolderKanban className="h-10 w-10 text-muted-foreground" />
-                        <div>
-                            <p className="font-medium">No workspaces yet</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Create your first workspace to get started
-                            </p>
+                <div className="space-y-12">
+                    {/* Owned Workspaces */}
+                    <section>
+                        <div className="mb-4">
+                            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">My Workspaces</h2>
                         </div>
-                    </div>
-                ) : (
-                    <WorkspaceGrid workspaces={workspaces} onSelect={handleSelect} />
-                )}
+                        {loadingWorkspaces ? (
+                            <div className="text-sm text-muted-foreground">Loading workspaces...</div>
+                        ) : workspaces.length === 0 ? (
+                            <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
+                                <FolderKanban className="h-10 w-10 text-muted-foreground" />
+                                <div>
+                                    <p className="font-medium text-sm">No workspaces yet</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Create your first workspace to get started
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <WorkspaceGrid workspaces={workspaces} onSelect={handleSelect} />
+                        )}
+                    </section>
 
-                {/* Public Workspaces */}
-                <div className="mt-10">
-                    <div className="mb-4 flex items-center gap-2">
-                        <Globe className="h-4 w-4 text-muted-foreground" />
-                        <h2 className="text-base font-semibold">Public Workspaces</h2>
-                    </div>
-                    {loadingPublic ? (
-                        <div className="text-sm text-muted-foreground">Loading public workspaces...</div>
-                    ) : publicWorkspaces.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No public workspaces available.</p>
-                    ) : (
-                        <WorkspaceGrid workspaces={publicWorkspaces} onSelect={handleSelect} showPublicBadge />
+                    {/* Shared Workspaces */}
+                    {sharedWorkspaces.length > 0 && (
+                        <section>
+                            <div className="mb-4">
+                                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Shared with me</h2>
+                            </div>
+                            <WorkspaceGrid workspaces={sharedWorkspaces} onSelect={handleSelect} />
+                        </section>
                     )}
+
+                    {/* Public Workspaces */}
+                    <section>
+                        <div className="mb-4 flex items-center gap-2">
+                            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Public Explore</h2>
+                            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                        {loadingPublic ? (
+                            <div className="text-sm text-muted-foreground">Loading public workspaces...</div>
+                        ) : publicWorkspaces.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No public workspaces available.</p>
+                        ) : (
+                            <WorkspaceGrid workspaces={publicWorkspaces} onSelect={handleSelect} showPublicBadge />
+                        )}
+                    </section>
                 </div>
             </div>
         </div>
