@@ -44,6 +44,7 @@ export function DiscordConnectControl({ workspaceId }: DiscordConnectControlProp
   const [session, setSession] = useState<DiscordInstallSession | null>(null);
   const [loadingInvite, setLoadingInvite] = useState(false);
   const [confirmingGuildId, setConfirmingGuildId] = useState<string | null>(null);
+  const [manualInviteUrl, setManualInviteUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!workspaceId) {
@@ -86,16 +87,20 @@ export function DiscordConnectControl({ workspaceId }: DiscordConnectControlProp
 
   const handleOpenInvite = async () => {
     const popup = window.open("", "_blank", "noopener,noreferrer");
+    if (popup && !popup.closed) {
+      popup.document.title = "Opening Discord invite...";
+      popup.document.body.innerHTML = "<p style='font-family: sans-serif; padding: 16px;'>Opening Discord invite...</p>";
+    }
     setLoadingInvite(true);
     try {
       const nextSession = await workspaceDiscordService.createInstallSession(workspaceId);
       setSession(nextSession);
       if (nextSession.inviteUrl) {
+        setManualInviteUrl(nextSession.inviteUrl);
         if (popup && !popup.closed) {
           popup.location.href = nextSession.inviteUrl;
         } else {
-          window.location.assign(nextSession.inviteUrl);
-          toast.info("新規タブがブロックされたため、このタブで Discord 招待ページを開きました");
+          toast.error("新規タブがブロックされました。下の Open Invite Link から開いてください");
         }
       } else {
         popup?.close();
@@ -171,6 +176,19 @@ export function DiscordConnectControl({ workspaceId }: DiscordConnectControlProp
               {loadingInvite ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
               Open Invite
             </Button>
+            {manualInviteUrl ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2 gap-2"
+                onClick={() => {
+                  window.open(manualInviteUrl, "_blank", "noopener,noreferrer");
+                }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open Invite Link
+              </Button>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-border/70 p-4">

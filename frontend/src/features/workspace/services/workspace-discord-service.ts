@@ -53,10 +53,42 @@ function toIntegration(data: DocumentData): WorkspaceDiscordIntegration {
   };
 }
 
-function normalizeSession(session: DiscordInstallSession): DiscordInstallSession {
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeSession(raw: unknown): DiscordInstallSession {
+  const data = (raw && typeof raw === "object") ? (raw as Record<string, unknown>) : {};
+  const candidatesRaw = Array.isArray(data.candidates) ? data.candidates : [];
+
+  const candidates: DiscordInstallCandidate[] = candidatesRaw
+    .map((candidate): DiscordInstallCandidate | null => {
+      if (!candidate || typeof candidate !== "object") {
+        return null;
+      }
+      const c = candidate as Record<string, unknown>;
+      const guildId = asString(c.guildId) ?? asString(c.guild_id) ?? "";
+      const guildName = asString(c.guildName) ?? asString(c.guild_name) ?? "";
+      const source = asString(c.source) ?? "";
+      const joinedAt = asNumber(c.joinedAt) ?? asNumber(c.joined_at);
+      return joinedAt === undefined
+        ? { guildId, guildName, source }
+        : { guildId, guildName, source, joinedAt };
+    })
+    .filter((candidate): candidate is DiscordInstallCandidate => candidate !== null);
+
   return {
-    ...session,
-    candidates: Array.isArray(session.candidates) ? session.candidates : [],
+    sessionId: asString(data.sessionId) ?? asString(data.session_id) ?? "",
+    workspaceId: asString(data.workspaceId) ?? asString(data.workspace_id) ?? "",
+    status: (asString(data.status) as DiscordInstallSession["status"]) ?? "pending",
+    selectedGuildId: asString(data.selectedGuildId) ?? asString(data.selected_guild_id),
+    inviteUrl: asString(data.inviteUrl) ?? asString(data.invite_url),
+    expiresAt: asNumber(data.expiresAt) ?? asNumber(data.expires_at),
+    candidates,
   };
 }
 
@@ -102,10 +134,14 @@ export const workspaceDiscordService = {
   },
 
   async getInviteUrl(workspaceId: string): Promise<string> {
-    const response = await postJSON<{ invite_url: string }>("/api/workspace/discord/invite", {
+    const response = await postJSON<{ invite_url?: string; inviteUrl?: string }>("/api/workspace/discord/invite", {
       workspace_id: workspaceId,
     });
-    return response.invite_url;
+    const inviteUrl = response.inviteUrl ?? response.invite_url;
+    if (!inviteUrl) {
+      throw new Error("inviteUrl is missing in invite response");
+    }
+    return inviteUrl;
   },
 
   async createInstallSession(workspaceId: string): Promise<DiscordInstallSession> {
