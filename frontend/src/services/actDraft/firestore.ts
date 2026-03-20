@@ -71,6 +71,7 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
     positionX: readNumber(data.positionX),
     positionY: readNumber(data.positionY),
     contentMd: readString(data.contentMd),
+    thoughtMd: readString(data.thoughtMd),
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
     evidenceRefs: [],
@@ -102,7 +103,7 @@ export const actDraftService = {
   async saveDraftSnapshot(
     workspaceId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
+    draft: { title?: string; kind?: string; contentMd?: string; thoughtMd?: string; referencedNodeIds?: string[]; createdBy: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
   ) {
     await setDoc(
       draftDoc(workspaceId, nodeId),
@@ -114,6 +115,7 @@ export const actDraftService = {
         createdBy: draft.createdBy,
         ...(draft.authorUid !== undefined ? { authorUid: draft.authorUid } : {}),
         contentMd: draft.contentMd ?? "",
+        thoughtMd: draft.thoughtMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
         ...(draft.parentId !== undefined ? { parentId: draft.parentId } : {}),
         ...(draft.isManualPosition !== undefined ? { isManualPosition: draft.isManualPosition } : {}),
@@ -140,6 +142,7 @@ export const actDraftService = {
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],
       ...(patch.data?.parentId !== undefined ? { parentId: patch.data.parentId } : {}),
       ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),
+      ...(patch.data?.thoughtMd !== undefined ? { thoughtMd: patch.data.thoughtMd } : {}),
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
@@ -155,7 +158,7 @@ export const actDraftService = {
   async patchDraft(
     workspaceId: string,
     nodeId: string,
-    fields: { title?: string; contentMd?: string; positionX?: number; positionY?: number },
+    fields: { title?: string; contentMd?: string; thoughtMd?: string; positionX?: number; positionY?: number },
   ) {
     const payload: Record<string, unknown> = {
       updatedAt: serverTimestamp(),
@@ -164,6 +167,7 @@ export const actDraftService = {
     };
     if (fields.title !== undefined) payload.title = fields.title;
     if (fields.contentMd !== undefined) payload.contentMd = fields.contentMd;
+    if (fields.thoughtMd !== undefined) payload.thoughtMd = fields.thoughtMd;
     if (fields.positionX !== undefined) payload.positionX = fields.positionX;
     if (fields.positionY !== undefined) payload.positionY = fields.positionY;
     await updateDoc(draftDoc(workspaceId, nodeId), payload);

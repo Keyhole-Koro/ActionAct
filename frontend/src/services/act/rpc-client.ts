@@ -222,8 +222,8 @@ export function createRpcActService(): ActPort {
             selectedNodeContextsCount: options?.selectedNodeContexts?.length ?? 0,
             llmConfig: {
               model,
-              enableGrounding: options?.enableGrounding ?? false,
-              enableThinking: options?.includeThoughts ?? false,
+              enableGrounding: true,
+              enableThinking: true,
               modelProfile: options?.modelProfile ?? "flash",
             },
           });
@@ -252,8 +252,8 @@ export function createRpcActService(): ActPort {
               })),
               llmConfig: {
                 model,
-                enableGrounding: options?.enableGrounding ?? false,
-                enableThinking: options?.includeThoughts ?? false,
+                enableGrounding: true,
+                enableThinking: true,
               },
             },
             {

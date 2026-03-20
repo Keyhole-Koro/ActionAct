@@ -21,7 +21,6 @@ import {
     Globe,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
-import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import {
     GRAPH_NODE_EXPANDED_MAX_HEIGHT,
     GRAPH_NODE_EXPANDED_WIDTH,
@@ -77,7 +76,6 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
 
 export function GraphNodeCard({ id, type, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
     const updateNodeInternals = useUpdateNodeInternals();
-    const showThoughts = useStreamPreferencesStore((state) => state.showThoughts);
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
@@ -138,7 +136,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const inputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
-    const hasThoughtText = Boolean(showThoughts && data.thoughtMd);
+    const hasThoughtText = Boolean(data.thoughtMd);
     const hasBodyText = Boolean(data.contextSummary || data.contentMd || hasThoughtText);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
     const hasReferences = referencedNodes.length > 0;
@@ -513,9 +511,9 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                         dangerouslySetInnerHTML={{ __html: data.detailHtml }}
                                     />
                                 )}
-                                {showThoughts && data.thoughtMd && (
+                                {data.thoughtMd && (
                                     <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
-                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought Process</p>
                                         <div className="text-[12px] whitespace-pre-wrap leading-relaxed text-amber-900/85">
                                             {data.thoughtMd}
                                         </div>
@@ -1005,9 +1003,9 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                 </div>
                             ) : null}
 
-                            {showThoughts && data.thoughtMd ? (
+                            {data.thoughtMd ? (
                                 <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
-                                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought Process</p>
                                     <div className={`${isActNode ? 'text-[12px]' : 'text-xs'} whitespace-pre-wrap leading-relaxed text-amber-900/85`}>
                                         {data.thoughtMd}
                                     </div>

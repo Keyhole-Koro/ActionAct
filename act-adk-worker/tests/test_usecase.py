@@ -14,6 +14,21 @@ class FakeLLM:
         yield LLMChunk(is_done=True)
 
 
+class FakeLLMStartActMissingAnchor:
+    async def generate(self, _bundle, _config):
+        yield LLMChunk(
+            is_done=True,
+            function_calls=[
+                {
+                    "name": "start_act",
+                    "args": {
+                        "user_message": "look deeper",
+                    },
+                }
+            ],
+        )
+
+
 def _input(**overrides) -> RunActInput:
     defaults = dict(
         trace_id="t1",
@@ -101,3 +116,17 @@ async def test_usecase_event_ordering():
     assert first_upsert_idx is not None, "should have upsert"
     assert first_append_idx is not None, "should have append_md"
     assert first_upsert_idx < first_append_idx, "upsert must come before append_md"
+
+
+@pytest.mark.asyncio
+async def test_usecase_drops_start_act_without_anchor_node_id():
+    uc = RunActUsecase(assembly=StubAssembly(), llm=FakeLLMStartActMissingAnchor())
+
+    events = []
+    async for event in uc.execute(_input(anchor_node_id="root-node")):
+        events.append(event)
+
+    action_triggers = [event for event in events if event.type == "action_trigger"]
+    assert action_triggers == []
+    assert events[-1].type == "terminal"
+    assert events[-1].done is True

@@ -170,6 +170,17 @@ class RunActUsecase:
                 logger.info("suggest_deep_dives: %d suggestions yielded", len(suggestions))
 
             elif fc_name == "start_act":
+                anchor_node_id = fc_args.get("anchor_node_id")
+                if not isinstance(anchor_node_id, str) or not anchor_node_id.strip():
+                    logger.warning(
+                        "start_act dropped because anchor_node_id is missing",
+                        extra={
+                            "trace_id": input.trace_id,
+                            "request_id": input.request_id,
+                            "user_message": fc_args.get("user_message", ""),
+                        },
+                    )
+                    continue
                 yield RunActEvent(
                     type="action_trigger",
                     action_triggers=[ActionTrigger(

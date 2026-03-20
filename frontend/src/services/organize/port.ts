@@ -23,6 +23,7 @@ export interface TopicNode {
     contextSummary?: string;
     detailHtml?: string;
     contentMd?: string;
+    thoughtMd?: string;
     evidenceRefs?: EvidenceRef[];
 }
 

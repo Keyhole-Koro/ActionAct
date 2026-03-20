@@ -98,6 +98,7 @@ export function useGraphSubscriptions({
                         : node.title,
                     kind: 'act',
                     contentMd: node.contentMd,
+                    thoughtMd: node.thoughtMd,
                     contextSummary: node.contextSummary,
                     detailHtml: node.detailHtml,
                     referencedNodeIds: node.referencedNodeIds,

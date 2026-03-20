@@ -7,5 +7,6 @@
   "firebaseAuthEmulatorHost": "",
   "firestoreEmulatorHost": "",
   "gcloudProject": "prod",
-  "requireBootstrapCsrfHeader": true
+  "requireBootstrapCsrfHeader": true,
+  "useActApiProxy": true
 }

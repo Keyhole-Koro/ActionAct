@@ -27,9 +27,6 @@ export type StartActRunResult = {
   cancel: () => void;
 };
 
-const GROUNDING_HINT_PATTERN = /\b(latest|current|today|news|price|pricing|version|release|official|source|reference|references|citation|citations|compare|comparison|docs?|documentation)\b|最新|現在|今日|ニュース|価格|料金|相場|バージョン|リリース|公式|出典|ソース|参考|比較|ドキュメント/u;
-
-
 function compactText(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") {
     return null;
@@ -83,14 +80,6 @@ function buildSelectedNodeContexts(
       detailHtml: detailHtml ?? undefined,
     };
   });
-}
-
-function shouldAutoEnableGrounding(query: string, actType: StreamActOptions["actType"]) {
-  if (GROUNDING_HINT_PATTERN.test(query)) {
-    return true;
-  }
-
-  return actType === "investigate";
 }
 
 export function startActRun({ targetNodeId, query, workspaceId, options, triggerDepth = 0 }: StartActRunParams): StartActRunResult {
@@ -161,6 +150,7 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
           createdBy: node.data?.createdBy === "user" ? "user" : "agent",
           authorUid: typeof node.data?.authorUid === "string" ? node.data.authorUid : undefined,
           contentMd: typeof node.data?.contentMd === "string" ? node.data.contentMd : "",
+          thoughtMd: typeof node.data?.thoughtMd === "string" ? node.data.thoughtMd : "",
           referencedNodeIds: Array.isArray(node.data?.referencedNodeIds)
             ? node.data.referencedNodeIds.filter((value): value is string => typeof value === "string")
             : referencedNodeIds,
@@ -279,10 +269,8 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
       anchorNodeId: targetNodeId ?? options?.anchorNodeId,
       contextNodeIds: options?.contextNodeIds ?? selectedNodeIds,
       selectedNodeContexts,
-      enableGrounding: options?.enableGrounding
-        ?? preferences.useWebGroundingOverride
-        ?? shouldAutoEnableGrounding(query, options?.actType),
-      includeThoughts: options?.includeThoughts ?? preferences.includeThoughts,
+      enableGrounding: true,
+      includeThoughts: true,
       modelProfile: options?.modelProfile ?? preferences.modelProfile,
     },
     triggerDepth < MAX_TRIGGER_DEPTH

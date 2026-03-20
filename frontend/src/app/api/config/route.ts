@@ -4,6 +4,7 @@ export async function GET() {
   return NextResponse.json({
     rpcBaseUrl: process.env.NEXT_PUBLIC_RPC_BASE_URL || "",
     actApiBaseUrl: process.env.NEXT_PUBLIC_ACT_API_BASE_URL || "",
+    useActApiProxy: process.env.NEXT_PUBLIC_USE_ACT_API_PROXY || "",
     firebaseApiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
     firebaseAuthDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
     firebaseAppId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",

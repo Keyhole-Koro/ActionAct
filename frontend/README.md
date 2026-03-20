@@ -33,6 +33,8 @@ Required:
   * `actApiBaseUrl`
 * bootstrap CSRF strictness
   * `requireBootstrapCsrfHeader`
+* API routing mode
+  * `useActApiProxy`
 
 Example:
 
@@ -46,3 +48,4 @@ npm run dev
 * Firebase Auth と `POST /auth/session/bootstrap` が前提です
 * `AuthGate` が Google sign-in 後に session bootstrap を行い、`sid` / `csrf_token` cookie を揃えつつ `X-CSRF-Token` を保持します
 * `services/firebase/token.ts` が `Authorization` を付与し、`services/firebase/csrf.ts` が保持済みの `X-CSRF-Token` を付与します
+* production では frontend route handler proxy が `auth/session/bootstrap`, `/api/*`, `/act.v1.ActService/*` を act-api に中継します

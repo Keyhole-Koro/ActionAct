@@ -178,6 +178,11 @@ func (e *ADKWorkerExecutor) Execute(
 		AnchorNodeID:         input.AnchorID,
 		ContextNodeIDs:       input.ContextIDs,
 		SelectedNodeContexts: selectedNodeContexts,
+		LLMConfig: &workerLLMConfig{
+			Model:           input.LLMConfig.Model,
+			EnableGrounding: input.LLMConfig.EnableGrounding,
+			EnableThinking:  input.LLMConfig.EnableThinking,
+		},
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

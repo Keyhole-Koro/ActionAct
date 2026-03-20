@@ -183,6 +183,11 @@ func (uc *RunActUsecase) Execute(
 		AnchorID:             msg.GetAnchorNodeId(),
 		ContextIDs:           msg.GetContextNodeIds(),
 		SelectedNodeContexts: selectedNodeContexts,
+		LLMConfig: domain.LLMConfig{
+			Model:           msg.GetLlmConfig().GetModel(),
+			EnableGrounding: true,
+			EnableThinking:  msg.GetLlmConfig().GetEnableThinking(),
+		},
 	}
 
 	if uc.runs != nil {

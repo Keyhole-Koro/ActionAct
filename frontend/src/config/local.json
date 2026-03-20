@@ -7,5 +7,6 @@
   "firebaseAuthEmulatorHost": "localhost:9099",
   "firestoreEmulatorHost": "localhost:8081",
   "gcloudProject": "local-dev",
-  "requireBootstrapCsrfHeader": false
+  "requireBootstrapCsrfHeader": false,
+  "useActApiProxy": false
 }

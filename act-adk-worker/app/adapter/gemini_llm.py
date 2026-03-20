@@ -63,9 +63,9 @@ _START_ACT_DECL = FunctionDeclaration(
                 description="Act の種別",
             ),
             "user_message": Schema(type="STRING", description="次の Act に渡すクエリ"),
-            "anchor_node_id": Schema(type="STRING", description="起点ノード ID（省略可）"),
+            "anchor_node_id": Schema(type="STRING", description="起点ノード ID"),
         },
-        required=["user_message"],
+        required=["user_message", "anchor_node_id"],
     ),
 )
 

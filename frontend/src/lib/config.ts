@@ -4,6 +4,7 @@ import prodConfig from "@/config/prod.json";
 export type FrontendConfig = {
   rpcBaseUrl: string;
   actApiBaseUrl: string;
+  actApiUpstreamBaseUrl: string;
   firebaseApiKey: string;
   firebaseAuthDomain: string;
   firebaseAppId: string;
@@ -11,10 +12,11 @@ export type FrontendConfig = {
   firestoreEmulatorHost: string;
   gcloudProject: string;
   requireBootstrapCsrfHeader: boolean;
+  useActApiProxy: boolean;
 };
 
-type BooleanConfigKey = "requireBootstrapCsrfHeader";
-type StringConfigKey = Exclude<keyof FrontendConfig, BooleanConfigKey>;
+type BooleanConfigKey = "requireBootstrapCsrfHeader" | "useActApiProxy";
+type StaticStringConfigKey = Exclude<keyof FrontendConfig, BooleanConfigKey | "actApiUpstreamBaseUrl">;
 
 const isProd = process.env.NODE_ENV === "production";
 const staticConfig = isProd ? prodConfig : localConfig;
@@ -27,9 +29,9 @@ const publicEnv = {
   firebaseAuthEmulatorHost: process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
   firestoreEmulatorHost: process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST,
   gcloudProject: process.env.NEXT_PUBLIC_GCLOUD_PROJECT,
-} satisfies Partial<Record<StringConfigKey, string>>;
+} satisfies Partial<Record<StaticStringConfigKey, string>>;
 
-function getConfigValue(fieldName: StringConfigKey): string {
+function getConfigValue(fieldName: StaticStringConfigKey): string {
   const envValue = publicEnv[fieldName];
   if (envValue && envValue.trim() !== "") {
     return envValue;
@@ -58,6 +60,7 @@ function validateConfig(c: FrontendConfig): FrontendConfig {
   for (const [key, value] of Object.entries(c)) {
     if (typeof value === "boolean") continue;
     if (key === "firebaseAuthEmulatorHost" || key === "firestoreEmulatorHost") continue;
+    if (c.useActApiProxy && (key === "rpcBaseUrl" || key === "actApiBaseUrl")) continue;
 
     if (value === "") {
       missing.push(key);
@@ -86,8 +89,9 @@ function validateConfig(c: FrontendConfig): FrontendConfig {
 }
 
 export const config: FrontendConfig = validateConfig({
-  rpcBaseUrl: getConfigValue("rpcBaseUrl"),
-  actApiBaseUrl: getConfigValue("actApiBaseUrl"),
+  rpcBaseUrl: getBooleanConfigValue("useActApiProxy") ? "" : getConfigValue("rpcBaseUrl"),
+  actApiBaseUrl: getBooleanConfigValue("useActApiProxy") ? "" : getConfigValue("actApiBaseUrl"),
+  actApiUpstreamBaseUrl: getConfigValue("actApiBaseUrl"),
   firebaseApiKey: getConfigValue("firebaseApiKey"),
   firebaseAuthDomain: getConfigValue("firebaseAuthDomain"),
   firebaseAppId: getConfigValue("firebaseAppId"),
@@ -95,4 +99,5 @@ export const config: FrontendConfig = validateConfig({
   firestoreEmulatorHost: getConfigValue("firestoreEmulatorHost"),
   gcloudProject: getConfigValue("gcloudProject"),
   requireBootstrapCsrfHeader: getBooleanConfigValue("requireBootstrapCsrfHeader"),
+  useActApiProxy: getBooleanConfigValue("useActApiProxy"),
 });

@@ -21,6 +21,13 @@ type RunActInput struct {
 	AnchorID             string
 	ContextIDs           []string
 	SelectedNodeContexts []SelectedNodeContext
+	LLMConfig            LLMConfig
+}
+
+type LLMConfig struct {
+	Model           string
+	EnableGrounding bool
+	EnableThinking  bool
 }
 
 type SelectedNodeContext struct {

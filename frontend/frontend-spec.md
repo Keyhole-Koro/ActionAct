@@ -549,6 +549,8 @@ frontend/
   * ID Token取得と更新（Authorizationヘッダ用）を提供する
 * `src/services/firebase/csrf.ts`
   * `auth/session/bootstrap` 応答の `X-CSRF-Token` を保持し、`X-CSRF-Token` 付与ヘルパを提供する
+* `src/app/auth/session/bootstrap/route.ts`, `src/app/api/[...path]/route.ts`, `src/app/act.v1.ActService/[method]/route.ts`
+  * frontend origin から act-api へ same-origin proxy を提供する
 * `src/lib/cookie.ts`
   * Cookie読み取りの共通ユーティリティ（`sid` は読み取らない）
 
@@ -570,6 +572,7 @@ frontend/
 * `csrf_token` Cookie は API ドメインへ送信する正本として扱う
 * frontend は `POST /auth/session/bootstrap` 応答の `X-CSRF-Token` を保持し、state-changing request で `X-CSRF-Token` に同値を送る
 * RPC/HTTP呼び出しは `credentials: include` を必須とする
+* production では frontend route handler proxy を経由し、browser からは same-origin request として扱う
 * `RunActRequest.sid` は原則送らない（互換用途のみ）
 * `request_id` はクライアントで毎回UUID生成して付与する
 
@@ -584,6 +587,9 @@ frontend/
 * `requireBootstrapCsrfHeader`
   * `prod=true`, `local=false`
   * local で `POST /auth/session/bootstrap` が `X-CSRF-Token` を返さない構成を許容する
+* `useActApiProxy`
+  * `prod=true`, `local=false`
+  * `true` の場合、frontend は same-origin route handler proxy を通して act-api に接続する
 
 ---
 

@@ -14,6 +14,7 @@ export async function upsertActNodeDraft(
         createdBy?: 'user' | 'agent';
         authorUid?: string;
         contentMd?: string;
+        thoughtMd?: string;
     },
 ) {
     // 1. Update local store first for responsiveness
@@ -29,6 +30,7 @@ export async function upsertActNodeDraft(
         createdBy: payload.createdBy ?? (node.data?.createdBy as 'user' | 'agent'),
         authorUid: payload.authorUid ?? (node.data?.authorUid as string),
         contentMd: payload.contentMd ?? (node.data?.contentMd as string),
+        thoughtMd: payload.thoughtMd ?? (node.data?.thoughtMd as string),
         referencedNodeIds: payload.referencedNodeIds ?? (node.data?.referencedNodeIds as string[]),
         parentId: payload.parentId ?? (node.data?.parentId as string),
         isManualPosition: node.data?.isManualPosition === true,

@@ -52,6 +52,8 @@ interface GraphState {
         kind?: string;
         hasStartedRun?: boolean;
         parentId?: string;
+        contentMd?: string;
+        thoughtMd?: string;
         referencedNodeIds?: string[];
         createdBy?: 'user' | 'agent';
         authorUid?: string;
@@ -422,6 +424,8 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
                                 ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                                 ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
+                                ...(payload.contentMd !== undefined ? { contentMd: payload.contentMd } : {}),
+                                ...(payload.thoughtMd !== undefined ? { thoughtMd: payload.thoughtMd } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                                 ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
                                 ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
@@ -452,7 +456,8 @@ export const useGraphStore = create<GraphState>((set) => ({
                 kind: payload.kind ?? 'act',
                 ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                 referencedNodeIds: payload.referencedNodeIds ?? [],
-                contentMd: '',
+                contentMd: payload.contentMd ?? '',
+                thoughtMd: payload.thoughtMd ?? '',
                 ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                 ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
                 ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
@@ -590,7 +595,9 @@ export const useGraphStore = create<GraphState>((set) => ({
         if (!sameIds(state.selectedNodeIds, nextSelectedNodeIds)) {
             writeStoredSelectedNodeIds(nextSelectedNodeIds);
         }
-        const { [nodeId]: _removed, ...nextNodeLastUsedAt } = state.nodeLastUsedAt;
+        const nextNodeLastUsedAt = Object.fromEntries(
+            Object.entries(state.nodeLastUsedAt).filter(([id]) => id !== nodeId),
+        );
         return {
             actNodes: state.actNodes.filter(n => n.id !== nodeId),
             actEdges: state.actEdges.filter(e => e.source !== nodeId && e.target !== nodeId),
