@@ -31,13 +31,14 @@ export function useGraphPresence({
         if (!effectiveWorkspaceId) return;
         const myUid = getAuth().currentUser?.uid;
         if (!myUid) return;
+        if (otherCursors.length === 0) return;
         if (cursorThrottleRef.current) return;
         cursorThrottleRef.current = setTimeout(() => {
             cursorThrottleRef.current = null;
         }, 100);
         const pos = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
         presenceService.writeCursor(effectiveWorkspaceId, myUid, pos.x, pos.y);
-    }, [effectiveWorkspaceId, reactFlowInstance]);
+    }, [effectiveWorkspaceId, otherCursors.length, reactFlowInstance]);
 
     return {
         otherCursors,
