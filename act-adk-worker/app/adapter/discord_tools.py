@@ -11,6 +11,11 @@ from app.domain.models import LLMChunk, LLMConfig
 
 logger = logging.getLogger(__name__)
 
+_MODEL_ALIASES = {
+    "flash": "gemini-3-flash-preview",
+    "deep_research": "gemini-3-pro-preview",
+}
+
 DISCORD_TOOLS = [
     FunctionDeclaration(
         name="list_discord_structure",
@@ -74,7 +79,7 @@ async def run_discord_agentic_loop(
     config: LLMConfig,
 ) -> AsyncIterator[LLMChunk]:
     """Agentic loop: Gemini calls Discord tools until it can answer."""
-    model_name = config.model or "gemini-2.0-flash"
+    model_name = _MODEL_ALIASES.get(config.model, config.model) or "gemini-3-flash-preview"
 
     gen_config = GenerateContentConfig(
         systemInstruction=system_instruction,
