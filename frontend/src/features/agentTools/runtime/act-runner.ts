@@ -107,7 +107,23 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
   const preferences = useStreamPreferencesStore.getState();
   const currentUserUid = getAuth().currentUser?.uid;
   const requestId = options?.requestId ?? uuidv4();
-  const isExistingActTarget = targetNodeId ? graphStore.actNodes.some((node) => node.id === targetNodeId) : false;
+  const existingTargetNode = targetNodeId
+    ? graphStore.actNodes.find((node) => node.id === targetNodeId)
+    : undefined;
+  const targetKind = typeof existingTargetNode?.data?.kind === "string" ? existingTargetNode.data.kind : undefined;
+  const targetHasResolvedContent = [
+    existingTargetNode?.data?.contentMd,
+    existingTargetNode?.data?.contextSummary,
+    existingTargetNode?.data?.detailHtml,
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
+  const targetHasStartedRun = existingTargetNode?.data?.hasStartedRun === true;
+  const shouldForkFromExistingActNode = Boolean(
+    targetNodeId
+      && existingTargetNode
+      && (targetKind === "act" || targetKind === "agent_act")
+      && (targetHasStartedRun || targetHasResolvedContent),
+  );
+  const isExistingActTarget = Boolean(targetNodeId && existingTargetNode && !shouldForkFromExistingActNode);
   const frontendRootNodeId = isExistingActTarget && targetNodeId ? targetNodeId : `act-${requestId}`;
   const backendToFrontendNodeIds = new Map<string, string>([["root", frontendRootNodeId]]);
   if (targetNodeId) {
@@ -147,6 +163,7 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
       kind: "act",
       createdBy: "agent" as const,
       referencedNodeIds,
+      ...(shouldForkFromExistingActNode && targetNodeId ? { parentId: targetNodeId } : {}),
     }),
   });
   graphStore.addStreamingNode(frontendRootNodeId);

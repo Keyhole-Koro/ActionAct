@@ -166,7 +166,7 @@ export const actDraftService = {
   async patchDraft(
     workspaceId: string,
     nodeId: string,
-    fields: { title?: string; contentMd?: string; thoughtMd?: string; positionX?: number; positionY?: number },
+    fields: { title?: string; contentMd?: string; thoughtMd?: string; positionX?: number; positionY?: number; isManualPosition?: boolean },
   ) {
     const payload: Record<string, unknown> = {
       updatedAt: serverTimestamp(),
@@ -178,6 +178,7 @@ export const actDraftService = {
     if (fields.thoughtMd !== undefined) payload.thoughtMd = fields.thoughtMd;
     if (fields.positionX !== undefined) payload.positionX = fields.positionX;
     if (fields.positionY !== undefined) payload.positionY = fields.positionY;
+    if (fields.isManualPosition !== undefined) payload.isManualPosition = fields.isManualPosition;
     await updateDoc(draftDoc(workspaceId, nodeId), payload);
   },
 

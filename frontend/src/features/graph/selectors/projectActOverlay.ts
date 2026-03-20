@@ -12,13 +12,6 @@ type ProjectActOverlayParams = {
     expandedNodeIds: string[];
 };
 
-type Box = {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-};
-
 // X distance from the rightmost persisted node to the root column (depth=0)
 const GLOBAL_X_OFFSET = 220;
 // Horizontal gap between depth levels (depth=0, depth=1, depth=2, …)
@@ -42,15 +35,6 @@ let _overlayCache: {
     result: GraphNodeBase[];
 } | null = null;
 
-function overlapsOnAxis(startA: number, endA: number, startB: number, endB: number, gap: number) {
-    return startA < endB + gap && startB < endA + gap;
-}
-
-function boxesOverlap(a: Box, b: Box, gap: number) {
-    return overlapsOnAxis(a.left, a.right, b.left, b.right, gap)
-        && overlapsOnAxis(a.top, a.bottom, b.top, b.bottom, gap);
-}
-
 function buildActKey(actNodes: GraphNodeBase[]): string {
     return actNodes.map((n) => {
         const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
@@ -66,6 +50,12 @@ function buildActKey(actNodes: GraphNodeBase[]): string {
 
 function isRenderableCoordinate(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
+}
+
+function isUserActRoot(node: GraphNodeBase): boolean {
+    return node.data?.nodeSource === 'act'
+        && node.data?.createdBy === 'user'
+        && typeof node.data?.parentId !== 'string';
 }
 
 function getChildGap(child: GraphNodeBase): number {
@@ -102,12 +92,13 @@ export function projectActOverlay({
         return _overlayCache.result;
     }
 
-    // Separate manually-positioned nodes from those that need layout
+    // Only user-created act roots own persistent coordinates.
+    // Agent children and nested act nodes always participate in tree layout.
     const fixedNodes: GraphNodeBase[] = [];
     const floatNodes: GraphNodeBase[] = [];
 
     for (const node of actNodes) {
-        if (node.data?.isManualPosition === true) {
+        if (isUserActRoot(node) && isRenderableCoordinate(node.position?.x) && isRenderableCoordinate(node.position?.y)) {
             fixedNodes.push(node);
         } else {
             floatNodes.push(node);
@@ -325,7 +316,6 @@ export function projectActOverlay({
 
         const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
         if (parentId && floatIds.has(parentId)) {
-            const parentNode = nodeById.get(parentId);
             const parentX = assignX(parentId);
             const nextX = parentX + getChildGap(node);
             posXMap.set(nodeId, nextX);
@@ -351,8 +341,7 @@ export function projectActOverlay({
     // ── Emit positioned nodes ─────────────────────────────────────────────────
     const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
         const preserveExistingPosition =
-            node.data?.kind !== 'agent_act'
-            && typeof node.data?.parentId !== 'string'
+            isUserActRoot(node)
             && node.data?.overlayPositioned === true
             && isRenderableCoordinate(node.position?.x)
             && isRenderableCoordinate(node.position?.y);
@@ -373,141 +362,7 @@ export function projectActOverlay({
         };
     });
 
-    const positionedById = new Map<string, GraphNodeBase>([
-        ...positionedFloat.map((node) => [node.id, node] as const),
-        ...fixedNodes.map((node) => [node.id, node] as const),
-    ]);
-    const movableIds = new Set(positionedFloat.map((node) => node.id));
-
-    const ownerCache = new Map<string, string | null>();
-    const resolveOwnerId = (nodeId: string): string | null => {
-        const cached = ownerCache.get(nodeId);
-        if (cached !== undefined) {
-            return cached;
-        }
-
-        const node = positionedById.get(nodeId);
-        if (!node) {
-            ownerCache.set(nodeId, null);
-            return null;
-        }
-
-        if (node.data?.createdBy === 'user') {
-            ownerCache.set(nodeId, nodeId);
-            return nodeId;
-        }
-
-        const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
-        if (!parentId) {
-            ownerCache.set(nodeId, null);
-            return null;
-        }
-
-        const ownerId = resolveOwnerId(parentId);
-        ownerCache.set(nodeId, ownerId);
-        return ownerId;
-    };
-
-    const groupNodeIdsByOwner = new Map<string, string[]>();
-    for (const node of [...fixedNodes, ...positionedFloat]) {
-        const ownerId = resolveOwnerId(node.id);
-        if (!ownerId) {
-            continue;
-        }
-        const group = groupNodeIdsByOwner.get(ownerId) ?? [];
-        group.push(node.id);
-        groupNodeIdsByOwner.set(ownerId, group);
-    }
-
-    const buildGroupBox = (nodeIds: string[]): Box | null => {
-        let left = Infinity;
-        let right = -Infinity;
-        let top = Infinity;
-        let bottom = -Infinity;
-
-        for (const nodeId of nodeIds) {
-            const node = positionedById.get(nodeId);
-            if (!node) {
-                continue;
-            }
-            const dimensions = getNodeDimensions(node, expandedSet.has(node.id));
-            left = Math.min(left, node.position.x);
-            top = Math.min(top, node.position.y);
-            right = Math.max(right, node.position.x + dimensions.width);
-            bottom = Math.max(bottom, node.position.y + dimensions.height);
-        }
-
-        if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(right) || !Number.isFinite(bottom)) {
-            return null;
-        }
-
-        return { left, right, top, bottom };
-    };
-
-    const groups = [...groupNodeIdsByOwner.entries()]
-        .map(([ownerId, nodeIds]) => {
-            const box = buildGroupBox(nodeIds);
-            if (!box) {
-                return null;
-            }
-            return {
-                ownerId,
-                nodeIds,
-                movableNodeIds: nodeIds.filter((nodeId) => movableIds.has(nodeId)),
-                box,
-            };
-        })
-        .filter((group): group is { ownerId: string; nodeIds: string[]; movableNodeIds: string[]; box: Box } => group !== null)
-        .sort((a, b) => (a.box.top - b.box.top) || (a.box.left - b.box.left));
-
-    const placed: Array<{ ownerId: string; box: Box }> = [];
-    for (const group of groups) {
-        if (group.movableNodeIds.length === 0) {
-            placed.push({ ownerId: group.ownerId, box: group.box });
-            continue;
-        }
-
-        let nextTop = group.box.top;
-        let nextBottom = group.box.bottom;
-        for (const candidate of placed) {
-            if (!boxesOverlap(
-                { ...group.box, top: nextTop, bottom: nextBottom },
-                candidate.box,
-                TREE_GAP,
-            )) {
-                continue;
-            }
-            const height = group.box.bottom - group.box.top;
-            nextTop = candidate.box.bottom + TREE_GAP;
-            nextBottom = nextTop + height;
-        }
-
-        const deltaY = nextTop - group.box.top;
-        if (deltaY !== 0) {
-            for (const nodeId of group.movableNodeIds) {
-                const node = positionedById.get(nodeId);
-                if (!node) {
-                    continue;
-                }
-                positionedById.set(nodeId, {
-                    ...node,
-                    position: {
-                        x: node.position.x,
-                        y: node.position.y + deltaY,
-                    },
-                });
-            }
-        }
-
-        const shiftedBox = buildGroupBox(group.nodeIds) ?? {
-            ...group.box,
-            top: nextTop,
-            bottom: nextBottom,
-        };
-        placed.push({ ownerId: group.ownerId, box: shiftedBox });
-    }
-
-    const result = [...positionedById.values()];
+    const result = [...fixedNodes, ...positionedFloat];
     _overlayCache = { actKey, maxPersistedRight, expandedKey, result };
     return result;
 }

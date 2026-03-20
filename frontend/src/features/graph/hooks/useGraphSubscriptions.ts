@@ -79,35 +79,38 @@ export function useGraphSubscriptions({
         const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, (draftNodes) => {
             const graphState = useGraphStore.getState();
             const existingActNodeById = new Map(graphState.actNodes.map((node) => [node.id, node]));
-            const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
-                id: node.id,
-                type: 'customTask',
-                position: {
-                    x: typeof node.positionX === 'number' ? node.positionX : 420,
-                    y: typeof node.positionY === 'number' ? node.positionY : (index * 180 + 120),
-                },
-                data: {
-                    nodeSource: 'act',
-                    createdBy: node.createdBy ?? 'agent',
-                    ...(node.authorUid !== undefined ? { authorUid: node.authorUid } : {}),
-                    topicId: node.topicId,
-                    label: graphState.editingNodeId === node.id
-                        ? (typeof existingActNodeById.get(node.id)?.data?.label === 'string'
-                            ? existingActNodeById.get(node.id)?.data?.label as string
-                            : node.title)
-                        : node.title,
-                    kind: node.kind ?? 'act',
-                    ...(node.status ? { status: node.status } : {}),
-                    ...(node.agentRole ? { agentRole: node.agentRole } : {}),
-                    contentMd: node.contentMd,
-                    thoughtMd: node.thoughtMd,
-                    contextSummary: node.contextSummary,
-                    detailHtml: node.detailHtml,
-                    referencedNodeIds: node.referencedNodeIds,
-                    parentId: node.parentId,
-                    ...(node.isManualPosition ? { isManualPosition: true } : {}),
-                },
-            }));
+            const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => {
+                const isUserActRoot = node.createdBy === 'user' && typeof node.parentId !== 'string';
+                return {
+                    id: node.id,
+                    type: 'customTask',
+                    position: {
+                        x: isUserActRoot && typeof node.positionX === 'number' ? node.positionX : 420,
+                        y: isUserActRoot && typeof node.positionY === 'number' ? node.positionY : (index * 180 + 120),
+                    },
+                    data: {
+                        nodeSource: 'act',
+                        createdBy: node.createdBy ?? 'agent',
+                        ...(node.authorUid !== undefined ? { authorUid: node.authorUid } : {}),
+                        topicId: node.topicId,
+                        label: graphState.editingNodeId === node.id
+                            ? (typeof existingActNodeById.get(node.id)?.data?.label === 'string'
+                                ? existingActNodeById.get(node.id)?.data?.label as string
+                                : node.title)
+                            : node.title,
+                        kind: node.kind ?? 'act',
+                        ...(node.status ? { status: node.status } : {}),
+                        ...(node.agentRole ? { agentRole: node.agentRole } : {}),
+                        contentMd: node.contentMd,
+                        thoughtMd: node.thoughtMd,
+                        contextSummary: node.contextSummary,
+                        detailHtml: node.detailHtml,
+                        referencedNodeIds: node.referencedNodeIds,
+                        parentId: node.parentId,
+                        ...(isUserActRoot && node.isManualPosition ? { isManualPosition: true } : {}),
+                    },
+                };
+            });
             const draftNodeIds = new Set(draftActNodes.map((node) => node.id));
 
             // Nodes that were pending (streamed but not yet in Firestore) and now appear

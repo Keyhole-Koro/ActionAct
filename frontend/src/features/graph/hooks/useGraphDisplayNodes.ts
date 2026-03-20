@@ -266,6 +266,13 @@ export function useGraphDisplayNodes({
 
             let childActNodes: Array<{ id: string; label: string }> | undefined;
             let parentActNode: { id: string; label: string } | undefined;
+            const mergedCreatedBy = (fullActData?.createdBy ?? node.data?.createdBy);
+            const mergedParentId = typeof fullActData?.parentId === 'string'
+                ? fullActData.parentId
+                : (typeof node.data?.parentId === 'string' ? node.data.parentId : undefined);
+            const isUserActRoot = node.data?.nodeSource === 'act'
+                && mergedCreatedBy === 'user'
+                && mergedParentId === undefined;
             if (node.data?.nodeSource === 'act') {
                 const childIds = actChildrenByParent.get(node.id) ?? [];
                 if (childIds.length > 0) {
@@ -283,6 +290,7 @@ export function useGraphDisplayNodes({
 
             return {
                 ...node,
+                ...(isUserActRoot ? { dragHandle: '.drag-handle' } : {}),
                 data: {
                     ...(fullActData ?? {}),
                     ...node.data,

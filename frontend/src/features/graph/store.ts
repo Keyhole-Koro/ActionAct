@@ -76,6 +76,7 @@ interface GraphState {
     addQueryActNode: (position: { x: number; y: number }, initialLabel: string, options?: { isManualPosition?: boolean }) => string;
     resetActNode: (nodeId: string, payload?: { label?: string; referencedNodeIds?: string[] }) => void;
     updateActNodeLabel: (nodeId: string, label: string) => void;
+    updateActNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
     appendActNodeContent: (nodeId: string, content: string) => void;
     appendActNodeThought: (nodeId: string, thought: string) => void;
     removeActNode: (nodeId: string) => void;
@@ -598,6 +599,25 @@ export const useGraphStore = create<GraphState>((set) => ({
             n.id === nodeId ? { ...n, data: { ...n.data, label } } : n
         ),
         editingNodeId: null,
+    })),
+
+    updateActNodePosition: (nodeId, position) => set((state) => ({
+        actNodes: state.actNodes.map((node) => {
+            const isUserActRoot = node.id === nodeId
+                && node.data?.nodeSource === 'act'
+                && node.data?.createdBy === 'user'
+                && typeof node.data?.parentId !== 'string';
+            return isUserActRoot
+                ? {
+                    ...node,
+                    position,
+                    data: {
+                        ...node.data,
+                        isManualPosition: true,
+                    },
+                }
+                : node;
+        }),
     })),
 
     appendActNodeContent: (nodeId, content) => set((state) => ({

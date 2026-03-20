@@ -25,6 +25,9 @@ export async function upsertActNodeDraft(
     // 2. Persist to Firestore
     const node = useGraphStore.getState().actNodes.find((n) => n.id === nodeId);
     if (!node) return;
+    const isUserActRoot = node.data?.nodeSource === 'act'
+        && node.data?.createdBy === 'user'
+        && typeof node.data?.parentId !== 'string';
 
     await actDraftService.saveDraftSnapshot(workspaceId, nodeId, {
         title: payload.label ?? (node.data?.label as string),
@@ -37,9 +40,11 @@ export async function upsertActNodeDraft(
         thoughtMd: payload.thoughtMd ?? (node.data?.thoughtMd as string),
         referencedNodeIds: payload.referencedNodeIds ?? (node.data?.referencedNodeIds as string[]),
         parentId: payload.parentId ?? (node.data?.parentId as string),
-        isManualPosition: node.data?.isManualPosition === true,
-        positionX: node.position?.x,
-        positionY: node.position?.y,
+        ...(isUserActRoot ? {
+            isManualPosition: node.data?.isManualPosition === true,
+            positionX: node.position?.x,
+            positionY: node.position?.y,
+        } : {}),
     }).catch((error) => {
         console.error('Failed to save act draft', { nodeId, error });
     });

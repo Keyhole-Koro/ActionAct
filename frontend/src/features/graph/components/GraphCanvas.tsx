@@ -20,6 +20,7 @@ import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import { CAMERA_CONFIG } from '@/services/camera/cameraService';
 import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
+import { actDraftService } from '@/services/actDraft/firestore';
 
 import { ActTreeGroupNode } from './ActTreeGroupNode';
 import { BundledEdge } from './BundledEdge';
@@ -82,6 +83,7 @@ export function GraphCanvas() {
         recordNodeUsed,
         nodeLastUsedAt,
         nodeUseCount,
+        updateActNodePosition,
     } = useGraphStore();
     const { workspaceId, isReadOnly } = useRunContextStore();
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
@@ -459,7 +461,24 @@ export function GraphCanvas() {
                 }}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
-                nodesDraggable={false}
+                nodesDraggable={!isReadOnly}
+                onNodeDragStop={(_event, node) => {
+                    const isUserActRoot = node.type === 'customTask'
+                        && node.data?.nodeSource === 'act'
+                        && node.data?.createdBy === 'user'
+                        && typeof node.data?.parentId !== 'string';
+                    if (!workspaceId || !isUserActRoot) {
+                        return;
+                    }
+                    updateActNodePosition(node.id, node.position);
+                    void actDraftService.patchDraft(workspaceId, node.id, {
+                        isManualPosition: true,
+                        positionX: node.position.x,
+                        positionY: node.position.y,
+                    }).catch((error) => {
+                        console.error('Failed to persist dragged act node position', { nodeId: node.id, error });
+                    });
+                }}
                 panOnScroll
                 panOnScrollSpeed={0.5}
                 selectionOnDrag

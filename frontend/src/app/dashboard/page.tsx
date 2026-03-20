@@ -108,10 +108,13 @@ function DashboardContent() {
     const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
     const [loadingPublic, setLoadingPublic] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+    const [publicWorkspaceError, setPublicWorkspaceError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!user) return;
         setLoadingWorkspaces(true);
+        setWorkspaceError(null);
         listUserWorkspaces(user.uid)
             .then((all) => {
                 const owned = all.filter((ws) => ws.createdBy === user.uid);
@@ -119,16 +122,23 @@ function DashboardContent() {
                 setWorkspaces(owned);
                 setSharedWorkspaces(shared);
             })
-            .catch(console.error)
+            .catch((error) => {
+                console.error(error);
+                setWorkspaceError(error instanceof Error ? error.message : "Failed to load workspaces");
+            })
             .finally(() => setLoadingWorkspaces(false));
 
         setLoadingPublic(true);
+        setPublicWorkspaceError(null);
         listPublicWorkspaces()
             .then((all) => {
                 // Exclude workspaces the user is already a member of (shown in My Workspaces)
                 setPublicWorkspaces(all);
             })
-            .catch(console.error)
+            .catch((error) => {
+                console.error(error);
+                setPublicWorkspaceError(error instanceof Error ? error.message : "Failed to load public workspaces");
+            })
             .finally(() => setLoadingPublic(false));
     }, [user]);
 
@@ -211,6 +221,10 @@ function DashboardContent() {
                         </div>
                         {loadingWorkspaces ? (
                             <div className="text-sm text-muted-foreground">Loading workspaces...</div>
+                        ) : workspaceError ? (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                                Failed to load workspaces: {workspaceError}
+                            </div>
                         ) : workspaces.length === 0 ? (
                             <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
                                 <FolderKanban className="h-10 w-10 text-muted-foreground" />
@@ -244,6 +258,10 @@ function DashboardContent() {
                         </div>
                         {loadingPublic ? (
                             <div className="text-sm text-muted-foreground">Loading public workspaces...</div>
+                        ) : publicWorkspaceError ? (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                                Failed to load public workspaces: {publicWorkspaceError}
+                            </div>
                         ) : publicWorkspaces.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No public workspaces available.</p>
                         ) : (

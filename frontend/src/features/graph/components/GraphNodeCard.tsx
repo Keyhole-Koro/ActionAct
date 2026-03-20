@@ -324,6 +324,9 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                         isExpanded ? 'nowheel' : '',
                     ].join(' ')}
                 >
+                    <div className="drag-handle absolute inset-x-0 top-0 z-[1] flex h-4 cursor-grab items-start justify-center active:cursor-grabbing">
+                        <div className="mt-1.5 h-1 w-12 rounded-full bg-slate-300/50 transition-colors group-hover:bg-slate-400/70" />
+                    </div>
                     {/* Top gradient line — actType colour, visible when ready/expanded */}
                     {!isDraftAct && (
                         <div className={`absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r ${atc.topGrad} ${isNodeStreaming ? 'opacity-100' : 'opacity-60'}`}>
