@@ -6,5 +6,6 @@
   "firebaseAppId": "1:000000000000:web:localdev",
   "firebaseAuthEmulatorHost": "localhost:9099",
   "firestoreEmulatorHost": "localhost:8081",
-  "gcloudProject": "local-dev"
+  "gcloudProject": "local-dev",
+  "requireBootstrapCsrfHeader": false
 }

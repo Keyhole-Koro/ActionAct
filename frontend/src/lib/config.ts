@@ -10,6 +10,7 @@ export type FrontendConfig = {
   firebaseAuthEmulatorHost: string;
   firestoreEmulatorHost: string;
   gcloudProject: string;
+  requireBootstrapCsrfHeader: boolean;
 };
 
 const isProd = process.env.NODE_ENV === "production";
@@ -23,7 +24,7 @@ const publicEnv = {
   firebaseAuthEmulatorHost: process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
   firestoreEmulatorHost: process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST,
   gcloudProject: process.env.NEXT_PUBLIC_GCLOUD_PROJECT,
-} satisfies Partial<FrontendConfig>;
+} satisfies Partial<Record<keyof FrontendConfig, string>>;
 
 function getConfigValue(fieldName: keyof FrontendConfig): string {
   const envValue = publicEnv[fieldName];
@@ -39,10 +40,28 @@ function getConfigValue(fieldName: keyof FrontendConfig): string {
   return "";
 }
 
+function getBooleanConfigValue(fieldName: keyof FrontendConfig): boolean {
+  const configValue = staticConfig[fieldName];
+  if (typeof configValue === "boolean") {
+    return configValue;
+  }
+
+  const envValue = publicEnv[fieldName];
+  if (envValue === "true") {
+    return true;
+  }
+  if (envValue === "false") {
+    return false;
+  }
+
+  return false;
+}
+
 function validateConfig(c: FrontendConfig): FrontendConfig {
   const missing: string[] = [];
   const invalid: string[] = [];
   for (const [key, value] of Object.entries(c)) {
+    if (typeof value === "boolean") continue;
     if (key === "firebaseAuthEmulatorHost" || key === "firestoreEmulatorHost") continue;
 
     if (value === "") {
@@ -80,4 +99,5 @@ export const config: FrontendConfig = validateConfig({
   firebaseAuthEmulatorHost: getConfigValue("firebaseAuthEmulatorHost"),
   firestoreEmulatorHost: getConfigValue("firestoreEmulatorHost"),
   gcloudProject: getConfigValue("gcloudProject"),
+  requireBootstrapCsrfHeader: getBooleanConfigValue("requireBootstrapCsrfHeader"),
 });

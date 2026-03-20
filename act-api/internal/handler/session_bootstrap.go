@@ -79,6 +79,7 @@ func (h *SessionBootstrapHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		Secure:   true,
 		Expires:  time.Now().Add(time.Duration(h.csrfTTLSeconds) * time.Second),
 	})
+	w.Header().Set("X-CSRF-Token", csrfToken)
 
 	w.WriteHeader(http.StatusNoContent)
 }

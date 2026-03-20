@@ -47,6 +47,9 @@ func TestSessionBootstrapHandler_SetsCookies(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
 	}
+	if got := rec.Header().Get("X-CSRF-Token"); got != "csrf-1" {
+		t.Fatalf("X-CSRF-Token = %q, want %q", got, "csrf-1")
+	}
 
 	cookies := rec.Result().Cookies()
 	if len(cookies) != 2 {

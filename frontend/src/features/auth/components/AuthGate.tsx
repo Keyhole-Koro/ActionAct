@@ -12,6 +12,7 @@ import { ensureLocalWorkspaceAccess } from "@/features/auth/services/ensure-loca
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { config } from "@/lib/config";
 import { firestore } from "@/services/firebase/firestore";
+import { setCSRFToken } from "@/services/firebase/csrf";
 
 type AuthGateProps = {
   children: ReactNode;
@@ -87,6 +88,14 @@ export function AuthGate({ children }: AuthGateProps) {
 
         if (!response.ok) {
           throw new Error(`Session bootstrap failed with ${response.status}`);
+        }
+
+        const csrfToken = response.headers.get("X-CSRF-Token");
+        if (!csrfToken && config.requireBootstrapCsrfHeader) {
+          throw new Error("Session bootstrap did not return X-CSRF-Token");
+        }
+        if (csrfToken) {
+          setCSRFToken(csrfToken);
         }
 
         if (!cancelled) {

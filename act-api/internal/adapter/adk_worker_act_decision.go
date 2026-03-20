@@ -16,10 +16,13 @@ type ADKWorkerActDecisionResolver struct {
 	httpClient *http.Client
 }
 
-func NewADKWorkerActDecisionResolver(workerURL string) *ADKWorkerActDecisionResolver {
+func NewADKWorkerActDecisionResolver(workerURL string, httpClient *http.Client) *ADKWorkerActDecisionResolver {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
 	return &ADKWorkerActDecisionResolver{
 		workerURL:  workerURL,
-		httpClient: &http.Client{},
+		httpClient: httpClient,
 	}
 }
 

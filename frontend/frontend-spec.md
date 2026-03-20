@@ -548,7 +548,7 @@ frontend/
 * `src/services/firebase/token.ts`
   * ID Token取得と更新（Authorizationヘッダ用）を提供する
 * `src/services/firebase/csrf.ts`
-  * `csrf_token` Cookie読み取りと `X-CSRF-Token` 付与ヘルパを提供する
+  * `auth/session/bootstrap` 応答の `X-CSRF-Token` を保持し、`X-CSRF-Token` 付与ヘルパを提供する
 * `src/lib/cookie.ts`
   * Cookie読み取りの共通ユーティリティ（`sid` は読み取らない）
 
@@ -567,7 +567,8 @@ frontend/
 
 * 認証正本は Firebase ID Token（`Authorization: Bearer ...`）
 * `sid` は HttpOnly Cookie 正本として扱い、フロントJSで保存/参照しない
-* `csrf_token` Cookie はJS参照可とし、state-changing request で `X-CSRF-Token` に同値を送る
+* `csrf_token` Cookie は API ドメインへ送信する正本として扱う
+* frontend は `POST /auth/session/bootstrap` 応答の `X-CSRF-Token` を保持し、state-changing request で `X-CSRF-Token` に同値を送る
 * RPC/HTTP呼び出しは `credentials: include` を必須とする
 * `RunActRequest.sid` は原則送らない（互換用途のみ）
 * `request_id` はクライアントで毎回UUID生成して付与する
@@ -580,6 +581,9 @@ frontend/
 * `src/lib/config.ts` が `NODE_ENV` に応じて local/prod を読み分ける
 * frontend に秘密情報は置かない
 * 秘密情報が必要な場合は frontend ではなく server 側の環境変数で扱う
+* `requireBootstrapCsrfHeader`
+  * `prod=true`, `local=false`
+  * local で `POST /auth/session/bootstrap` が `X-CSRF-Token` を返さない構成を許容する
 
 ---
 

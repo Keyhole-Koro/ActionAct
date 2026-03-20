@@ -27,15 +27,18 @@ type ADKWorkerExecutor struct {
 	idem       domain.IdempotencyGate
 }
 
-func NewADKWorkerExecutor(workerURL string, gcsBucket string, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
-	return &ADKWorkerExecutor{
-		workerURL: workerURL,
-		gcsBucket: gcsBucket,
-		httpClient: &http.Client{
+func NewADKWorkerExecutor(workerURL string, gcsBucket string, httpClient *http.Client, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
+	if httpClient == nil {
+		httpClient = &http.Client{
 			Timeout: 5 * time.Minute,
-		},
-		recorder: recorder,
-		idem:     idem,
+		}
+	}
+	return &ADKWorkerExecutor{
+		workerURL:  workerURL,
+		gcsBucket:  gcsBucket,
+		httpClient: httpClient,
+		recorder:   recorder,
+		idem:       idem,
 	}
 }
 
