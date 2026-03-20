@@ -1,84 +1,75 @@
+import { firestore } from "@/services/firebase/firestore";
 import {
     doc,
-    onSnapshot,
-    type DocumentData,
+    updateDoc,
+    deleteDoc,
+    collection,
+    query,
+    where,
+    getDocs,
+    orderBy,
+    Timestamp
 } from "firebase/firestore";
-
-import { config } from "@/lib/config";
-import { firestore } from "@/services/firebase/firestore";
-import { getFirebaseIdToken } from "@/services/firebase/token";
 
 export interface WorkspaceData {
     id: string;
     name: string;
-}
-
-function workspaceDoc(workspaceId: string) {
-    return doc(firestore, `workspaces/${workspaceId}`);
-}
-
-function readString(value: unknown, fallback: string): string {
-    return typeof value === "string" && value.trim() ? value : fallback;
-}
-
-function toWorkspaceData(workspaceId: string, data: DocumentData): WorkspaceData {
-    return {
-        id: workspaceId,
-        name: readString(data.name, workspaceId),
-    };
+    userId: string;
+    status: "active" | "deleted";
+    isFavorite: boolean;
+    createdAt: any;
+    lastAccessedAt: any;
+    deletedAt: any;
 }
 
 export const workspaceService = {
-    subscribeWorkspace(
-        workspaceId: string,
-        callback: (workspace: WorkspaceData | null) => void,
-    ) {
-        const ref = workspaceDoc(workspaceId);
-
-        return onSnapshot(
-            ref,
-            (snapshot) => {
-                if (!snapshot.exists()) {
-                    callback(null);
-                    return;
-                }
-
-                const data = snapshot.data();
-                callback(toWorkspaceData(snapshot.id, data));
-            },
-            (error) => {
-                console.error("Workspace subscription failed:", error);
-            },
-        );
-    },
-
-    async updateWorkspaceName(workspaceId: string, newName: string) {
-        const trimmedName = newName.trim();
-        if (!trimmedName) {
-            throw new Error("workspace name is required");
-        }
-
-        const idToken = await getFirebaseIdToken();
-        if (!idToken) {
-            throw new Error("authentication required");
-        }
-
-        const response = await fetch(`${config.actApiBaseUrl}/api/workspace/rename`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${idToken}`,
-                "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-                workspace_id: workspaceId,
-                name: trimmedName,
-            }),
+    // ゴミ箱へ移動（論理削除）
+    async deleteWorkspace(id: string) {
+        const docRef = doc(firestore, "workspaces", id);
+        return await updateDoc(docRef, {
+            status: "deleted",
+            deletedAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
         });
-
-        if (!response.ok) {
-            const message = await response.text();
-            throw new Error(message || "failed to rename workspace");
-        }
     },
+
+    // 復元（ステータスをactiveに戻す）
+    async restoreWorkspace(id: string) {
+        const docRef = doc(firestore, "workspaces", id);
+        return await updateDoc(docRef, {
+            status: "active",
+            updatedAt: Timestamp.now()
+        });
+    },
+
+    // 完全に削除（物理削除）
+    async permanentDeleteWorkspace(id: string) {
+        const docRef = doc(firestore, "workspaces", id);
+        return await deleteDoc(docRef);
+    },
+
+    // お気に入りの切り替え
+    async toggleFavorite(id: string, isFavorite: boolean) {
+        const docRef = doc(firestore, "workspaces", id);
+        return await updateDoc(docRef, { isFavorite });
+    },
+
+    // ゴミ箱内のワークスペース一覧取得
+    async listTrashWorkspaces(userId: string): Promise<WorkspaceData[]> {
+        const q = query(
+            collection(firestore, "workspaces"),
+            where("createdBy", "==", userId),
+            where("status", "==", "deleted"),
+            orderBy("updatedAt", "desc")
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(d => {
+            const data = d.data();
+            return {
+                ...data,
+                id: d.id,
+                name: typeof data.name === "string" && data.name.trim() ? data.name : d.id,
+            } as WorkspaceData;
+        });
+    }
 };

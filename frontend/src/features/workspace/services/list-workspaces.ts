@@ -20,9 +20,15 @@ export async function listUserWorkspaces(uid: string): Promise<WorkspaceData[]> 
         if (!workspaceSnap.exists()) continue;
 
         const data = workspaceSnap.data();
+        if (data.status === "deleted") continue;
         workspaces.push({
             id: workspaceSnap.id,
             name: typeof data.name === "string" && data.name.trim() ? data.name : workspaceSnap.id,
+            isFavorite: data.isFavorite === true,
+            status: data.status ?? "active",
+            userId: data.userId ?? "",
+            createdAt: data.createdAt ?? null,
+            lastAccessedAt: data.lastAccessedAt ?? null,
         });
     }
 
