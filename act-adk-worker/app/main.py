@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.config import Config
 from app.adapter.firestore_assembly import FirestoreAssembly
 from app.adapter.gemini_llm import GeminiLLM
+from app.adapter.discord_store import DiscordStore
 from app.handler import decide_act_action_handler, resolve_node_candidates_handler, run_act_handler
 from app.usecase.decide_act_action import DecideActActionUsecase
 from app.usecase.run_act import RunActUsecase
@@ -40,8 +41,12 @@ elif config.vertex_use_real_api:
 else:
     raise RuntimeError("GOOGLE_API_KEY or VERTEX_USE_REAL_API=true is required")
 
+# Discord store (agentic RAG over raw Discord messages in Firestore)
+discord_store = DiscordStore(project=config.google_cloud_project, bucket=config.gcs_discord_bucket)
+logger.info("DiscordStore initialized project=%s bucket=%s", config.google_cloud_project, config.gcs_discord_bucket)
+
 # Usecase
-usecase = RunActUsecase(assembly=assembly, llm=llm)
+usecase = RunActUsecase(assembly=assembly, llm=llm, discord_store=discord_store)
 candidate_usecase = ResolveNodeCandidatesUsecase(llm=llm)
 decision_usecase = DecideActActionUsecase(llm=llm)
 

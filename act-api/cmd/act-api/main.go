@@ -124,6 +124,7 @@ func main() {
 	workspaceRenamer := adapter.NewFirestoreWorkspaceRenamer(fsClient)
 	workspaceVisibilityUpdater := adapter.NewFirestoreWorkspaceVisibilityUpdater(fsClient)
 	workspaceMemberManager := adapter.NewFirestoreWorkspaceMemberManager(fsClient, authClient)
+	workspaceDiscordManager := adapter.NewFirestoreWorkspaceDiscordManager(fsClient)
 	defer inputRecorder.Close()
 
 	// ── Usecase layer ──
@@ -135,6 +136,11 @@ func main() {
 	updateWorkspaceVisibilityUC := usecase.NewUpdateWorkspaceVisibilityUsecase(authVerifier, workspaceVisibilityUpdater)
 	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
 	addWorkspaceMemberUC := usecase.NewAddWorkspaceMemberUsecase(authVerifier, workspaceMemberManager)
+	getDiscordInviteURLUC := usecase.NewGetDiscordInviteURLUsecase(authVerifier, workspaceDiscordManager, cfg.DiscordApplicationID)
+	connectDiscordGuildUC := usecase.NewConnectDiscordGuildUsecase(authVerifier, workspaceDiscordManager)
+	createDiscordInstallSessionUC := usecase.NewCreateDiscordInstallSessionUsecase(authVerifier, workspaceDiscordManager, cfg.DiscordApplicationID)
+	getDiscordInstallSessionUC := usecase.NewGetDiscordInstallSessionUsecase(authVerifier, workspaceDiscordManager)
+	confirmDiscordInstallSessionUC := usecase.NewConfirmDiscordInstallSessionUsecase(authVerifier, workspaceDiscordManager)
 	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL, workerHTTPClient)
 	resolveNodeCandidatesUC := usecase.NewResolveNodeCandidatesUsecase(authVerifier, authzVerifier, nodeCandidateResolver)
 	actDecisionResolver := adapter.NewADKWorkerActDecisionResolver(cfg.ADKWorkerURL, workerHTTPClient)
@@ -154,6 +160,11 @@ func main() {
 	workspaceVisibilityHandler := handler.NewWorkspaceVisibilityHandler(updateWorkspaceVisibilityUC)
 	workspaceMemberSearchHandler := handler.NewWorkspaceMemberSearchHandler(searchWorkspaceUsersUC)
 	workspaceMemberAddHandler := handler.NewWorkspaceMemberAddHandler(addWorkspaceMemberUC)
+	workspaceDiscordInviteHandler := handler.NewWorkspaceDiscordInviteHandler(getDiscordInviteURLUC)
+	workspaceDiscordConnectHandler := handler.NewWorkspaceDiscordConnectHandler(connectDiscordGuildUC)
+	workspaceDiscordCreateInstallSessionHandler := handler.NewWorkspaceDiscordCreateInstallSessionHandler(createDiscordInstallSessionUC)
+	workspaceDiscordGetInstallSessionHandler := handler.NewWorkspaceDiscordGetInstallSessionHandler(getDiscordInstallSessionUC)
+	workspaceDiscordConfirmInstallSessionHandler := handler.NewWorkspaceDiscordConfirmInstallSessionHandler(confirmDiscordInstallSessionUC)
 	resolveNodeCandidatesHandler := handler.NewResolveNodeCandidatesHandler(resolveNodeCandidatesUC)
 	decideActActionHandler := handler.NewDecideActActionHandler(decideActActionUC)
 
@@ -167,6 +178,11 @@ func main() {
 	mux.Handle("/api/workspace/visibility", workspaceVisibilityHandler)
 	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)
 	mux.Handle("/api/workspace/members/add", workspaceMemberAddHandler)
+	mux.Handle("/api/workspace/discord/invite", workspaceDiscordInviteHandler)
+	mux.Handle("/api/workspace/discord/connect", workspaceDiscordConnectHandler)
+	mux.Handle("/api/workspace/discord/install-session/create", workspaceDiscordCreateInstallSessionHandler)
+	mux.Handle("/api/workspace/discord/install-session/status", workspaceDiscordGetInstallSessionHandler)
+	mux.Handle("/api/workspace/discord/install-session/confirm", workspaceDiscordConfirmInstallSessionHandler)
 	mux.Handle("/api/resolve-node-candidates", resolveNodeCandidatesHandler)
 	mux.Handle("/api/decide-act-action", decideActActionHandler)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {

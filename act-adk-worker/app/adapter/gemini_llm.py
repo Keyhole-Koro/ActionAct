@@ -8,6 +8,7 @@ from typing import AsyncIterator
 from google import genai
 from google.genai.types import Content, FunctionDeclaration, GenerateContentConfig, GoogleSearch, Part, Schema, ThinkingConfig, Tool
 
+from app.adapter.discord_tools import ToolExecutor, run_discord_agentic_loop
 from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ _START_ACT_DECL = FunctionDeclaration(
 _ACT_TOOLS = Tool(function_declarations=[_SUGGEST_DEEP_DIVES_DECL, _START_ACT_DECL])
 
 
+
 def _build_system_instruction(bundle: PromptBundle) -> str | None:
     system_parts: list[str] = []
     if bundle.system_instruction:
@@ -121,7 +123,7 @@ class GeminiLLM:
         parts = []
         if bundle.user_prompt:
             parts.append(Part.from_text(text=bundle.user_prompt))
-            
+
         for media in bundle.user_media:
             try:
                 if self._backend == "vertex":
@@ -137,7 +139,6 @@ class GeminiLLM:
         if not parts:
             parts.append(Part.from_text(text="[empty message]"))
 
-        # Keep the current user message as the sole user turn.
         contents = [Content(role="user", parts=parts)]
 
         base_tools: list[Tool] = []
@@ -194,3 +195,21 @@ class GeminiLLM:
         except Exception as e:
             logger.exception("Gemini generation failed")
             raise RuntimeError(f"GENERATE_WITH_MODEL: {e}") from e
+
+    async def generate_with_discord_tools(
+        self,
+        user_message: str,
+        system_instruction: str,
+        workspace_id: str,
+        tool_executor: ToolExecutor,
+        config: LLMConfig,
+    ) -> AsyncIterator[LLMChunk]:
+        async for chunk in run_discord_agentic_loop(
+            client=self._client,
+            user_message=user_message,
+            system_instruction=system_instruction,
+            workspace_id=workspace_id,
+            tool_executor=tool_executor,
+            config=config,
+        ):
+            yield chunk

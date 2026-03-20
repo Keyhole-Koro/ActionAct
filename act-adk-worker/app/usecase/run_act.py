@@ -1,5 +1,4 @@
-"""RunAct usecase — orchestrates Assembly → LLM → Normalize pipeline."""
-
+"""RunAct usecase — hybrid pipeline: FirestoreAssembly + optional Discord supplement."""
 from __future__ import annotations
 
 import json
@@ -68,14 +67,39 @@ def _with_search_context(bundle, search_summary: str):
         f"{summary}",
     ]
     return bundle.model_copy(update={"context_blocks": next_blocks})
-
-
 class RunActUsecase:
-    """Pipeline: Context Assembly → LLM Generate → Normalize to PatchOps → Yield events."""
+    """
+    Hybrid pipeline:
+      1. FirestoreAssembly builds structured context from the knowledge graph (primary).
+      2. When discord_store is present, Gemini can call Discord tools at query time
+         to supplement with raw conversation context when the knowledge graph is thin.
+    """
 
-    def __init__(self, assembly: AssemblyPort, llm: LLMPort):
+    def __init__(self, assembly: AssemblyPort, llm: LLMPort, discord_store=None):
         self._assembly = assembly
         self._llm = llm
+        self._discord_store = discord_store
+
+    async def _exec_discord_tool(self, fn_name: str, fn_args: dict, workspace_id: str):
+        """Execute a Discord tool call on behalf of Gemini (all DiscordStore methods are sync)."""
+        if fn_name == "list_discord_structure":
+            return self._discord_store.list_structure(workspace_id)
+        if fn_name == "read_discord_messages":
+            return self._discord_store.read_messages(
+                workspace_id,
+                channel_id=fn_args.get("channel_id"),
+                thread_id=fn_args.get("thread_id"),
+                limit=int(fn_args.get("limit", 100)),
+            )
+        if fn_name == "search_discord_messages":
+            return self._discord_store.search_messages(
+                workspace_id,
+                query=fn_args["query"],
+                channel_id=fn_args.get("channel_id"),
+                thread_id=fn_args.get("thread_id"),
+                limit=int(fn_args.get("limit", 50)),
+            )
+        return {"error": f"Unknown tool: {fn_name}"}
 
     async def _run_search_subflow(
         self,
@@ -204,7 +228,14 @@ class RunActUsecase:
         node_id = input.anchor_node_id or f"act-{uuid.uuid4().hex[:8]}"
         llm_config = (input.llm_config or LLMConfig()).model_copy(update={"enable_act_tools": True})
 
-        # 1. Context Assembly
+        yield RunActEvent(
+            type="patch_ops",
+            ops=[PatchOp(op="upsert", node_id=node_id, content="")],
+        )
+
+        # ── Step 1: FirestoreAssembly (primary — structured knowledge graph) ──
+        bundle = None
+        assembly_error = None
         try:
             bundle = await self._assembly.assemble(
                 topic_id=input.topic_id,
@@ -215,13 +246,28 @@ class RunActUsecase:
                 user_message=input.user_message,
                 user_media=input.user_media,
             )
+            logger.info(
+                "Assembly complete topic=%s context_blocks=%d",
+                input.topic_id,
+                len(bundle.context_blocks),
+            )
         except Exception as e:
-            logger.exception("Assembly failed")
+            assembly_error = e
+            logger.warning("Assembly failed (will use Discord fallback): %s", e)
+
+        # ── Step 2: Choose generation path ───────────────────────────────────
+        if self._discord_store is not None:
+            async for event in self._run_discord_path(input, node_id, bundle, assembly_error, llm_config):
+                yield event
+            return
+
+        # ── Legacy path: assembly only (no discord_store) ─────────────────────
+        if assembly_error is not None:
             yield RunActEvent(
                 type="terminal",
                 error=ErrorInfo(
                     code="UNAVAILABLE",
-                    message=str(e),
+                    message=str(assembly_error),
                     retryable=True,
                     stage="ASSEMBLY_RETRIEVE",
                     trace_id=input.trace_id,
@@ -239,12 +285,6 @@ class RunActUsecase:
             ),
         )
 
-        # 2. Send initial upsert (block must exist before append_md)
-        yield RunActEvent(
-            type="patch_ops",
-            ops=[PatchOp(op="upsert", node_id=node_id, content="")],
-        )
-
         if llm_config.enable_grounding:
             bundle, search_events = await self._run_search_subflow(
                 input=input,
@@ -255,7 +295,6 @@ class RunActUsecase:
             for event in search_events:
                 yield event
 
-        # 3. LLM Generate → stream as text_delta + append_md
         accumulated = ""
         seq = 0
         function_calls: list[dict] = []
@@ -270,18 +309,9 @@ class RunActUsecase:
                 if chunk.is_done:
                     function_calls = chunk.function_calls
                     break
-
-                # Stream text_delta for live UI
-                yield RunActEvent(
-                    type="text_delta",
-                    text=chunk.text,
-                    is_thought=chunk.is_thought,
-                )
-
-                # Accumulate answer text (not thoughts) as append_md
+                yield RunActEvent(type="text_delta", text=chunk.text, is_thought=chunk.is_thought)
                 if not chunk.is_thought and chunk.text:
                     seq += 1
-                    expected_offset = len(accumulated)
                     yield RunActEvent(
                         type="patch_ops",
                         ops=[PatchOp(
@@ -289,11 +319,10 @@ class RunActUsecase:
                             node_id=node_id,
                             content=chunk.text,
                             seq=seq,
-                            expected_offset=expected_offset,
+                            expected_offset=len(accumulated),
                         )],
                     )
                     accumulated += chunk.text
-
         except Exception as e:
             logger.exception("LLM generation failed")
             yield RunActEvent(
@@ -356,17 +385,15 @@ class RunActUsecase:
         if llm_config.enable_grounding:
             used_tools.append("llm.search_subflow")
         used_sources: list[SourceRef] = []
-        for node_id in input.context_node_ids:
-            used_sources.append(SourceRef(id=node_id, kind="context_node", label=node_id))
+        for nid in input.context_node_ids:
+            used_sources.append(SourceRef(id=nid, kind="context_node", label=nid))
         for node in input.selected_node_contexts:
-            used_sources.append(
-                SourceRef(
-                    id=node.node_id,
-                    kind=node.kind or "selected_node",
-                    label=node.label or node.node_id,
-                    uri="",
-                )
-            )
+            used_sources.append(SourceRef(
+                id=node.node_id,
+                kind=node.kind or "selected_node",
+                label=node.label or node.node_id,
+                uri="",
+            ))
 
         yield RunActEvent(
             type="terminal",
@@ -375,4 +402,76 @@ class RunActUsecase:
             used_selected_node_contexts=input.selected_node_contexts,
             used_tools=used_tools,
             used_sources=used_sources,
+        )
+
+    async def _run_discord_path(self, input: RunActInput, node_id: str, bundle, assembly_error, llm_config: LLMConfig) -> AsyncIterator[RunActEvent]:
+        """Hybrid Discord+Assembly generation path."""
+        if bundle and bundle.context_blocks:
+            context_text = "\n\n---\n\n".join(bundle.context_blocks)
+            system_instruction = (
+                "You are a helpful assistant. "
+                f"The following structured knowledge is available:\n\n{context_text}\n\n"
+                "You also have Discord tools to look up raw conversation history "
+                "when the structured knowledge above is insufficient."
+            )
+        else:
+            system_instruction = (
+                "You are a helpful assistant. "
+                "Use the provided Discord tools to find relevant information. "
+                "Start by calling list_discord_structure to see available channels and threads."
+            )
+
+        logger.info(
+            "Using hybrid Discord+Assembly path workspace=%s assembly_ok=%s",
+            input.workspace_id,
+            assembly_error is None,
+        )
+
+        try:
+            accumulated = ""
+            seq = 0
+            async for chunk in self._llm.generate_with_discord_tools(
+                user_message=input.user_message,
+                system_instruction=system_instruction,
+                workspace_id=input.workspace_id,
+                tool_executor=self._exec_discord_tool,
+                config=llm_config,
+            ):
+                if chunk.is_done:
+                    break
+                yield RunActEvent(type="text_delta", text=chunk.text, is_thought=chunk.is_thought)
+                if not chunk.is_thought and chunk.text:
+                    seq += 1
+                    yield RunActEvent(
+                        type="patch_ops",
+                        ops=[PatchOp(
+                            op="append_md",
+                            node_id=node_id,
+                            content=chunk.text,
+                            seq=seq,
+                            expected_offset=len(accumulated),
+                        )],
+                    )
+                    accumulated += chunk.text
+        except Exception as e:
+            logger.exception("Hybrid LLM generation failed")
+            yield RunActEvent(
+                type="terminal",
+                error=ErrorInfo(
+                    code="UNAVAILABLE",
+                    message=str(e),
+                    retryable=True,
+                    stage="GENERATE_WITH_MODEL",
+                    trace_id=input.trace_id,
+                ),
+            )
+            return
+
+        yield RunActEvent(
+            type="terminal",
+            done=True,
+            used_tools=["assembly", "discord_store", "llm.generate_with_discord_tools"],
+            used_sources=[],
+            used_context_node_ids=input.context_node_ids,
+            used_selected_node_contexts=input.selected_node_contexts,
         )
