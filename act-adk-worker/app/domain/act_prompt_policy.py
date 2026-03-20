@@ -28,4 +28,4 @@ _TOOL_POLICY = (
 
 
 def build_act_system_instruction(user_message: str) -> str:
-    return f"{_BASE_POLICY} {_TOOL_POLICY} {build_language_instruction(user_message)}"
+    return f"{_BASE_POLICY} {_CONTEXT_POLICY} {_TOOL_POLICY} {build_language_instruction(user_message)}"
