@@ -16,6 +16,6 @@
 
 関連資料:
 
-* Frontend 仕様: [frontend-spec.md](/home/unix/Action/ActionAct/frontend/frontend-spec.md)
-* Act API: [README.md](/home/unix/Action/ActionAct/act-api/README.md)
-* ADK Worker: [README.md](/home/unix/Action/ActionAct/act-adk-worker/README.md)
+* Frontend 仕様: [frontend-spec.md](./frontend/frontend-spec.md)
+* Act API: [README.md](./act-api/README.md)
+* ADK Worker: [README.md](./act-adk-worker/README.md)

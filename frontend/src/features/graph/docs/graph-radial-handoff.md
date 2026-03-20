@@ -15,16 +15,16 @@ The graph now has two coordinated views:
 
 Primary implementation files:
 
-- [GraphCanvas.tsx](/home/unix/Action/ActionAct/frontend/src/features/graph/components/GraphCanvas.tsx)
-- [RadialOverview.tsx](/home/unix/Action/ActionAct/frontend/src/features/graph/components/RadialOverview.tsx)
-- [projectPersistedGraph.ts](/home/unix/Action/ActionAct/frontend/src/features/graph/selectors/projectPersistedGraph.ts)
-- [layoutRadial.ts](/home/unix/Action/ActionAct/frontend/src/features/graph/layout/layoutRadial.ts)
-- [persistedGraphMockHundred.ts](/home/unix/Action/ActionAct/frontend/src/features/graph/mocks/persistedGraphMockHundred.ts)
-- [radial-overview-performance.md](/home/unix/Action/ActionAct/frontend/src/features/graph/docs/radial-overview-performance.md)
+- [GraphCanvas.tsx](../components/GraphCanvas.tsx)
+- [RadialOverview.tsx](../components/RadialOverview.tsx)
+- [projectPersistedGraph.ts](../selectors/projectPersistedGraph.ts)
+- [layoutRadial.ts](../layout/layoutRadial.ts)
+- [persistedGraphMockHundred.ts](../mocks/persistedGraphMockHundred.ts)
+- [radial-overview-performance.md](./radial-overview-performance.md)
 
 Related spec:
 
-- [frontend-spec.md](/home/unix/Action/ActionAct/frontend/frontend-spec.md)
+- [frontend-spec.md](../../../frontend-spec.md)
 
 ## Current UX
 
@@ -60,7 +60,7 @@ Important detail:
 
 - radial projection ignores force-style branch expansion and gets all persisted nodes through `projectPersistedGraph(..., 'radial')`
 
-That fix lives in [projectPersistedGraph.ts](/home/unix/Action/ActionAct/frontend/src/features/graph/selectors/projectPersistedGraph.ts).
+That fix lives in [projectPersistedGraph.ts](../selectors/projectPersistedGraph.ts).
 
 ## Radial Inset vs Full Radial
 
@@ -97,7 +97,7 @@ The inline mock was removed from active use.
 
 Current `graphMock=1` uses:
 
-- [persistedGraphMockHundred.ts](/home/unix/Action/ActionAct/frontend/src/features/graph/mocks/persistedGraphMockHundred.ts)
+- [persistedGraphMockHundred.ts](../mocks/persistedGraphMockHundred.ts)
 
 This mock is roughly 100 nodes and is intended to stress:
 
@@ -119,7 +119,7 @@ Implemented so far:
 
 See:
 
-- [radial-overview-performance.md](/home/unix/Action/ActionAct/frontend/src/features/graph/docs/radial-overview-performance.md)
+- [radial-overview-performance.md](./radial-overview-performance.md)
 
 ## Known Remaining Costs
 
@@ -182,10 +182,10 @@ Fix:
 
 If continuing this work, read in this order:
 
-1. [graph-radial-handoff.md](/home/unix/Action/ActionAct/frontend/src/features/graph/docs/graph-radial-handoff.md)
-2. [radial-overview-performance.md](/home/unix/Action/ActionAct/frontend/src/features/graph/docs/radial-overview-performance.md)
-3. [GraphCanvas.tsx](/home/unix/Action/ActionAct/frontend/src/features/graph/components/GraphCanvas.tsx)
-4. [RadialOverview.tsx](/home/unix/Action/ActionAct/frontend/src/features/graph/components/RadialOverview.tsx)
+1. [graph-radial-handoff.md](./graph-radial-handoff.md)
+2. [radial-overview-performance.md](./radial-overview-performance.md)
+3. [GraphCanvas.tsx](../components/GraphCanvas.tsx)
+4. [RadialOverview.tsx](../components/RadialOverview.tsx)
 
 ## Verification Status
 
