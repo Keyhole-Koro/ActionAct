@@ -3,6 +3,7 @@ import { useAuthState } from '@/features/auth/hooks/useAuthState';
 import { signOutCurrentUser } from '@/services/firebase/auth';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
+import { DiscordConnectControl } from '@/features/workspace/components/DiscordConnectControl';
 import { Sparkles, FolderKanban, LogOut, Settings } from 'lucide-react';
 import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
 import {
@@ -50,6 +51,7 @@ export function AppHeader() {
 
                 {/* Status & User */}
                 <div className="flex items-center gap-4">
+                    <DiscordConnectControl workspaceId={workspaceId} />
                     <AddMemberControl workspaceId={workspaceId} />
                     <UploadButton />
 
