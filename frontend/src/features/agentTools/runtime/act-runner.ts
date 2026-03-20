@@ -171,6 +171,14 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
     return mapped;
   };
 
+  const getKnownFrontendNodeId = (backendNodeId: string) => {
+    const mapped = backendToFrontendNodeIds.get(backendNodeId);
+    if (mapped) {
+      return mapped;
+    }
+    return graphStore.actNodes.some((node) => node.id === backendNodeId) ? backendNodeId : null;
+  };
+
   const cancel = actService.streamAct(
     query,
     (patch: PatchOp) => {
@@ -280,9 +288,31 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
               const payload = JSON.parse(trigger.payloadJson) as Record<string, unknown>;
               const triggerQuery = typeof payload.user_message === "string" ? payload.user_message : "";
               const anchorNodeId = typeof payload.anchor_node_id === "string" ? payload.anchor_node_id : undefined;
+              console.info("[RunAct] start_act received", {
+                requestId,
+                payloadJson: trigger.payloadJson,
+                anchorNodeId: anchorNodeId ?? null,
+                triggerQuery,
+              });
               if (triggerQuery) {
+                const resolvedAnchorNodeId = anchorNodeId ? getKnownFrontendNodeId(anchorNodeId) : null;
+                if (anchorNodeId && !resolvedAnchorNodeId) {
+                  console.warn("[RunAct] Dropping start_act because anchor_node_id does not resolve to a known frontend node", {
+                    anchorNodeId,
+                    requestId,
+                    triggerQuery,
+                    payloadJson: trigger.payloadJson,
+                  });
+                  return;
+                }
+                console.info("[RunAct] start_act launching child run", {
+                  requestId,
+                  anchorNodeId: anchorNodeId ?? null,
+                  resolvedAnchorNodeId,
+                  triggerQuery,
+                });
                 startActRun({
-                  targetNodeId: anchorNodeId ? resolveFrontendNodeId(anchorNodeId) : null,
+                  targetNodeId: resolvedAnchorNodeId,
                   query: triggerQuery,
                   workspaceId: effectiveWorkspaceId,
                   triggerDepth: triggerDepth + 1,

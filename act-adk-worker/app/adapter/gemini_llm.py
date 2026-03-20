@@ -21,6 +21,11 @@ from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
 logger = logging.getLogger(__name__)
 
+_MODEL_ALIASES = {
+    "flash": "gemini-3-flash-preview",
+    "deep_research": "gemini-3-pro-preview",
+}
+
 # ── Function declarations ──────────────────────────────────────────────────
 
 _SUGGEST_DEEP_DIVES_DECL = FunctionDeclaration(
@@ -120,7 +125,7 @@ class GeminiLLM:
         bundle: PromptBundle,
         config: LLMConfig,
     ) -> AsyncIterator[LLMChunk]:
-        model_name = config.model or "gemini-3-flash"
+        model_name = _MODEL_ALIASES.get(config.model, config.model) or "gemini-3-flash-preview"
 
         parts = []
         if bundle.user_prompt:
