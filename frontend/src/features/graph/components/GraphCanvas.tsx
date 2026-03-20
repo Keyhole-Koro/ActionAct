@@ -1,274 +1,99 @@
 "use client";
 
-import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Search, Trash2, Keyboard, HelpCircle } from 'lucide-react';
+import React, { useLayoutEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Search } from 'lucide-react';
 import {
     Background,
     Edge,
-    MarkerType,
     MiniMap,
     Node,
-    Panel,
     ReactFlow,
     SelectionMode,
     useReactFlow,
     useViewport,
 } from '@xyflow/react';
+import type { PresenceUser } from '@/services/presence/firestore';
 import '@xyflow/react/dist/style.css';
 
-import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
-import { GraphToolbar } from './GraphToolbar';
 import { useGraphStore } from '@/features/graph/store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
-import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
-import { projectSelectionGroups } from '@/features/agentInteraction/selectors/projectSelectionGroups';
-import { getAuth } from 'firebase/auth';
+import { CAMERA_CONFIG } from '@/services/camera/cameraService';
+import { useGraphCommands } from '@/features/graph/hooks/useGraphCommands';
 import { actDraftService } from '@/services/actDraft/firestore';
-import { organizeService } from '@/services/organize';
-import { presenceService, type PresenceUser } from '@/services/presence/firestore';
-import {
-    CAMERA_CONFIG,
-    createSingleNodeFocusOptions,
-    createFitViewOptions,
-    getBoundingBoxForNodes,
-} from '@/services/camera/cameraService';
 
 import { ActTreeGroupNode } from './ActTreeGroupNode';
 import { BundledEdge } from './BundledEdge';
-import { GraphNodeCard } from './GraphNodeCard';
 import { RadialOverview } from './RadialOverview';
 import { SelectionHeaderNodeCard, SelectionOptionNodeCard } from './SelectionGroupNodes';
 import { SelectedNodePanel } from './SelectedNodePanel';
 import { FilePreviewPanel } from './FilePreviewPanel';
 import { SearchBar } from './SearchBar';
-import {
-    getCollapsedNodeWidth,
-    getExpandedNodeWidth,
-    getLayoutDimensionsForNodeType,
-} from '../constants/nodeDimensions';
-import { buildDisplayEdges, buildDisplayNodes } from '../selectors/projectGraph';
-import { projectActOverlay } from '../selectors/projectActOverlay';
-import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
-import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
+import { GraphToolbar } from './GraphToolbar';
+import { GraphNodeCardWithBoundary } from './graphCanvas/GraphNodeCardWithBoundary';
+import { KeyboardShortcutsHint, NavControl } from './graphCanvas/GraphCanvasControls';
+import { RecentClickedSelector } from './graphCanvas/RecentClickedSelector';
+import { getDisplayNodeDimensions, readClientPoint } from './graphCanvas/graphCanvasUtils';
 import type { GraphNodeBase, GraphNodeRender, PersistedNodeData } from '../types';
-import { truncate } from '@/lib/string';
 
-const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
-const RECENT_CLICKED_NODE_LIMIT = 8;
+import { useGraphSubscriptions } from '../hooks/useGraphSubscriptions';
+import { useLocalGraphState } from '../hooks/useLocalGraphState';
+import { useGraphPresence } from '../hooks/useGraphPresence';
+import { useGraphLayout } from '../hooks/useGraphLayout';
+import { useGraphDisplayNodes } from '../hooks/useGraphDisplayNodes';
+import { useGraphDisplayEdges } from '../hooks/useGraphDisplayEdges';
+import { useGraphCamera } from '../hooks/useGraphCamera';
+import { useGraphInteractions } from '../hooks/useGraphInteractions';
 
-class GraphNodeRenderBoundary extends React.Component<
-    { children: React.ReactNode; nodeId?: string; label?: string },
-    { hasError: boolean; errorMessage: string | null }
-> {
-    constructor(props: { children: React.ReactNode; nodeId?: string; label?: string }) {
-        super(props);
-        this.state = { hasError: false, errorMessage: null };
-    }
-
-    static getDerivedStateFromError(error: Error) {
-        return {
-            hasError: true,
-            errorMessage: error instanceof Error ? error.message : String(error),
-        };
-    }
-
-    componentDidCatch(error: Error) {
-        console.error('[GraphNodeCard DEBUG] render error', {
-            nodeId: this.props.nodeId,
-            label: this.props.label,
-            error,
-        });
-    }
-
-    render() {
-        if (this.state.hasError) {
-            return (
-                <div className="w-[340px] rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive shadow-sm">
-                    <div className="font-semibold">GraphNodeCard render failed</div>
-                    <div className="mt-1 break-all">nodeId: {this.props.nodeId ?? 'unknown'}</div>
-                    <div className="mt-1 break-all">label: {this.props.label ?? ''}</div>
-                    <div className="mt-1 break-all">{this.state.errorMessage}</div>
-                </div>
-            );
-        }
-        return this.props.children;
-    }
-}
-
-function GraphNodeCardWithBoundary(props: React.ComponentProps<typeof GraphNodeCard>) {
-    const label = typeof props.data?.label === 'string' ? props.data.label : '';
+// Isolated component so useViewport() only re-renders cursors, not GraphCanvas
+function MultiplayerCursors({ otherCursors }: { otherCursors: PresenceUser[] }) {
+    const viewport = useViewport();
     return (
-        <GraphNodeRenderBoundary nodeId={props.id} label={label}>
-            <GraphNodeCard {...props} />
-        </GraphNodeRenderBoundary>
-    );
-}
+        <>
+            {otherCursors.map((user) => {
+                if (!user.cursor) return null;
+                const cssX = user.cursor.x * viewport.zoom + viewport.x;
+                const cssY = user.cursor.y * viewport.zoom + viewport.y;
+                const hue = user.uid.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 360;
+                const color = `hsl(${hue}, 70%, 50%)`;
+                const displayName = user.displayName || 'Guest';
 
-const ZOOM_LEVELS = [0.4, 0.65, 1.0, 1.5] as const;
-
-type NavControlProps = {
-    actNodeIds: string[];
-    activeNodeId: string | null;
-    onFocusActNode: (nodeId: string) => void;
-};
-
-function NavControl({ actNodeIds, activeNodeId, onFocusActNode }: NavControlProps) {
-    const { zoomTo, fitView } = useReactFlow();
-    const { zoom } = useViewport();
-
-    // ── Zoom ─────────────────────────────────────────────────────────────────
-    const zoomIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
-        Math.abs(level - zoom) < Math.abs(ZOOM_LEVELS[best] - zoom) ? idx : best, 0);
-
-    const zoomStep = (delta: 1 | -1) => {
-        const next = Math.min(Math.max(zoomIdx + delta, 0), ZOOM_LEVELS.length - 1);
-        zoomTo(ZOOM_LEVELS[next], { duration: 220 });
-    };
-
-    // ── Act node navigation ───────────────────────────────────────────────────
-    const actIdx = actNodeIds.indexOf(activeNodeId ?? '');
-    const hasAct = actNodeIds.length > 0;
-
-    const focusAct = (delta: 1 | -1) => {
-        if (!hasAct) return;
-        const base = actIdx < 0 ? (delta === 1 ? -1 : actNodeIds.length) : actIdx;
-        const next = (base + delta + actNodeIds.length) % actNodeIds.length;
-        onFocusActNode(actNodeIds[next]);
-    };
-
-    const iconBtn = 'flex h-7 w-7 items-center justify-center rounded-md transition-colors';
-    const activeBtn = `${iconBtn} text-slate-600 hover:bg-slate-100`;
-    const disabledBtn = `${iconBtn} text-slate-300 cursor-default`;
-
-    return (
-        <Panel position="bottom-left" className="!m-3">
-            <div className="flex flex-col items-center gap-0.5 rounded-lg border border-border/40 bg-white shadow-sm p-1 select-none">
-
-                {/* Zoom in */}
-                <button type="button" onClick={() => zoomStep(1)} disabled={zoomIdx >= ZOOM_LEVELS.length - 1}
-                    className={zoomIdx >= ZOOM_LEVELS.length - 1 ? disabledBtn : activeBtn} title="Zoom in">
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/>
-                    </svg>
-                </button>
-
-                {/* Zoom level dots */}
-                <div className="flex flex-col items-center gap-0.5 py-0.5">
-                    {ZOOM_LEVELS.map((level, idx) => (
-                        <button key={level} type="button" onClick={() => zoomTo(level, { duration: 220 })}
-                            className={`h-1.5 w-1.5 rounded-full transition-all ${idx === zoomIdx ? 'bg-primary scale-125' : 'bg-slate-300 hover:bg-slate-400'}`}
-                            title={`${Math.round(level * 100)}%`} />
-                    ))}
-                </div>
-
-                {/* Zoom out */}
-                <button type="button" onClick={() => zoomStep(-1)} disabled={zoomIdx <= 0}
-                    className={zoomIdx <= 0 ? disabledBtn : activeBtn} title="Zoom out">
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <line x1="1" y1="6" x2="11" y2="6"/>
-                    </svg>
-                </button>
-
-                <div className="my-0.5 w-6 border-t border-border/40" />
-
-                {/* Act node navigation — left / counter / right */}
-                <div className="flex items-center gap-0.5">
-                    <button type="button" onClick={() => focusAct(-1)} disabled={!hasAct}
-                        className={!hasAct ? disabledBtn : activeBtn} title="Previous act node">
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="7,1 3,5 7,9"/>
+                return (
+                    <div
+                        key={user.uid}
+                        className="pointer-events-none absolute top-0 left-0 z-50"
+                        style={{
+                            transform: `translate(${cssX}px, ${cssY}px)`,
+                            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
+                        }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'rotate(-22deg)', transformOrigin: 'top left' }}>
+                            <path
+                                d="M0 0L16 6L6 16L0 0Z"
+                                fill={color}
+                                stroke="white"
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                            />
                         </svg>
-                    </button>
-                    <span className="w-6 text-center text-[10px] font-medium text-slate-400 tabular-nums">
-                        {hasAct ? `${actIdx >= 0 ? actIdx + 1 : '–'}/${actNodeIds.length}` : '–'}
-                    </span>
-                    <button type="button" onClick={() => focusAct(1)} disabled={!hasAct}
-                        className={!hasAct ? disabledBtn : activeBtn} title="Next act node">
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3,1 7,5 3,9"/>
-                        </svg>
-                    </button>
-                </div>
-
-                <div className="my-0.5 w-6 border-t border-border/40" />
-
-                {/* Fit view */}
-                <button type="button" onClick={() => fitView({ duration: 300, padding: 0.12 })}
-                    className={activeBtn} title="Fit view">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M1 5V2h3M15 5V2h-3M1 11v3h3M15 11v3h-3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                </button>
-            </div>
-        </Panel>
-    );
-}
-
-const SHORTCUTS = [
-    { keys: ['↑', '↓'],           desc: 'ズームイン / アウト' },
-    { keys: ['←', '→'],           desc: 'Act ノード切り替え' },
-    { keys: ['⌘', 'F'],           desc: 'ノード検索 (部分一致)' },
-    { keys: ['文字入力'],          desc: 'ノード選択中 → Act 作成' },
-    { keys: ['クリック'],          desc: 'ノード展開 / フォーカス' },
-    { keys: ['⌘', 'クリック'],    desc: '複数選択' },
-    { keys: ['ダブルクリック'],    desc: 'ズームイン' },
-    { keys: ['Space', 'ドラッグ'], desc: 'パン' },
-] as const;
-
-function KeyboardShortcutsHint() {
-    return (
-        <div className="fixed right-0 top-1/3 z-[100] group">
-            {/* Expanded panel — absolutely positioned to the left of the trigger, visible on hover */}
-            <div className="
-                absolute right-full top-0 mr-2 w-64 origin-right scale-95 rounded-2xl border border-slate-200
-                bg-white/98 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)]
-                opacity-0 pointer-events-none
-                transition-all duration-300 ease-out
-                group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto
-                group-hover:-translate-x-2
-            ">
-                <div className="px-4 pt-4 pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                        <Keyboard className="h-4 w-4 text-primary" />
-                        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
-                            Shortcuts & Help
-                        </p>
+                        <div
+                            className="ml-4 mt-1 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                            style={{ backgroundColor: color }}
+                        >
+                            {user.photoURL && (
+                                <img
+                                    src={user.photoURL}
+                                    alt=""
+                                    className="h-3 w-3 rounded-full border border-white/40"
+                                />
+                            )}
+                            {displayName}
+                        </div>
                     </div>
-                </div>
-                <ul className="px-4 py-3 flex flex-col gap-2.5">
-                    {SHORTCUTS.map(({ keys, desc }, i) => (
-                        <li key={i} className="flex items-center justify-between gap-4">
-                            <span className="text-[11px] font-semibold text-slate-500">{desc}</span>
-                            <span className="flex items-center gap-1 shrink-0">
-                                {keys.map((k) => (
-                                    <kbd key={k} className="
-                                        inline-flex items-center justify-center rounded-md
-                                        border border-slate-200 bg-slate-50
-                                        px-1.5 py-0.5 text-[10px] font-bold
-                                        text-slate-700 shadow-sm
-                                        leading-none whitespace-nowrap
-                                    ">{k}</kbd>
-                                ))}
-                            </span>
-                        </li>
-                    ))}
-                </ul>
-                <div className="px-4 py-2 bg-slate-50/50 rounded-b-2xl border-t border-slate-100">
-                    <p className="text-[10px] text-slate-400 font-medium">Tip: Press <span className="font-bold text-slate-600">/</span> to search anywhere</p>
-                </div>
-            </div>
-
-            {/* Trigger handle — Sticks out from the edge */}
-            <div className="
-                flex flex-col items-center gap-2 rounded-l-2xl border border-r-0 border-slate-200 bg-white py-4 px-2 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]
-                text-slate-400 hover:text-primary transition-all cursor-help select-none group-hover:bg-slate-50/80
-            ">
-                <HelpCircle className="h-5 w-5" />
-                <span className="[writing-mode:vertical-lr] text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-primary">Shortcuts</span>
-            </div>
-        </div>
+                );
+            })}
+        </>
     );
 }
 
@@ -283,108 +108,7 @@ const nodeTypes = {
     selectionNode: SelectionOptionNodeCard,
 };
 
-function isRenderableCoordinate(value: number | undefined) {
-    return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
-}
-
-function getDisplayNodeDimensions(node: Node<Record<string, unknown>>) {
-    const data = (node.data ?? {}) as Partial<GraphNodeRender['data']>;
-
-    if (data.layoutMode === 'radial' && data.nodeSource === 'persisted') {
-        const radialDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
-        const size = radialDepth === 0 ? 132 : (radialDepth === 1 ? 120 : (radialDepth === 2 ? 110 : 96));
-        return { width: size, height: size };
-    }
-
-    const nodeKind = typeof data.kind === 'string' ? data.kind : undefined;
-    const label = typeof data.label === 'string' ? data.label : undefined;
-    const isExpanded = data.isExpanded === true;
-    const hasChildNodes = data.hasChildNodes === true;
-    const layoutDimensions = getLayoutDimensionsForNodeType(node.type, isExpanded, nodeKind);
-
-    return {
-        width: node.type === 'customTask'
-            ? (isExpanded
-                ? getExpandedNodeWidth(label, nodeKind)
-                : getCollapsedNodeWidth(label, nodeKind, hasChildNodes))
-            : layoutDimensions.width,
-        height: layoutDimensions.height,
-    };
-}
-
-function overlapsWithMargin(left: Node<Record<string, unknown>>, right: Node<Record<string, unknown>>, margin = 28) {
-    const leftDimensions = getDisplayNodeDimensions(left);
-    const rightDimensions = getDisplayNodeDimensions(right);
-
-    return !(
-        left.position.x + leftDimensions.width + margin < right.position.x - margin
-        || left.position.x - margin > right.position.x + rightDimensions.width + margin
-        || left.position.y + leftDimensions.height + margin < right.position.y - margin
-        || left.position.y - margin > right.position.y + rightDimensions.height + margin
-    );
-}
-
-function sameSortedIds(left: string[], right: string[]) {
-    if (left.length !== right.length) {
-        return false;
-    }
-    return left.every((id, index) => id === right[index]);
-}
-
-function readClientPoint(event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent): { x: number; y: number } | null {
-    const nativeEvent = 'nativeEvent' in event ? event.nativeEvent : event;
-
-    if ('touches' in nativeEvent) {
-        const touch = nativeEvent.touches[0] ?? nativeEvent.changedTouches[0];
-        if (!touch) {
-            return null;
-        }
-        return { x: touch.clientX, y: touch.clientY };
-    }
-
-    if ('clientX' in nativeEvent && 'clientY' in nativeEvent) {
-        return { x: nativeEvent.clientX, y: nativeEvent.clientY };
-    }
-
-    return null;
-}
-
-type NodeSide = 'left' | 'right' | 'top' | 'bottom';
-
-function oppositeSide(side: NodeSide): NodeSide {
-    if (side === 'left') return 'right';
-    if (side === 'right') return 'left';
-    if (side === 'top') return 'bottom';
-    return 'top';
-}
-
-function resolveNearestSides(sourceNode: Node<Record<string, unknown>>, targetNode: Node<Record<string, unknown>>) {
-    const sourceDimensions = getDisplayNodeDimensions(sourceNode);
-    const targetDimensions = getDisplayNodeDimensions(targetNode);
-
-    const sourceCenterX = sourceNode.position.x + (sourceDimensions.width / 2);
-    const sourceCenterY = sourceNode.position.y + (sourceDimensions.height / 2);
-    const targetCenterX = targetNode.position.x + (targetDimensions.width / 2);
-    const targetCenterY = targetNode.position.y + (targetDimensions.height / 2);
-
-    const deltaX = targetCenterX - sourceCenterX;
-    const deltaY = targetCenterY - sourceCenterY;
-    const useHorizontal = Math.abs(deltaX) >= Math.abs(deltaY);
-
-    const sourceSide: NodeSide = useHorizontal
-        ? (deltaX >= 0 ? 'right' : 'left')
-        : (deltaY >= 0 ? 'bottom' : 'top');
-
-    return {
-        sourceSide,
-        targetSide: oppositeSide(sourceSide),
-    };
-}
-
 export function GraphCanvas() {
-    const router = useRouter();
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
     const {
         persistedNodes,
         persistedEdges,
@@ -396,10 +120,8 @@ export function GraphCanvas() {
         expandNode,
         expandBranchNode,
         clearAllFocus,
-        addOrUpdateActNode,
         addQueryActNode,
         addEmptyActNode,
-        removeActNode,
         setPersistedGraph,
         setActGraph,
         activeNodeId,
@@ -413,1401 +135,186 @@ export function GraphCanvas() {
         recordNodeUsed,
         nodeLastUsedAt,
         nodeUseCount,
+        updateActNodePosition,
     } = useGraphStore();
     const { workspaceId, isReadOnly } = useRunContextStore();
-    const autoRouteEdgeHandles = useStreamPreferencesStore((state) => state.autoRouteEdgeHandles);
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
-    const selectionGroups = useAgentInteractionStore((state) => state.groups);
-    const toggleSelectionOption = useAgentInteractionStore((state) => state.toggleOptionSelection);
-    const confirmSelection = useAgentInteractionStore((state) => state.confirmSelection);
-    const clearSelectionGroup = useAgentInteractionStore((state) => state.clearSelection);
-    const cancelSelectionGroup = useAgentInteractionStore((state) => state.cancelGroup);
     const commands = useGraphCommands({ workspaceId });
     const reactFlowInstance = useReactFlow();
+    const searchParams = useSearchParams();
 
-    const setPersistedGraphRef = useRef(setPersistedGraph);
-    const persistedNodeCountRef = useRef(0);
-    const previousViewSignatureRef = useRef<string | null>(null);
-    const needsPostStreamFitRef = useRef(false);
-    const activeNodeIdRef = useRef(activeNodeId);
-    const pendingRadialFocusNodeIdRef = useRef<string | null>(null);
+    // Refs shared across hooks
     const selectedNodeIdsRef = useRef<string[]>(selectedNodeIds);
-    const isShiftMarqueeSelectionRef = useRef(false);
-    const suppressNextSelectionChangeRef = useRef(false);
-    const shiftMarqueeStartRef = useRef<{ x: number; y: number } | null>(null);
-    const selectionComposerNodeIdRef = useRef<string | null>(null);
-    const recentStorageKey = workspaceId ? `graph.recentClickedNodeIds.${workspaceId}` : null;
-    const [recentClickedNodeIds, setRecentClickedNodeIds] = React.useState<string[]>([]);
-    const [customNodeSizes, setCustomNodeSizes] = React.useState<Map<string, { width: number; height: number }>>(new Map());
-
-    // Load from localStorage when workspaceId becomes available
-    const loadedWorkspaceIdRef = useRef<string | null>(null);
-    useEffect(() => {
-        if (!workspaceId || loadedWorkspaceIdRef.current === workspaceId) return;
-        loadedWorkspaceIdRef.current = workspaceId;
-        if (typeof window === 'undefined') return;
-        try {
-            const stored = window.localStorage.getItem(`graph.recentClickedNodeIds.${workspaceId}`);
-            if (stored) setRecentClickedNodeIds(JSON.parse(stored) as string[]);
-        } catch { /* ignore */ }
-        try {
-            const storedSizes = window.localStorage.getItem(`graph.nodeSizes.${workspaceId}`);
-            if (storedSizes) setCustomNodeSizes(new Map(JSON.parse(storedSizes) as [string, { width: number; height: number }][]));
-        } catch { /* ignore */ }
-    }, [workspaceId]);
+    const activeNodeIdRef = useRef<string | null>(activeNodeId);
     useLayoutEffect(() => {
         selectedNodeIdsRef.current = selectedNodeIds;
         activeNodeIdRef.current = activeNodeId;
     });
-    const usePersistedGraphMock = useMemo(() => {
-        return searchParams.get('graphMock') === '1';
-    }, [searchParams]);
-    const persistedLayoutMode = useMemo(() => {
-        const layout = searchParams.get('layout');
-        if (layout === 'radial') return 'radial' as const;
-        return 'orbit' as const;
-    }, [searchParams]);
 
-    const effectiveWorkspaceId = useMemo(() => (usePersistedGraphMock ? 'ws-mock-public' : workspaceId), [usePersistedGraphMock, workspaceId]);
-    const effectiveTopicId = usePersistedGraphMock ? 'topic-mock-1' : undefined;
-
-    // ── Multiplayer cursors ───────────────────────────────────────────────────
-    const [otherCursors, setOtherCursors] = React.useState<PresenceUser[]>([]);
-    const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const viewport = useViewport();
-
-    useEffect(() => {
-        if (!effectiveWorkspaceId) return;
-        return presenceService.subscribePresence(effectiveWorkspaceId, (users) => {
-            const myUid = getAuth().currentUser?.uid;
-            setOtherCursors(users.filter((u) => u.uid !== myUid && u.cursor != null));
-        });
-    }, [effectiveWorkspaceId]);
-
-    const handleCursorMove = useCallback((e: React.MouseEvent) => {
-        if (!effectiveWorkspaceId) return;
-        const myUid = getAuth().currentUser?.uid;
-        if (!myUid) return;
-        if (cursorThrottleRef.current) return;
-        cursorThrottleRef.current = setTimeout(() => {
-            cursorThrottleRef.current = null;
-        }, 100);
-        const pos = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-        presenceService.writeCursor(effectiveWorkspaceId, myUid, pos.x, pos.y);
-    }, [effectiveWorkspaceId, reactFlowInstance]);
-
-    useEffect(() => {
-        setPersistedGraphRef.current = setPersistedGraph;
-    }, [setPersistedGraph]);
-
-    useEffect(() => {
-        const unsubscribe = organizeService.subscribeTree(effectiveWorkspaceId, (topicNodes) => {
-            const nextPersistedNodes: Node<PersistedNodeData>[] = topicNodes.map((node, index) => ({
-                id: node.id,
-                type: 'customTask',
-                position: { x: 120, y: index * 180 + 80 },
-                data: {
-                    nodeSource: 'persisted',
-                    createdBy: node.createdBy,
-                    topicId: node.topicId,
-                    inputId: node.inputId,
-                    label: node.title,
-                    kind: node.kind,
-                    contextSummary: node.contextSummary,
-                    detailHtml: node.detailHtml,
-                    contentMd: node.contentMd,
-                    evidenceRefs: node.evidenceRefs,
-                    parentId: node.parentId,
-                    referencedNodeIds: node.referencedNodeIds,
-                },
-            }));
-
-            const nextPersistedEdges: Edge[] = topicNodes
-                .filter((node) => node.parentId)
-                .map((node) => ({
-                    id: `e-${node.parentId}-${node.id}`,
-                    source: node.parentId!,
-                    target: node.id,
-                    animated: true,
-                }));
-
-            if (nextPersistedNodes.length === 0 && persistedNodeCountRef.current > 0) {
-                return;
-            }
-            persistedNodeCountRef.current = nextPersistedNodes.length;
-            setPersistedGraphRef.current(nextPersistedNodes, nextPersistedEdges);
-        });
-
-        return () => unsubscribe();
-    }, [effectiveWorkspaceId]);
-
-    useEffect(() => {
-        const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, (draftNodes) => {
-            const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
-                id: node.id,
-                type: 'customTask',
-                position: { x: 420, y: index * 180 + 120 },
-                data: {
-                    nodeSource: 'act',
-                    createdBy: node.createdBy ?? 'agent',
-                    ...(node.authorUid !== undefined ? { authorUid: node.authorUid } : {}),
-                    topicId: node.topicId,
-                    label: node.title,
-                    kind: 'act',
-                    contentMd: node.contentMd,
-                    contextSummary: node.contextSummary,
-                    detailHtml: node.detailHtml,
-                    referencedNodeIds: node.referencedNodeIds,
-                    parentId: node.parentId,
-                },
-            }));
-            const graphState = useGraphStore.getState();
-            const draftNodeIds = new Set(draftActNodes.map((node) => node.id));
-
-            // Nodes that were pending (streamed but not yet in Firestore) and now appear
-            // in the draft snapshot have been confirmed — remove them from pending.
-            const nowConfirmedIds = graphState.pendingNodeIds.filter((id) => draftNodeIds.has(id));
-            if (nowConfirmedIds.length > 0) {
-                useGraphStore.getState().removePendingNodes(nowConfirmedIds);
-            }
-
-            const preservedLiveNodes = graphState.actNodes.filter((node) => {
-                if (draftNodeIds.has(node.id)) {
-                    return false;
-                }
-                return graphState.streamingNodeIds.includes(node.id)
-                    || graphState.editingNodeId === node.id
-                    || graphState.pendingNodeIds.includes(node.id);
-            });
-            const nextActNodes = [...draftActNodes, ...preservedLiveNodes];
-            const nextActEdges: Edge[] = nextActNodes.flatMap((node) => {
-                const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
-                    ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string' && value !== node.id)
-                    : [];
-                return referencedNodeIds.map((sourceId) => ({
-                    id: `edge-ctx-${sourceId}-${node.id}`,
-                    source: sourceId,
-                    target: node.id,
-                    animated: true,
-                    style: { stroke: '#888', strokeDasharray: '5,5' },
-                }));
-            });
-            setActGraph(nextActNodes, nextActEdges);
-        });
-
-        return () => unsubscribe();
-    }, [effectiveWorkspaceId, setActGraph]);
-
-    // Structural key: only fields that affect tree topology and Y-anchoring.
-    // label/topicId are intentionally excluded — they don't influence overlay positions
-    // (label affects node width but the packing algorithm uses height only).
-    // Keeping the key minimal means layout recalculates only on genuine structural
-    // changes (new node, parentId/referencedNodeIds update), never on streaming tokens.
-    // This also makes useDeferredValue unnecessary: structural changes are infrequent
-    // so there is no performance concern in applying them synchronously.
-    const actNodesStructuralKey = (actNodes as GraphNodeBase[]).map((n) => {
-        const refs = Array.isArray(n.data?.referencedNodeIds)
-            ? (n.data.referencedNodeIds as unknown[])
-                .filter((v): v is string => typeof v === 'string')
-                .join(',')
-            : '';
-        const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
-        const kind = typeof n.data?.kind === 'string' ? n.data.kind : '';
-        return `${n.id}:${kind}:${parentId}:${refs}`;
-    }).join('|');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({
-        ...n,
-        data: {
-            kind: n.data?.kind,
-            nodeSource: n.data?.nodeSource,
-            label: n.data?.label,
-            topicId: n.data?.topicId,
-            referencedNodeIds: n.data?.referencedNodeIds,
-            parentId: n.data?.parentId,
-            isManualPosition: n.data?.isManualPosition,
-        },
-    } as GraphNodeBase)), [actNodesStructuralKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const deferredExpandedBranchNodeIds = useDeferredValue(expandedBranchNodeIds);
-
-    const persistedGraph = useMemo(
-        () => projectPersistedGraph(
-            persistedNodes as GraphNodeBase[],
-            persistedEdges,
-            persistedLayoutMode,
-            deferredExpandedBranchNodeIds,
-        ),
-        [deferredExpandedBranchNodeIds, persistedEdges, persistedLayoutMode, persistedNodes],
-    );
-    const isRadialLayout = persistedLayoutMode === 'radial';
-
-    // Act nodes adapted for the radial overview: parentId = primary anchor (referencedNodeIds[0])
-    const actNodesForRadial = useMemo(() => {
-        const persistedIdSet = new Set(persistedNodes.map((n) => n.id));
-        return (actNodes as GraphNodeBase[]).map((node) => {
-            const referencedIds: string[] = Array.isArray(node.data?.referencedNodeIds)
-                ? (node.data.referencedNodeIds as unknown[]).filter((v): v is string => typeof v === 'string')
-                : [];
-            const anchor = referencedIds.find((id) => persistedIdSet.has(id));
-            return {
-                ...node,
-                data: {
-                    ...node.data,
-                    parentId: anchor ?? undefined,
-                },
-            };
-        });
-    }, [actNodes, persistedNodes]);
-
-    const actEdgesForRadial = useMemo(() =>
-        actNodesForRadial
-            .filter((node) => typeof node.data?.parentId === 'string')
-            .map((node) => ({
-                id: `radial-act-edge-${node.id}`,
-                source: node.data!.parentId as string,
-                target: node.id,
-                animated: false,
-            })),
-        [actNodesForRadial],
+    const usePersistedGraphMock = useMemo(
+        () => searchParams.get('graphMock') === '1',
+        [searchParams],
     );
 
-    const radialOverviewGraph = useMemo(
-        () => projectPersistedGraph(
-            [...persistedNodes, ...actNodesForRadial] as GraphNodeBase[],
-            [...persistedEdges, ...actEdgesForRadial],
-            'radial',
-        ),
-        [actEdgesForRadial, actNodesForRadial, persistedEdges, persistedNodes],
-    );
-
-    // Full act node data keyed by id. Used to restore fields stripped by actNodesForLayout
-    // (kind, contentMd, etc.) which are excluded from layout input to avoid streaming thrash.
-    const fullActNodeDataById = useMemo(
-        () => new Map((actNodes as GraphNodeBase[]).map((n) => [n.id, n.data])),
-        [actNodes],
-    );
-
-    // Parent → children map for act nodes (for tree navigation and edges).
-    const actChildrenByParent = useMemo(() => {
-        const map = new Map<string, string[]>();
-        for (const [id, data] of fullActNodeDataById) {
-            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
-            if (parentId) {
-                const arr = map.get(parentId) ?? [];
-                arr.push(id);
-                map.set(parentId, arr);
-            }
-        }
-        return map;
-    }, [fullActNodeDataById]);
-
-    // Rectangle-first act node layout: each tree gets a pre-allocated zone anchored to its
-    // referenced persisted node. Only active in orbit mode; radial uses RadialOverview instead.
-    const positionedActNodes = useMemo(() => {
-        if (persistedLayoutMode !== 'orbit') return [];
-        return projectActOverlay({
-            actNodes: actNodesForLayout,
-            persistedNodes: persistedGraph.positionedNodes,
-            expandedNodeIds,
-        });
-    }, [actNodesForLayout, expandedNodeIds, persistedGraph.positionedNodes, persistedLayoutMode]);
-
-    const regularGraphNodes = useMemo(
-        () => [...persistedGraph.positionedNodes, ...positionedActNodes],
-        [persistedGraph.positionedNodes, positionedActNodes],
-    );
-
-    const selectionProjection = useMemo(
-        () => projectSelectionGroups({
-            groups: Object.values(selectionGroups),
-            baseNodes: regularGraphNodes,
-            expandedNodeIds,
-            actions: {
-                toggleOptionSelection: toggleSelectionOption,
-                confirmSelection,
-                clearSelection: clearSelectionGroup,
-                cancelGroup: cancelSelectionGroup,
-            },
-        }),
-        [cancelSelectionGroup, clearSelectionGroup, confirmSelection, expandedNodeIds, regularGraphNodes, selectionGroups, toggleSelectionOption],
-    );
-
-    const allReferenceableNodes = useMemo(
-        () => persistedGraph.positionedNodes,
-        [persistedGraph.positionedNodes],
-    );
-
-    const referenceableNodeById = useMemo(
-        () => new Map(allReferenceableNodes.map((node) => [node.id, node])),
-        [allReferenceableNodes],
-    );
-
-    const recordRecentClickedNode = useCallback((nodeId: string) => {
-        setRecentClickedNodeIds((previous) => {
-            const next = [nodeId, ...previous.filter((id) => id !== nodeId)].slice(0, RECENT_CLICKED_NODE_LIMIT);
-            if (typeof window !== 'undefined' && recentStorageKey) {
-                try { window.localStorage.setItem(recentStorageKey, JSON.stringify(next)); } catch { /* ignore quota errors */ }
-            }
-            return next;
-        });
-    }, [recentStorageKey]);
-
-    const handleNodeResize = useCallback((nodeId: string, width: number, height: number) => {
-        setCustomNodeSizes((prev) => {
-            const next = new Map(prev);
-            next.set(nodeId, { width, height });
-            if (typeof window !== 'undefined' && workspaceId) {
-                try { window.localStorage.setItem(`graph.nodeSizes.${workspaceId}`, JSON.stringify([...next])); } catch { /* ignore quota errors */ }
-            }
-            return next;
-        });
-    }, [workspaceId]);
-
-    useEffect(() => {
-        if (referenceableNodeById.size === 0) return; // nodes not yet loaded, don't wipe localStorage-restored ids
-        setRecentClickedNodeIds((previous) => previous.filter((id) => referenceableNodeById.has(id)));
-    }, [referenceableNodeById]);
-
-    const displayNodes = useMemo(
-        () => buildDisplayNodes({
-            nodes: regularGraphNodes,
-            selectedNodeIds,
-            expandedBranchNodeIds,
-            visiblePersistedNodeIds: persistedGraph.visibleNodeIds,
-            childrenByParent: persistedGraph.childrenByParent,
-            allReferenceableNodes,
-            isNodeExpanded: (nodeId) => expandedNodeIds.includes(nodeId),
-            isNodeEditing: (nodeId) => editingNodeId === nodeId,
-            isNodeStreaming: (nodeId) => streamingNodeIds.includes(nodeId),
-            onToggleBranch: commands.toggleBranch,
-            onOpenDetails: commands.openDetails,
-            onOpenReferencedNode: commands.openReferencedNode,
-            onCommitLabel: (nodeId, label) => {
-                void commands.commitActNodeLabel(nodeId, label);
-            },
-            onUpdateLabel: (nodeId, label) => {
-                commands.updateActNodeLabel(nodeId, label);
-            },
-            onRunAction: commands.runActFromNode,
-            onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
-        }),
-        [
-            allReferenceableNodes,
-            commands,
-            editingNodeId,
-            expandedBranchNodeIds,
-            expandedNodeIds,
-            persistedGraph.childrenByParent,
-            persistedGraph.visibleNodeIds,
-            regularGraphNodes,
-            selectedNodeIds,
-            streamingNodeIds,
-        ],
-    );
-
-    // ── Brief generation ──────────────────────────────────────────────────────
-    // Act nodes with kind='brief' that haven't yet produced content are "in progress"
+    // briefGeneratingNodeIds: act nodes with kind='brief' that haven't produced content yet
     const briefGeneratingNodeIds = useMemo(() => {
         const ids = new Set<string>();
         for (const actNode of actNodes as GraphNodeBase[]) {
             if (actNode.data?.kind !== 'brief') continue;
-            if (actNode.data?.contentMd) continue; // already complete
+            if (actNode.data?.contentMd) continue;
             const refs = actNode.data?.referencedNodeIds;
             if (Array.isArray(refs) && typeof refs[0] === 'string') ids.add(refs[0]);
         }
         return ids;
     }, [actNodes]);
 
-    const handleGenerateBrief = useCallback((nodeId: string, nodePosition: { x: number; y: number }) => {
-        const actId = addQueryActNode(
-            { x: nodePosition.x + 420, y: nodePosition.y },
-            '',
-            { isManualPosition: true },
-        );
-        addOrUpdateActNode(actId, {
-            referencedNodeIds: [nodeId],
-            kind: 'brief',
-            createdBy: 'user',
-        });
-    }, [addOrUpdateActNode, addQueryActNode]);
-
-    // Write completed brief act content back to the persisted node's contextSummary
-    const appliedBriefActIds = useRef(new Set<string>());
-    useEffect(() => {
-        for (const actNode of actNodes as GraphNodeBase[]) {
-            if (actNode.data?.kind !== 'brief') continue;
-            if (!actNode.data?.contentMd) continue;
-            if (appliedBriefActIds.current.has(actNode.id)) continue;
-            const refs = actNode.data?.referencedNodeIds;
-            const targetNodeId = Array.isArray(refs) && typeof refs[0] === 'string' ? refs[0] : null;
-            if (!targetNodeId || !workspaceId) continue;
-            appliedBriefActIds.current.add(actNode.id);
-            void organizeService.updateNodeSummary(workspaceId, targetNodeId, actNode.data.contentMd);
-        }
-    }, [actNodes, workspaceId]);
-
-    const canvasNodes = useMemo(
-        () => [
-            ...displayNodes.map((node) => {
-                const customSize = customNodeSizes.get(node.id);
-                const extraData: Record<string, unknown> = {
-                    onResize: (w: number, h: number) => handleNodeResize(node.id, w, h),
-                    ...(customSize !== undefined ? { customWidth: customSize.width, customHeight: customSize.height } : {}),
-                    ...(node.data.nodeSource === 'persisted' && node.data.kind === 'topic' ? {
-                        briefGenerating: briefGeneratingNodeIds.has(node.id),
-                        onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
-                    } : {}),
-                };
-                return { ...node, data: { ...node.data, ...extraData } };
-            }),
-            ...selectionProjection.nodes,
-        ],
-        [briefGeneratingNodeIds, customNodeSizes, displayNodes, handleGenerateBrief, handleNodeResize, selectionProjection.nodes],
-    );
-
-    // Computed early so both layoutAwareDisplayNodes and displayEdges can share it.
-    const persistedRootIdByNode = useMemo(() => {
-        const resolved = new Map<string, string>();
-        const parentById = new Map(
-            persistedGraph.positionedNodes.map((node) => [
-                node.id,
-                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
-            ]),
-        );
-        persistedGraph.positionedNodes.forEach((node) => {
-            let cur: string | undefined = node.id;
-            let root = node.id;
-            while (cur) {
-                const p = parentById.get(cur);
-                if (!p) { root = cur; break; }
-                cur = p;
-            }
-            resolved.set(node.id, root);
-        });
-        return resolved;
-    }, [persistedGraph.positionedNodes]);
-
-    // Descendants of activeNodeId (via parentId chain) for relation highlighting.
-    const activeDescendantIds = useMemo(() => {
-        if (!activeNodeId) return new Set<string>();
-        const childrenByParent = new Map<string, string[]>();
-        for (const [id, data] of fullActNodeDataById) {
-            const parentId = typeof data?.parentId === 'string' ? data.parentId : undefined;
-            if (parentId) {
-                const arr = childrenByParent.get(parentId) ?? [];
-                arr.push(id);
-                childrenByParent.set(parentId, arr);
-            }
-        }
-        const descendants = new Set<string>();
-        const queue = [activeNodeId];
-        while (queue.length > 0) {
-            const cur = queue.shift()!;
-            for (const child of childrenByParent.get(cur) ?? []) {
-                if (!descendants.has(child)) {
-                    descendants.add(child);
-                    queue.push(child);
-                }
-            }
-        }
-        return descendants;
-    }, [activeNodeId, fullActNodeDataById]);
-
-    // Navigate to an act node: expand it if collapsed, then pan camera to it.
-    // Defined before layoutAwareDisplayNodes so it can be injected into node data.
-    const handleNavigateToActNode = useCallback((nodeId: string) => {
-        if (!expandedNodeIds.includes(nodeId)) {
-            toggleExpandedNode(nodeId);
-        }
-        const target = reactFlowInstance.getNode(nodeId);
-        if (target) {
-            reactFlowInstance.setCenter(
-                target.position.x + 130,
-                target.position.y + 80,
-                { zoom: Math.max(reactFlowInstance.getZoom(), 1.0), duration: 450 },
-            );
-        }
-    }, [expandedNodeIds, reactFlowInstance, toggleExpandedNode]);
-
-    const layoutAwareDisplayNodes = useMemo(() => {
-        const now = Date.now();
-        // Half-life for recency decay: 20 minutes
-        const RECENCY_HALF_LIFE_MS = 20 * 60 * 1000;
-        // Frequency saturation constant: K uses → 50% frequency score
-        const FREQ_K = 4;
-
-        return canvasNodes.map((node) => {
-            const layoutMode: 'radial' | undefined = isRadialLayout && node.data?.nodeSource === 'persisted'
-                ? 'radial'
-                : undefined;
-
-            let rootHue = 210;
-            if (node.data?.nodeSource === 'persisted') {
-                const rootId = persistedRootIdByNode.get(node.id);
-                const rootIndex = rootId ? persistedGraph.rootIds.indexOf(rootId) : -1;
-                rootHue = rootIndex >= 0 ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length] : 210;
-            }
-
-            // Activity opacity: only applied to act nodes.
-            // New nodes (no usage recorded yet) stay at full opacity.
-            let activityOpacity: number | undefined;
-            if (node.data?.nodeSource === 'act') {
-                const lastUsed = nodeLastUsedAt[node.id];
-                const count = nodeUseCount[node.id] ?? 0;
-                if (lastUsed !== undefined) {
-                    const recencyScore = Math.exp(-(now - lastUsed) / RECENCY_HALF_LIFE_MS);
-                    const freqScore = count / (count + FREQ_K);
-                    const activity = 0.5 * recencyScore + 0.5 * freqScore;
-                    // Map [0, 1] → [0.25, 1.0] so even unused nodes remain visible
-                    activityOpacity = 0.25 + 0.75 * activity;
-                }
-            }
-
-            // Act nodes pass through layout with stripped data (to avoid streaming thrash).
-            // Re-merge the full store data so kind, contentMd, etc. are available for rendering.
-            const fullActData = fullActNodeDataById.get(node.id);
-
-            // Relation to activeNodeId: used for visual highlighting of connected act nodes.
-            const activeRelation: 'self' | 'descendant' | null = activeNodeId
-                ? node.id === activeNodeId
-                    ? 'self'
-                    : activeDescendantIds.has(node.id)
-                        ? 'descendant'
-                        : null
-                : null;
-
-            // Parent/child navigation chips for act nodes.
-            let childActNodes: Array<{ id: string; label: string }> | undefined;
-            let parentActNode: { id: string; label: string } | undefined;
-            if (node.data?.nodeSource === 'act') {
-                const childIds = actChildrenByParent.get(node.id) ?? [];
-                if (childIds.length > 0) {
-                    childActNodes = childIds.map((cid) => {
-                        const d = fullActNodeDataById.get(cid);
-                        return { id: cid, label: typeof d?.label === 'string' ? d.label : cid };
-                    });
-                }
-                const parentId = typeof fullActData?.parentId === 'string' ? fullActData.parentId : undefined;
-                if (parentId) {
-                    const pd = fullActNodeDataById.get(parentId);
-                    parentActNode = { id: parentId, label: typeof pd?.label === 'string' ? pd.label : parentId };
-                }
-            }
-
-            return {
-                ...node,
-                data: {
-                    ...(fullActData ?? {}),
-                    ...node.data,
-                    layoutMode,
-                    radialDepth: persistedGraph.depthById.get(node.id) ?? 0,
-                    rootHue,
-                    ...(activityOpacity !== undefined ? { activityOpacity } : {}),
-                    ...(activeRelation !== null ? { activeRelation } : {}),
-                    ...(childActNodes !== undefined ? { childActNodes } : {}),
-                    ...(parentActNode !== undefined ? { parentActNode } : {}),
-                    ...(node.data?.nodeSource === 'act' ? { onNavigateToNode: handleNavigateToActNode } : {}),
-                },
-            };
-        });
-    }, [actChildrenByParent, activeDescendantIds, activeNodeId, canvasNodes, fullActNodeDataById, handleNavigateToActNode, isRadialLayout, nodeLastUsedAt, nodeUseCount, persistedGraph.depthById, persistedGraph.rootIds, persistedRootIdByNode]);
-
-    const radialOverviewNodes = useMemo(
-        () => buildDisplayNodes({
-            nodes: radialOverviewGraph.positionedNodes,
-            selectedNodeIds,
-            expandedBranchNodeIds,
-            visiblePersistedNodeIds: radialOverviewGraph.visibleNodeIds,
-            childrenByParent: radialOverviewGraph.childrenByParent,
-            allReferenceableNodes: radialOverviewGraph.positionedNodes,
-            isNodeExpanded: (nodeId) => expandedNodeIds.includes(nodeId),
-            isNodeEditing: (nodeId) => editingNodeId === nodeId,
-            isNodeStreaming: (nodeId) => streamingNodeIds.includes(nodeId),
-            onToggleBranch: commands.toggleBranch,
-            onOpenDetails: commands.openDetails,
-            onOpenReferencedNode: commands.openReferencedNode,
-            onCommitLabel: (nodeId, label) => {
-                void commands.commitActNodeLabel(nodeId, label);
-            },
-            onUpdateLabel: (nodeId, label) => {
-                commands.updateActNodeLabel(nodeId, label);
-            },
-            onRunAction: commands.runActFromNode,
-            onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
-        }).map((node) => ({
-            ...node,
-            data: {
-                ...node.data,
-                layoutMode: 'radial' as const,
-                radialDepth: radialOverviewGraph.depthById.get(node.id) ?? 0,
-                ...(node.data.nodeSource === 'persisted' && node.data.kind === 'topic' ? {
-                    briefGenerating: briefGeneratingNodeIds.has(node.id),
-                    onGenerateBrief: () => handleGenerateBrief(node.id, node.position),
-                } : {}),
-            },
-        })),
-        [
-            briefGeneratingNodeIds,
-            commands,
-            editingNodeId,
-            expandedBranchNodeIds,
-            expandedNodeIds,
-            handleGenerateBrief,
-            radialOverviewGraph.childrenByParent,
-            radialOverviewGraph.depthById,
-            radialOverviewGraph.positionedNodes,
-            radialOverviewGraph.visibleNodeIds,
-            selectedNodeIds,
-            streamingNodeIds,
-        ],
-    );
-
-    const radialOverviewNodeById = useMemo(
-        () => new Map(radialOverviewNodes.map((node) => [node.id, node])),
-        [radialOverviewNodes],
-    );
-
-    useEffect(() => {
-        const composerId = selectionComposerNodeIdRef.current;
-        if (composerId && !actNodes.some((node) => node.id === composerId)) {
-            selectionComposerNodeIdRef.current = null;
-        }
-
-        const contextNodeIds = [...new Set(selectedNodeIds.filter((id) => id !== selectionComposerNodeIdRef.current))].sort();
-
-        if (contextNodeIds.length === 0) {
-            const currentComposerId = selectionComposerNodeIdRef.current;
-            if (!currentComposerId) {
-                return;
-            }
-            const composerNode = actNodes.find((node) => node.id === currentComposerId);
-            const hasLabel = typeof composerNode?.data?.label === 'string' && composerNode.data.label.trim().length > 0;
-            const hasResolvedContent = [
-                composerNode?.data?.contentMd,
-                composerNode?.data?.contextSummary,
-                composerNode?.data?.detailHtml,
-                composerNode?.data?.thoughtMd,
-            ].some((value) => typeof value === 'string' && value.trim().length > 0);
-
-            if (composerNode && !hasLabel && !hasResolvedContent) {
-                removeActNode(currentComposerId);
-            }
-            selectionComposerNodeIdRef.current = null;
-            return;
-        }
-
-        const currentComposerId = selectionComposerNodeIdRef.current;
-        if (currentComposerId) {
-            const composerNode = actNodes.find((node) => node.id === currentComposerId);
-            if (!composerNode) {
-                selectionComposerNodeIdRef.current = null;
-                return;
-            }
-
-            const hasLabel = typeof composerNode.data?.label === 'string' && composerNode.data.label.trim().length > 0;
-            const hasResolvedContent = [
-                composerNode.data?.contentMd,
-                composerNode.data?.contextSummary,
-                composerNode.data?.detailHtml,
-                composerNode.data?.thoughtMd,
-            ].some((value) => typeof value === 'string' && value.trim().length > 0);
-
-            if (hasLabel || hasResolvedContent) {
-                selectionComposerNodeIdRef.current = null;
-                return;
-            }
-
-            const currentReferenced = Array.isArray(composerNode.data?.referencedNodeIds)
-                ? composerNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string').sort()
-                : [];
-            if (!sameSortedIds(currentReferenced, contextNodeIds)) {
-                addOrUpdateActNode(currentComposerId, { referencedNodeIds: contextNodeIds, kind: 'act', createdBy: 'user' });
-            }
-            return;
-        }
-
-        const contextNodes = regularGraphNodes.filter((node) => contextNodeIds.includes(node.id));
-        if (contextNodes.length === 0) {
-            return;
-        }
-
-        const maxRightX = contextNodes.reduce((max, node) => {
-            const { width } = getDisplayNodeDimensions(node as GraphNodeRender);
-            return Math.max(max, node.position.x + width);
-        }, contextNodes[0].position.x);
-        const averageY = contextNodes.reduce((sum, node) => sum + node.position.y, 0) / contextNodes.length;
-        const composerNodeId = addQueryActNode({ x: maxRightX + 220, y: averageY }, '');
-        selectionComposerNodeIdRef.current = composerNodeId;
-        addOrUpdateActNode(composerNodeId, { referencedNodeIds: contextNodeIds, kind: 'act', createdBy: 'user' });
-    }, [actNodes, addOrUpdateActNode, addQueryActNode, regularGraphNodes, removeActNode, selectedNodeIds]);
-
-    const normalizedDisplayNodes = useMemo(() => {
-        if (layoutAwareDisplayNodes.length === 0) return layoutAwareDisplayNodes;
-
-        // Single pass: sanitize positions and track min in one loop
-        let minX = Infinity;
-        let minY = Infinity;
-        const safeDisplayNodes = layoutAwareDisplayNodes.map((node, index) => {
-            const x = node.position?.x;
-            const y = node.position?.y;
-            const safe = isRenderableCoordinate(x) && isRenderableCoordinate(y)
-                ? node
-                : {
-                    ...node,
-                    position: {
-                        x: 120 + ((index % 4) * 360),
-                        y: 100 + (Math.floor(index / 4) * 220),
-                    },
-                };
-            if (safe.position.x < minX) minX = safe.position.x;
-            if (safe.position.y < minY) minY = safe.position.y;
-            return safe;
-        });
-
-        const offsetX = minX < 120 ? 120 - minX : 0;
-        const offsetY = minY < 100 ? 100 - minY : 0;
-        if (offsetX === 0 && offsetY === 0) return safeDisplayNodes;
-
-        return safeDisplayNodes.map((node) => ({
-            ...node,
-            position: { x: node.position.x + offsetX, y: node.position.y + offsetY },
-        }));
-    }, [layoutAwareDisplayNodes]);
-
-    const emphasizedDisplayNodes = useMemo(() => {
-        const isExpandedNode = (node: (typeof normalizedDisplayNodes)[number]) => (
-            node.type === 'customTask'
-            && typeof node.data === 'object'
-            && node.data !== null
-            && 'isExpanded' in node.data
-            && node.data.isExpanded === true
-        );
-
-        const expandedNodes = normalizedDisplayNodes.filter((node) => isExpandedNode(node));
-
-        // Precompute expanded node bboxes once — avoids calling getDisplayNodeDimensions
-        // M×N times (once per pair). Now expanded nodes are O(M), test nodes are O(N).
-        // Prefer node.measured (actual rendered size) over statically computed dimensions
-        // so that expanded nodes with variable-length content are covered correctly.
-        const MARGIN = 28;
-        const expandedBBoxes = expandedNodes.map((n) => {
-            const fallback = getDisplayNodeDimensions(n as Node<Record<string, unknown>>);
-            const w = n.measured?.width ?? fallback.width;
-            const h = n.measured?.height ?? fallback.height;
-            return { id: n.id, x: n.position.x, y: n.position.y, w, h };
-        });
-
-        return normalizedDisplayNodes.map((node) => {
-            if (node.type !== 'customTask') {
-                return node;
-            }
-            const isExpanded = isExpandedNode(node);
-            const isSelected = selectedNodeIds.includes(node.id);
-
-            let overlapsExpanded = false;
-            if (!isExpanded && expandedNodes.length > 0) {
-                const fallback = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
-                const width = node.measured?.width ?? fallback.width;
-                const height = node.measured?.height ?? fallback.height;
-                overlapsExpanded = expandedBBoxes.some((bbox) => (
-                    bbox.id !== node.id
-                    && node.position.x < bbox.x + bbox.w + MARGIN
-                    && node.position.x + width + MARGIN > bbox.x
-                    && node.position.y < bbox.y + bbox.h + MARGIN
-                    && node.position.y + height + MARGIN > bbox.y
-                ));
-            }
-
-            return {
-                ...node,
-                zIndex: isExpanded ? 120 : (isSelected ? 110 : (overlapsExpanded ? 30 : 80)),
-                style: {
-                    ...(node.style ?? {}),
-                    opacity: overlapsExpanded && !isSelected ? 0.4 : 1,
-                },
-            };
-        });
-    }, [normalizedDisplayNodes, selectedNodeIds]);
-
-    // ── Act tree group rectangles ─────────────────────────────────────────────
-    // One background rectangle per user-created act node. Agent act nodes that
-    // descend from a user act node are included in that user node's rectangle.
-    // Agent nodes with no user ancestor are skipped (no rectangle for them).
-    const actTreeGroupNodes = useMemo(() => {
-        const GROUP_PAD = 20;
-        const HEADER_H = 28; // reserve space for the header stripe
-
-        const actDisplayNodes = emphasizedDisplayNodes.filter(
-            (n) => (n.data as Record<string, unknown>)?.nodeSource === 'act',
-        );
-        if (actDisplayNodes.length === 0) return [];
-
-        const actIdSet = new Set(actDisplayNodes.map((n) => n.id));
-
-        // Walk up parentId chain to find the nearest user-created act ancestor (or self).
-        // Returns null if no user ancestor exists (pure agent subtree with no user root).
-        const findUserOwner = (nodeId: string, seen = new Set<string>()): string | null => {
-            if (seen.has(nodeId)) return null; // cycle guard
-            seen.add(nodeId);
-            const data = fullActNodeDataById.get(nodeId);
-            if (!data) return null;
-            if (data.createdBy === 'user') return nodeId;
-            const parentId = typeof data.parentId === 'string' ? data.parentId : undefined;
-            if (parentId && actIdSet.has(parentId)) return findUserOwner(parentId, seen);
-            return null;
-        };
-
-        // Group all act nodes by their user-created owner.
-        const byOwner = new Map<string, typeof actDisplayNodes>();
-        for (const node of actDisplayNodes) {
-            const ownerId = findUserOwner(node.id);
-            if (!ownerId) continue; // agent node with no user ancestor → no rectangle
-            const group = byOwner.get(ownerId) ?? [];
-            group.push(node);
-            byOwner.set(ownerId, group);
-        }
-
-        // Build one rectangle per user-owned group.
-        const groupNodes: Node[] = [];
-        for (const [ownerId, nodes] of byOwner) {
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            for (const node of nodes) {
-                const fallback = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
-                const width = node.measured?.width ?? fallback.width;
-                const height = node.measured?.height ?? fallback.height;
-                minX = Math.min(minX, node.position.x);
-                minY = Math.min(minY, node.position.y);
-                maxX = Math.max(maxX, node.position.x + width);
-                maxY = Math.max(maxY, node.position.y + height);
-            }
-
-            const ownerData = fullActNodeDataById.get(ownerId);
-            const label = typeof ownerData?.label === 'string' ? ownerData.label : '';
-
-            groupNodes.push({
-                id: `act-group-${ownerId}`,
-                type: 'actTreeGroup',
-                position: {
-                    x: minX - GROUP_PAD,
-                    y: minY - HEADER_H - GROUP_PAD,
-                },
-                data: {
-                    width: maxX - minX + GROUP_PAD * 2,
-                    height: maxY - minY + HEADER_H + GROUP_PAD * 2,
-                    label,
-                    nodeCount: nodes.length,
-                    createdBy: 'user',
-                },
-                selectable: false,
-                draggable: false,
-                focusable: false,
-            } as Node);
-        }
-        return groupNodes;
-    }, [emphasizedDisplayNodes, fullActNodeDataById]);
-
-    const persistedParentById = useMemo(
-        () => new Map(
-            persistedNodes.map((node) => [
-                node.id,
-                typeof node.data?.parentId === 'string' ? node.data.parentId : undefined,
-            ]),
-        ),
-        [persistedNodes],
-    );
-
-    const displayEdges = useMemo(
-        () => {
-            if (isRadialLayout) {
-                return [];
-            }
-
-            const nodeById = new Map(emphasizedDisplayNodes.map((node) => [node.id, node]));
-
-            // Straight edges connecting act parent → child nodes
-            const actParentChildEdges: Edge[] = [];
-            for (const [parentId, childIds] of actChildrenByParent) {
-                for (const childId of childIds) {
-                    actParentChildEdges.push({
-                        id: `edge-act-${parentId}-${childId}`,
-                        source: parentId,
-                        target: childId,
-                    });
-                }
-            }
-
-            // Precompute per-cluster centroids for edge bundling
-            const clusterPoints = new Map<string, { x: number; y: number }[]>();
-            for (const [nodeId, rootId] of persistedRootIdByNode) {
-                const node = nodeById.get(nodeId);
-                if (!node) continue;
-                const pts = clusterPoints.get(rootId) ?? [];
-                pts.push(node.position);
-                clusterPoints.set(rootId, pts);
-            }
-            const clusterCentroids = new Map<string, { x: number; y: number }>();
-            for (const [rootId, pts] of clusterPoints) {
-                clusterCentroids.set(rootId, {
-                    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
-                    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
-                });
-            }
-
-            // Precompute rootId → index Map so edge loop is O(1) instead of O(n) per edge
-            const rootIdToIndex = new Map(persistedGraph.rootIds.map((id, i) => [id, i]));
-
-            return buildDisplayEdges(
-                [...persistedGraph.hierarchyEdges, ...persistedGraph.relationEdges],
-                [...actEdges, ...actParentChildEdges, ...selectionProjection.edges],
-            ).map((edge) => {
-            const sourceNode = nodeById.get(edge.source);
-            const targetNode = nodeById.get(edge.target);
-            const isActContext = edge.id.startsWith('edge-ctx-');
-            const isRelation = 'relationType' in edge && edge.relationType === 'related';
-            const isActContextFocused = isActContext
-                && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
-            const isRelationFocused = isRelation
-                && (selectedNodeIds.includes(edge.source) || selectedNodeIds.includes(edge.target));
-            const sourceRootId = persistedRootIdByNode.get(edge.source);
-            const targetRootId = persistedRootIdByNode.get(edge.target);
-            const rootId = sourceRootId ?? targetRootId;
-            const rootIndex = rootId ? (rootIdToIndex.get(rootId) ?? -1) : -1;
-            const rootHue = rootIndex >= 0
-                ? RADIAL_ROOT_HUES[rootIndex % RADIAL_ROOT_HUES.length]
-                : 210;
-            const sourceDepth = persistedGraph.depthById.get(edge.source) ?? persistedGraph.depthById.get(edge.target) ?? 0;
-            const hierarchyStroke = `hsla(${rootHue} 70% ${Math.min(54 + (sourceDepth * 5), 72)}% / 1)`;
-            const relationStroke = `hsla(${rootHue} 56% ${Math.min(68 + (sourceDepth * 3), 82)}% / 1)`;
-            const nearestSides = autoRouteEdgeHandles && sourceNode && targetNode && sourceNode.type === 'customTask' && targetNode.type === 'customTask'
-                ? resolveNearestSides(sourceNode as Node<Record<string, unknown>>, targetNode as Node<Record<string, unknown>>)
-                : null;
-
-            // Bundle point for cross-cluster relation edges
-            const isCrossCluster = isRelation && sourceRootId && targetRootId && sourceRootId !== targetRootId;
-            const bundlePoint = isCrossCluster
-                ? (() => {
-                    const sc = clusterCentroids.get(sourceRootId!);
-                    const tc = clusterCentroids.get(targetRootId!);
-                    if (!sc || !tc) return undefined;
-                    return { x: (sc.x + tc.x) / 2, y: (sc.y + tc.y) / 2 };
-                })()
-                : undefined;
-
-            return {
-                ...edge,
-                sourceHandle: nearestSides ? `source-${nearestSides.sourceSide}` : (edge as Edge).sourceHandle,
-                targetHandle: nearestSides ? `target-${nearestSides.targetSide}` : (edge as Edge).targetHandle,
-                type: isActContext ? 'simplebezier' : (bundlePoint ? 'bundled' : (isRelation ? 'smoothstep' : 'default')),
-                zIndex: isActContext ? 70 : (isRelationFocused ? 55 : (isRelation ? 40 : 60)),
-                interactionWidth: isActContext ? 32 : 24,
-                markerEnd: isActContext
-                    ? {
-                        type: MarkerType.ArrowClosed,
-                        width: 18,
-                        height: 18,
-                        color: isActContextFocused ? '#0f766e' : '#64748b',
-                    }
-                    : undefined,
-                label: isActContextFocused ? 'context' : undefined,
-                labelStyle: isActContextFocused ? { fill: '#0f766e', fontSize: 11, fontWeight: 600 } : undefined,
-                labelBgStyle: isActContextFocused ? { fill: 'rgba(248, 250, 252, 0.92)', fillOpacity: 1 } : undefined,
-                labelBgPadding: isActContextFocused ? [6, 3] as [number, number] : undefined,
-                labelBgBorderRadius: isActContextFocused ? 6 : undefined,
-                data: bundlePoint ? { bundlePoint } : undefined,
-                style: {
-                    stroke: isActContext
-                        ? (isActContextFocused ? '#0f766e' : '#64748b')
-                        : (isRelation
-                            ? (isRelationFocused ? hierarchyStroke : relationStroke)
-                            : hierarchyStroke),
-                    strokeWidth: isActContext
-                        ? (isActContextFocused ? 2.1 : 1.4)
-                        : (isRelation ? (isRelationFocused ? 2.2 : 1.6) : 3),
-                    strokeOpacity: isActContext
-                        ? (isActContextFocused ? 0.9 : 0.46)
-                        : (isRelation ? (isRelationFocused ? 0.72 : 0.34) : 1),
-                    strokeDasharray: isActContext ? '6 4' : (isRelation ? '7 5' : undefined),
-                    ...((edge as Edge).style ?? {}),
-                },
-            };
-            });
-        },
-        [
-            actChildrenByParent,
-            actEdges,
-            autoRouteEdgeHandles,
-            emphasizedDisplayNodes,
-            isRadialLayout,
-            persistedGraph.depthById,
-            persistedGraph.hierarchyEdges,
-            persistedGraph.relationEdges,
-            persistedGraph.rootIds,
-            persistedRootIdByNode,
-            selectedNodeIds,
-            selectionProjection.edges,
-        ],
-    );
-
-    const focusNode = useCallback((nodeId: string) => {
-        const targetNode = emphasizedDisplayNodes.find((node) => node.id === nodeId)
-            ?? (actNodes as GraphNodeBase[]).find((node) => node.id === nodeId);
-        if (!targetNode) {
-            return;
-        }
-
-        setActiveNode(targetNode.id);
-        const currentZoom = reactFlowInstance.getZoom();
-        const animationOptions = createSingleNodeFocusOptions(currentZoom);
-        reactFlowInstance.setCenter(
-            targetNode.position.x + CAMERA_CONFIG.nodeOffsetX,
-            targetNode.position.y + CAMERA_CONFIG.nodeOffsetY,
-            { duration: animationOptions.duration, zoom: animationOptions.zoom },
-        );
-    }, [emphasizedDisplayNodes, actNodes, reactFlowInstance, setActiveNode]);
-
-    const focusActNode = useCallback((nodeId: string) => {
-        setSelectedNodes([nodeId]);
-        focusNode(nodeId);
-    }, [focusNode, setSelectedNodes]);
-
-    const handlePaneDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-        if (isReadOnly) return;
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) {
-            return;
-        }
-        const pane = target.closest('.react-flow__pane');
-        const node = target.closest('.react-flow__node');
-        const control = target.closest('button, input, textarea, [role="button"]');
-        if (!pane || node || control) {
-            return;
-        }
-
-        const flowPosition = reactFlowInstance.screenToFlowPosition({
-            x: event.clientX,
-            y: event.clientY,
-        });
-
-        if (selectedNodeIds.length > 0) {
-            // Create act node at clicked position referencing currently selected nodes.
-            // isManualPosition: true prevents the overlay from overriding the user-chosen position.
-            const composerNodeId = addQueryActNode(flowPosition, '', { isManualPosition: true });
-            addOrUpdateActNode(composerNodeId, { referencedNodeIds: selectedNodeIds, kind: 'act', createdBy: 'user' });
-        } else {
-            addEmptyActNode(flowPosition);
-        }
-    }, [addEmptyActNode, addOrUpdateActNode, addQueryActNode, selectedNodeIds, reactFlowInstance, isReadOnly]);
-
-    const viewSignature = useMemo(
-        () => JSON.stringify({
-            nodeIds: emphasizedDisplayNodes.map((node) => node.id),
-            edgeIds: displayEdges.map((edge) => edge.id),
-        }),
-        [displayEdges, emphasizedDisplayNodes],
-    );
-
-    /*
-    useEffect(() => {
-        if (emphasizedDisplayNodes.length === 0) {
-            previousViewSignatureRef.current = null;
-            return;
-        }
-
-        if (viewSignature === previousViewSignatureRef.current) {
-            return;
-        }
-        previousViewSignatureRef.current = viewSignature;
-
-        if (isStreaming) {
-            needsPostStreamFitRef.current = true;
-            return;
-        }
-
-        needsPostStreamFitRef.current = false;
-        const timeoutId = window.setTimeout(() => {
-            reactFlowInstance.fitView({
-                duration: CAMERA_CONFIG.fitViewDuration,
-                padding: CAMERA_CONFIG.fitViewPadding,
-                minZoom: CAMERA_CONFIG.fitViewZoomMin,
-                maxZoom: CAMERA_CONFIG.fitViewZoomMax,
-            });
-        }, 50);
-
-        return () => {
-            window.clearTimeout(timeoutId);
-        };
-    }, [emphasizedDisplayNodes.length, isStreaming, reactFlowInstance, viewSignature]);
-    */
-
-    /*
-    // ストリーミング終了後に一度だけ fitView を実行
-    useEffect(() => {
-        if (isStreaming || !needsPostStreamFitRef.current) {
-            return;
-        }
-        needsPostStreamFitRef.current = false;
-        const timeoutId = window.setTimeout(() => {
-            reactFlowInstance.fitView({
-                duration: CAMERA_CONFIG.fitViewDuration,
-                padding: CAMERA_CONFIG.fitViewPadding,
-                minZoom: CAMERA_CONFIG.fitViewZoomMin,
-                maxZoom: CAMERA_CONFIG.fitViewZoomMax,
-            });
-        }, 100);
-        return () => window.clearTimeout(timeoutId);
-    }, [isStreaming, reactFlowInstance]);
-    */
-
-    useEffect(() => {
-        const pendingNodeId = pendingRadialFocusNodeIdRef.current;
-        if (!pendingNodeId) {
-            return;
-        }
-
-        if (!emphasizedDisplayNodes.some((node) => node.id === pendingNodeId)) {
-            return;
-        }
-
-        pendingRadialFocusNodeIdRef.current = null;
-        focusNode(pendingNodeId);
-    }, [emphasizedDisplayNodes, focusNode]);
-
-    const handleSelectionChange = useCallback(({ nodes: changedNodes }: { nodes: Node[] }) => {
-        if (isShiftMarqueeSelectionRef.current || suppressNextSelectionChangeRef.current) {
-            suppressNextSelectionChangeRef.current = false;
-            return;
-        }
-        const ids = changedNodes
-            .filter((n) => n.type === 'customTask' || n.type == null)
-            .filter((n) => (n.data as Record<string, unknown>)?.nodeSource !== 'act')
-            .map((n) => n.id)
-            .sort();
-        const current = [...selectedNodeIdsRef.current].sort();
-        if (ids.length === current.length && ids.every((id, i) => id === current[i])) {
-            return;
-        }
-        setSelectedNodes(ids);
-    }, [setSelectedNodes]);
-
-    const handleSelectionTyping = useCallback((event: KeyboardEvent) => {
-        if (selectedNodeIds.length === 0 || editingNodeId) {
-            return;
-        }
-        if (event.metaKey || event.ctrlKey || event.altKey) {
-            return;
-        }
-        if (event.key.length !== 1 || /\s/.test(event.key)) {
-            return;
-        }
-
-        const target = event.target;
-        if (
-            target instanceof HTMLElement
-            && (
-                target.tagName === 'INPUT'
-                || target.tagName === 'TEXTAREA'
-                || target.isContentEditable
-            )
-        ) {
-            return;
-        }
-
-        const selectedNodes = emphasizedDisplayNodes.filter((node) => selectedNodeIds.includes(node.id));
-        if (selectedNodes.length === 0) {
-            return;
-        }
-
-        const averageX = selectedNodes.reduce((sum, node) => sum + node.position.x, 0) / selectedNodes.length;
-        const maxY = selectedNodes.reduce((max, node) => Math.max(max, node.position.y), selectedNodes[0].position.y);
-        addQueryActNode({ x: averageX, y: maxY + 240 }, event.key);
-        event.preventDefault();
-    }, [addQueryActNode, editingNodeId, emphasizedDisplayNodes, selectedNodeIds]);
-
-    const handleKeyNavigation = useCallback((event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-            const target = event.target;
-            if (
-                target instanceof HTMLElement
-                && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-            ) {
-                return;
-            }
-            clearAllFocus();
-            return;
-        }
-
-        const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key);
-        if (!isArrow) return;
-        if (event.metaKey || event.ctrlKey || event.altKey) return;
-
-        const target = event.target;
-        if (
-            target instanceof HTMLElement
-            && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-        ) {
-            return;
-        }
-
-        // ↑ / ↓ — zoom in / out through preset levels
-        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-            const currentZoom = reactFlowInstance.getZoom();
-            const nearestIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
-                Math.abs(level - currentZoom) < Math.abs(ZOOM_LEVELS[best] - currentZoom) ? idx : best, 0);
-            const delta = event.key === 'ArrowUp' ? 1 : -1;
-            const nextIdx = Math.min(Math.max(nearestIdx + delta, 0), ZOOM_LEVELS.length - 1);
-            if (nextIdx !== nearestIdx) {
-                reactFlowInstance.zoomTo(ZOOM_LEVELS[nextIdx], { duration: 220 });
-            }
-            event.preventDefault();
-            return;
-        }
-
-        // ← / → — cycle through act nodes (use store directly, not deferred display nodes)
-        const storeActNodes = actNodes as GraphNodeBase[];
-        if (storeActNodes.length === 0) return;
-
-        const currentIndex = storeActNodes.findIndex((node) => node.id === activeNodeId);
-        const direction = event.key === 'ArrowRight' ? 1 : -1;
-        const base = currentIndex < 0 ? (direction === 1 ? -1 : storeActNodes.length) : currentIndex;
-        const nextIndex = (base + direction + storeActNodes.length) % storeActNodes.length;
-        focusActNode(storeActNodes[nextIndex].id);
-        event.preventDefault();
-    }, [activeNodeId, actNodes, focusActNode, reactFlowInstance]);
-
-    useEffect(() => {
-        const handleFocusNode = (event: Event) => {
-            const customEvent = event as CustomEvent<{ nodeId: string }>;
-            if (customEvent.detail?.nodeId) {
-                toggleExpandedNode(customEvent.detail.nodeId);
-                focusNode(customEvent.detail.nodeId);
-            }
-        };
-        window.addEventListener('action:focus-node', handleFocusNode);
-        return () => window.removeEventListener('action:focus-node', handleFocusNode);
-    }, [focusNode, toggleExpandedNode]);
-
-    useEffect(() => {
-        window.addEventListener('keydown', handleSelectionTyping);
-        return () => window.removeEventListener('keydown', handleSelectionTyping);
-    }, [handleSelectionTyping]);
-
-    useEffect(() => {
-        window.addEventListener('keydown', handleKeyNavigation);
-        return () => window.removeEventListener('keydown', handleKeyNavigation);
-    }, [handleKeyNavigation]);
-
-    useEffect(() => {
-        const collapseThresholdMs = collapseThresholdMinutes * 60_000;
-        const id = window.setInterval(() => {
-            const currentActiveNodeId = activeNodeIdRef.current;
-            if (currentActiveNodeId) {
-                recordNodeUsed(currentActiveNodeId);
-            }
-            collapseUnusedNodes(Date.now(), collapseThresholdMs);
-        }, 5_000);
-        return () => window.clearInterval(id);
-    }, [collapseUnusedNodes, recordNodeUsed, collapseThresholdMinutes]);
-
-    const handleWheel = useCallback((event: React.WheelEvent) => {
-        if (!event.ctrlKey && !event.metaKey) {
-            return;
-        }
-        // Discrete zoom steps [0.4, 0.65, 1.0, 1.5]
-        const currentZoom = reactFlowInstance.getZoom();
-        const nearestIdx = ZOOM_LEVELS.reduce((best, level, idx) =>
-            Math.abs(level - currentZoom) < Math.abs(ZOOM_LEVELS[best] - currentZoom) ? idx : best, 0);
-
-        const delta = event.deltaY < 0 ? 1 : -1;
-        const nextIdx = Math.min(Math.max(nearestIdx + delta, 0), ZOOM_LEVELS.length - 1);
-
-        if (nextIdx !== nearestIdx) {
-            reactFlowInstance.zoomTo(ZOOM_LEVELS[nextIdx], { duration: 200 });
-        }
-    }, [reactFlowInstance]);
-
-    const activateRadialNode = useCallback((nodeId: string) => {
-        recordRecentClickedNode(nodeId);
-        setSelectedNodes([...selectedNodeIdsRef.current, nodeId]);
-        commands.openDetails(nodeId);
-
-        const radialNode = radialOverviewNodeById.get(nodeId);
-        const hasChildNodes = radialNode?.data?.hasChildNodes === true;
-        const branchExpanded = radialNode?.data?.branchExpanded === true;
-
-        const ancestorIds: string[] = [];
-        let currentId = persistedParentById.get(nodeId);
-        while (currentId) {
-            ancestorIds.unshift(currentId);
-            currentId = persistedParentById.get(currentId);
-        }
-
-        ancestorIds.forEach((ancestorId) => {
-            commands.expandBranch(ancestorId);
-        });
-
-        if (hasChildNodes && !branchExpanded) {
-            commands.expandBranch(nodeId);
-        }
-
-        if (!isRadialLayout) {
-            pendingRadialFocusNodeIdRef.current = nodeId;
-            if (ancestorIds.length === 0 && (!hasChildNodes || !branchExpanded)) {
-                focusNode(nodeId);
-                pendingRadialFocusNodeIdRef.current = null;
-            }
-        }
-    }, [
-        commands,
-        expandedBranchNodeIds,
-        focusNode,
+    // ── Hooks ────────────────────────────────────────────────────────────────
+
+    useGraphSubscriptions({ effectiveWorkspaceId: usePersistedGraphMock ? 'ws-mock-public' : workspaceId, setPersistedGraph, setActGraph });
+
+    const {
+        recentClickedNodeIds,
+        setRecentClickedNodeIds,
+        customNodeSizes,
+        recordRecentClickedNode,
+        handleNodeResize,
+    } = useLocalGraphState({ workspaceId });
+
+    const {
+        effectiveWorkspaceId,
+        setLayoutMode,
         isRadialLayout,
+        persistedGraph,
+        radialOverviewGraph,
+        fullActNodeDataById,
+        actChildrenByParent,
+        regularGraphNodes,
+        selectionProjection,
+        allReferenceableNodes,
+        referenceableNodeById,
+        persistedParentById,
+        persistedRootIdByNode,
+    } = useGraphLayout({
+        persistedNodes: persistedNodes as Node<PersistedNodeData>[],
+        persistedEdges: persistedEdges as Edge[],
+        actNodes,
+        actEdges,
+        expandedNodeIds,
+        expandedBranchNodeIds,
+        workspaceId,
+        usePersistedGraphMock,
+    });
+
+    // Filter recentClickedNodeIds to only known nodes
+    React.useEffect(() => {
+        if (referenceableNodeById.size === 0) return;
+        setRecentClickedNodeIds((prev) => prev.filter((id) => referenceableNodeById.has(id)));
+    }, [referenceableNodeById, setRecentClickedNodeIds]);
+
+    const {
+        emphasizedDisplayNodes,
+        radialOverviewNodes,
+        radialOverviewNodeById,
+        actTreeGroupNodes,
+    } = useGraphDisplayNodes({
+        regularGraphNodes,
+        selectionProjectionNodes: selectionProjection.nodes,
+        selectedNodeIds,
+        expandedBranchNodeIds,
+        expandedNodeIds,
+        editingNodeId,
+        streamingNodeIds,
+        activeNodeId,
+        actNodes: actNodes as GraphNodeBase[],
+        persistedGraph,
+        radialOverviewGraph,
+        allReferenceableNodes,
+        fullActNodeDataById,
+        actChildrenByParent,
+        persistedRootIdByNode,
+        isRadialLayout,
+        nodeLastUsedAt,
+        nodeUseCount,
+        briefGeneratingNodeIds,
+        customNodeSizes,
+        effectiveWorkspaceId,
+        workspaceId,
+        commands,
+        addQueryActNode,
+        toggleExpandedNode,
+        handleNodeResize,
+    });
+
+    const displayEdges = useGraphDisplayEdges({
+        isRadialLayout,
+        emphasizedDisplayNodes,
+        actEdges,
+        actChildrenByParent,
+        selectionProjectionEdges: selectionProjection.edges,
+        persistedGraph,
+        persistedRootIdByNode,
+        selectedNodeIds,
+    });
+
+    const {
+        focusNode,
+        focusActNode,
+        handleWheel,
+        pendingRadialFocusNodeIdRef,
+    } = useGraphCamera({
+        emphasizedDisplayNodes,
+        actNodes: actNodes as GraphNodeBase[],
+        setActiveNode,
+        setSelectedNodes,
+    });
+
+    const {
+        handlePaneDoubleClick,
+        handleSelectionChange,
+        activateRadialNode,
+        handleSelectRecentNode,
+        isShiftMarqueeSelectionRef,
+        suppressNextSelectionChangeRef,
+        shiftMarqueeStartRef,
+    } = useGraphInteractions({
+        isReadOnly,
+        isRadialLayout,
+        isStreaming,
+        selectedNodeIds,
+        selectedNodeIdsRef,
+        activeNodeId,
+        editingNodeId,
+        actNodes: actNodes as GraphNodeBase[],
+        emphasizedDisplayNodes,
+        effectiveWorkspaceId,
+        collapseThresholdMinutes,
+        activeNodeIdRef,
+        pendingRadialFocusNodeIdRef,
         persistedParentById,
         radialOverviewNodeById,
-        recordRecentClickedNode,
         setSelectedNodes,
-    ]);
+        setActiveNode,
+        clearAllFocus,
+        addQueryActNode,
+        addEmptyActNode,
+        collapseUnusedNodes,
+        recordNodeUsed,
+        recordRecentClickedNode,
+        focusNode,
+        focusActNode,
+        commands,
+        expandedBranchNodeIds,
+        toggleExpandedNode,
+    });
 
-    const handleSelectRecentNode = useCallback((nodeId: string) => {
-        setSelectedNodes([nodeId]);
-        setActiveNode(nodeId);
-        recordNodeUsed(nodeId);
-        if (!isRadialLayout) {
-            focusNode(nodeId);
-        }
-    }, [focusNode, isRadialLayout, recordNodeUsed, setActiveNode, setSelectedNodes]);
+    const { otherCursors, handleCursorMove } = useGraphPresence({ effectiveWorkspaceId });
 
-    const recentClickedSelector = recentClickedNodeIds.length > 0 ? (
-        <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex w-[min(820px,calc(100%-2rem))] -translate-x-1/2 items-center justify-center gap-1.5">
-            {recentClickedNodeIds.map((nodeId, index) => {
-                const node = referenceableNodeById.get(nodeId);
-                const data = node?.data as Record<string, unknown> | undefined;
-                const label = typeof data?.label === 'string' && data.label.trim().length > 0
-                    ? data.label.trim()
-                    : nodeId;
-                const isActive = activeNodeId === nodeId;
+    const allDisplayNodes = useMemo(
+        () => [...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[],
+        [actTreeGroupNodes, emphasizedDisplayNodes],
+    );
 
-                return (
-                    <React.Fragment key={nodeId}>
-                        {index > 0 && <span className="text-[11px] font-semibold text-slate-400">&lt;&lt;</span>}
-                        <button
-                            type="button"
-                            className={[
-                                'pointer-events-auto max-w-[140px] rounded-xl border px-3 py-1.5 text-left text-xs font-medium transition-colors',
-                                isActive
-                                    ? 'border-slate-900/70 bg-slate-900/70 text-white'
-                                    : 'border-slate-200/70 bg-white/60 text-slate-700 hover:border-slate-300/80 hover:bg-white/75',
-                            ].join(' ')}
-                            title={label}
-                            onClick={() => handleSelectRecentNode(nodeId)}
-                        >
-                            <span className="block truncate">{truncate(label, 18)}</span>
-                        </button>
-                    </React.Fragment>
-                );
-            })}
-        </div>
-    ) : null;
+    // ── JSX ──────────────────────────────────────────────────────────────────
 
     const layoutToggle = (
         <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-slate-200 bg-white/92 p-1 shadow-sm backdrop-blur-sm">
@@ -1825,9 +332,14 @@ export function GraphCanvas() {
 
     if (isRadialLayout) {
         return (
-            <div className="relative h-full w-full">
+            <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick}>
                 {layoutToggle}
-                {recentClickedSelector}
+                <RecentClickedSelector
+                    recentClickedNodeIds={recentClickedNodeIds}
+                    referenceableNodeById={referenceableNodeById}
+                    activeNodeId={activeNodeId}
+                    onSelectNode={handleSelectRecentNode}
+                />
                 <RadialOverview
                     nodes={radialOverviewNodes as GraphNodeRender[]}
                     rootIds={radialOverviewGraph.rootIds}
@@ -1841,9 +353,14 @@ export function GraphCanvas() {
     }
 
     return (
-        <div className="relative h-full w-full" onDoubleClick={handlePaneDoubleClick} onWheel={handleWheel} onMouseMove={handleCursorMove}>
+        <div className="relative h-full w-full" onWheel={handleWheel} onMouseMove={handleCursorMove}>
             {layoutToggle}
-            {recentClickedSelector}
+            <RecentClickedSelector
+                recentClickedNodeIds={recentClickedNodeIds}
+                referenceableNodeById={referenceableNodeById}
+                activeNodeId={activeNodeId}
+                onSelectNode={handleSelectRecentNode}
+            />
             <SearchBar />
             <GraphToolbar />
             <SelectedNodePanel />
@@ -1877,8 +394,9 @@ export function GraphCanvas() {
                 </div>
             </div>
             <ReactFlow
-                nodes={[...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[]}
+                nodes={allDisplayNodes}
                 edges={displayEdges}
+                onDoubleClick={handlePaneDoubleClick}
                 defaultEdgeOptions={{
                     style: { stroke: '#475569', strokeWidth: 2, strokeOpacity: 0.72 },
                 }}
@@ -1893,7 +411,6 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    // Keep recent-click history visible even when the click lands on inner controls.
                     recordRecentClickedNode(node.id);
 
                     const target = event.target;
@@ -1918,10 +435,11 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    // Draft or suggestion act node: click to run
                     const nodeKind = node.data?.kind as string | undefined;
                     const actStage = node.data?.actStage as string | undefined;
-                    if ((nodeKind === 'suggestion' || actStage === 'draft') && !isStreaming) {
+                    const hasStartedRun = node.data?.hasStartedRun === true;
+                    const canAutoRunFromClick = nodeKind === 'suggestion' || (actStage === 'draft' && !hasStartedRun);
+                    if (canAutoRunFromClick && !isStreaming) {
                         const query = ((node.data?.contentMd as string | undefined) || (node.data?.label as string | undefined) || '').trim();
                         if (query) {
                             void commands.runActFromNode(node.id, query);
@@ -1929,7 +447,6 @@ export function GraphCanvas() {
                         return;
                     }
 
-                    // Click to explore: expand detail panel AND branch
                     expandNode(node.id);
                     expandBranchNode(node.id);
                     recordNodeUsed(node.id);
@@ -1972,7 +489,7 @@ export function GraphCanvas() {
                             const idsToRemove = emphasizedDisplayNodes
                                 .filter((node) => node.type === 'customTask')
                                 .filter((node) => {
-                                    const { width, height } = getDisplayNodeDimensions(node as GraphNodeRender);
+                                    const { width, height } = getDisplayNodeDimensions(node as Node<Record<string, unknown>>);
                                     const nodeMinX = node.position.x;
                                     const nodeMaxX = node.position.x + width;
                                     const nodeMinY = node.position.y;
@@ -2000,7 +517,24 @@ export function GraphCanvas() {
                 }}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
-                nodesDraggable={false}
+                nodesDraggable={!isReadOnly}
+                onNodeDragStop={(_event, node) => {
+                    const isUserActRoot = node.type === 'customTask'
+                        && node.data?.nodeSource === 'act'
+                        && node.data?.createdBy === 'user'
+                        && typeof node.data?.parentId !== 'string';
+                    if (!workspaceId || !isUserActRoot) {
+                        return;
+                    }
+                    updateActNodePosition(node.id, node.position);
+                    void actDraftService.patchDraft(workspaceId, node.id, {
+                        isManualPosition: true,
+                        positionX: node.position.x,
+                        positionY: node.position.y,
+                    }).catch((error) => {
+                        console.error('Failed to persist dragged act node position', { nodeId: node.id, error });
+                    });
+                }}
                 panOnScroll
                 panOnScrollSpeed={0.5}
                 selectionOnDrag
@@ -2022,53 +556,8 @@ export function GraphCanvas() {
                 />
             </ReactFlow>
 
-            {/* Multiplayer cursors — pointer-events-none overlay in ReactFlow coordinate space */}
-            {otherCursors.map((user) => {
-                if (!user.cursor) return null;
-                // Convert flow coords to screen coords using viewport transform
-                const cssX = user.cursor.x * viewport.zoom + viewport.x;
-                const cssY = user.cursor.y * viewport.zoom + viewport.y;
-                const hue = user.uid.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 360;
-                const color = `hsl(${hue}, 70%, 50%)`;
-                const displayName = user.displayName || 'Guest';
-
-                return (
-                    <div
-                        key={user.uid}
-                        className="pointer-events-none absolute top-0 left-0 z-50"
-                        style={{
-                            transform: `translate(${cssX}px, ${cssY}px)`,
-                            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
-                        }}
-                    >
-                        {/* Isosceles Triangle Cursor */}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'rotate(-22deg)', transformOrigin: 'top left' }}>
-                            <path
-                                d="M0 0L16 6L6 16L0 0Z"
-                                fill={color}
-                                stroke="white"
-                                strokeWidth="1.5"
-                                strokeLinejoin="round"
-                            />
-                        </svg>
-
-                        {/* User Name Label */}
-                        <div
-                            className="ml-4 mt-1 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
-                            style={{ backgroundColor: color }}
-                        >
-                            {user.photoURL && (
-                                <img
-                                    src={user.photoURL}
-                                    alt=""
-                                    className="h-3 w-3 rounded-full border border-white/40"
-                                />
-                            )}
-                            {displayName}
-                        </div>
-                    </div>
-                );
-            })}
+            {/* Multiplayer cursors */}
+            <MultiplayerCursors otherCursors={otherCursors} />
         </div>
     );
 }

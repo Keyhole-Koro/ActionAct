@@ -16,11 +16,18 @@ type RunActInput struct {
 	TopicID              string
 	WorkspaceID          string
 	UserMessage          string
-	UserMedia            []MediaData
+	UserMediaRefs        []MediaRef
 	ActType              string
 	AnchorID             string
 	ContextIDs           []string
 	SelectedNodeContexts []SelectedNodeContext
+	LLMConfig            LLMConfig
+}
+
+type LLMConfig struct {
+	Model           string
+	EnableGrounding bool
+	EnableThinking  bool
 }
 
 type SelectedNodeContext struct {
@@ -33,9 +40,12 @@ type SelectedNodeContext struct {
 	DetailHTML     string
 }
 
-type MediaData struct {
-	MimeType string
-	Data     []byte
+// MediaRef points to a file already stored in GCS.
+// Files must be uploaded to GCS first via /api/upload/presign.
+type MediaRef struct {
+	MimeType     string
+	GCSObjectKey string // object path within the bucket, e.g. "mind/inputs/in_abc.raw"
+	SizeBytes    int64
 }
 
 // ActExecutor sends the validated request to the downstream worker

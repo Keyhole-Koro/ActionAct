@@ -2,26 +2,21 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import AsyncIterator
 
 from google import genai
-from google.genai.types import (
-    Content,
-    FunctionDeclaration,
-    GenerateContentConfig,
-    GoogleSearch,
-    Part,
-    Schema,
-    ThinkingConfig,
-    Tool,
-)
+from google.genai.types import Content, FunctionDeclaration, GenerateContentConfig, GoogleSearch, Part, Schema, ThinkingConfig, Tool
 
 from app.adapter.discord_tools import ToolExecutor, run_discord_agentic_loop
 from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
 logger = logging.getLogger(__name__)
+
+_MODEL_ALIASES = {
+    "flash": "gemini-3-flash-preview",
+    "deep_research": "gemini-3-pro-preview",
+}
 
 # ── Function declarations ──────────────────────────────────────────────────
 
@@ -65,9 +60,9 @@ _START_ACT_DECL = FunctionDeclaration(
                 description="Act の種別",
             ),
             "user_message": Schema(type="STRING", description="次の Act に渡すクエリ"),
-            "anchor_node_id": Schema(type="STRING", description="起点ノード ID（省略可）"),
+            "anchor_node_id": Schema(type="STRING", description="起点ノード ID"),
         },
-        required=["user_message"],
+        required=["user_message", "anchor_node_id"],
     ),
 )
 
@@ -90,6 +85,19 @@ def _build_system_instruction(bundle: PromptBundle) -> str | None:
     return "\n\n".join(system_parts)
 
 
+def _download_from_gcs(gcs_uri: str) -> bytes:
+    """Download a GCS object as bytes.
+
+    Respects STORAGE_EMULATOR_HOST if set (local dev with fake-gcs-server).
+    """
+    from google.cloud import storage  # type: ignore[import-untyped]
+
+    without_prefix = gcs_uri.removeprefix("gs://")
+    bucket_name, _, blob_name = without_prefix.partition("/")
+    client = storage.Client()
+    return client.bucket(bucket_name).blob(blob_name).download_as_bytes()
+
+
 class GeminiLLM:
     """Calls Gemini via the google-genai SDK with streaming."""
 
@@ -110,7 +118,7 @@ class GeminiLLM:
         bundle: PromptBundle,
         config: LLMConfig,
     ) -> AsyncIterator[LLMChunk]:
-        model_name = config.model or "gemini-3-flash"
+        model_name = _MODEL_ALIASES.get(config.model, config.model) or "gemini-3-flash-preview"
 
         parts = []
         if bundle.user_prompt:
@@ -118,10 +126,15 @@ class GeminiLLM:
 
         for media in bundle.user_media:
             try:
-                data = base64.b64decode(media.data_base64)
-                parts.append(Part.from_bytes(data=data, mime_type=media.mime_type))
+                if self._backend == "vertex":
+                    # Vertex AI supports gs:// URIs natively — no download needed.
+                    parts.append(Part.from_uri(file_uri=media.gcs_uri, mime_type=media.mime_type))
+                else:
+                    # Developer API requires raw bytes — download from GCS.
+                    data = _download_from_gcs(media.gcs_uri)
+                    parts.append(Part.from_bytes(data=data, mime_type=media.mime_type))
             except Exception as e:
-                logger.warning("Failed to decode user media", exc_info=e)
+                logger.warning("Failed to attach user media", extra={"gcs_uri": media.gcs_uri}, exc_info=e)
 
         if not parts:
             parts.append(Part.from_text(text="[empty message]"))
@@ -129,7 +142,10 @@ class GeminiLLM:
         contents = [Content(role="user", parts=parts)]
 
         base_tools: list[Tool] = []
-        if config.enable_act_tools:
+        enable_function_tools = config.enable_act_tools and not config.enable_grounding
+        if config.enable_act_tools and config.enable_grounding:
+            logger.info("Disabling act tools because grounding is enabled")
+        if enable_function_tools:
             base_tools.append(_ACT_TOOLS)
         if config.enable_grounding:
             base_tools.append(Tool(googleSearch=GoogleSearch()))

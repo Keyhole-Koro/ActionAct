@@ -4,18 +4,31 @@ import React, { useRef, useState } from 'react';
 import { Send, Plus, X, Loader2, FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGraphStore } from '@/features/graph/store';
-import { useAgentInteractionStore } from '@/features/agentInteraction/store/interactionStore';
+import { useActStream } from '@/features/action/actionAct/hooks/useActStream';
 import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { UploadButton } from '@/features/action/actionOrganize/components/UploadButton';
+import {
+    getResponseLanguagePreference,
+    subscribeResponseLanguagePreference,
+    type ResponseLanguage,
+} from '@/lib/response-language-preference';
 
 export function AskForm() {
-    const { startStream } = useAgentInteractionStore();
+    const { startStream } = useActStream();
     const { isStreaming } = useGraphStore();
     const { isReadOnly } = useRunContextStore();
     const [query, setQuery] = useState('');
     const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+    const [language, setLanguage] = useState<ResponseLanguage>('ja');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    React.useEffect(() => {
+        setLanguage(getResponseLanguagePreference());
+        return subscribeResponseLanguagePreference((nextLanguage) => {
+            setLanguage(nextLanguage);
+        });
+    }, []);
 
     const onSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -58,6 +71,20 @@ export function AskForm() {
                     onSubmit={onSubmit}
                     className="pointer-events-auto relative flex flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-[0_8px_30px_rgb(0,0,0,0.08)] backdrop-blur-md transition-all duration-300 focus-within:border-primary/30 focus-within:shadow-[0_8px_40px_rgb(0,0,0,0.12)]"
                 >
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-100 bg-[linear-gradient(135deg,rgba(241,245,249,0.9),rgba(255,255,255,0.96))] px-4 py-2 text-[11px] text-slate-600">
+                        <span className="font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            {language === 'ja' ? 'Upload' : 'Upload'}
+                        </span>
+                        <span>
+                            {language === 'ja'
+                                ? '資料を追加すると、グラフ上の知識ノードに変換されます。'
+                                : 'Add sources to turn files into graph nodes.'}
+                        </span>
+                        <span className="text-slate-400">
+                            {language === 'ja' ? 'PDF、Markdown、docs、images、CSV、JSON' : 'PDF, Markdown, docs, images, CSV, JSON'}
+                        </span>
+                    </div>
+
                     {/* Media Previews */}
                     {mediaFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 px-4 pt-4">

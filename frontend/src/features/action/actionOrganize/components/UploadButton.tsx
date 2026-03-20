@@ -8,6 +8,11 @@ import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { useUploadStore } from "../store/useUploadStore";
 import { cn } from "@/lib/utils";
 import { useAuthState } from "@/features/auth/hooks/useAuthState";
+import {
+    getResponseLanguagePreference,
+    subscribeResponseLanguagePreference,
+    type ResponseLanguage,
+} from "@/lib/response-language-preference";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -20,8 +25,18 @@ export function UploadButton({ compact = false, className }: UploadButtonProps) 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [state, setState] = useState<UploadState>("idle");
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [language, setLanguage] = useState<ResponseLanguage>("ja");
     const { workspaceId } = useRunContextStore();
     const { user, loading } = useAuthState();
+
+    useCallback;
+
+    React.useEffect(() => {
+        setLanguage(getResponseLanguagePreference());
+        return subscribeResponseLanguagePreference((nextLanguage) => {
+            setLanguage(nextLanguage);
+        });
+    }, []);
 
     const handleFileChange = useCallback(
         async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,16 +112,23 @@ export function UploadButton({ compact = false, className }: UploadButtonProps) 
 
                 <span className={cn("relative", compact ? "text-sm font-medium" : "")}>
                     {state === "uploading"
-                        ? "Uploading..."
+                        ? (language === "ja" ? "アップロード中..." : "Uploading...")
                         : state === "done"
-                            ? "Added!"
+                            ? (language === "ja" ? "受付完了" : "Queued")
                             : !user
-                                ? "Sign in to upload"
+                                ? (language === "ja" ? "サインインして追加" : "Sign in to upload")
                                 : compact
-                                    ? "Upload"
-                                    : "Add Knowledge"}
+                                    ? (language === "ja" ? "資料を追加" : "Add sources")
+                                    : (language === "ja" ? "資料をアップロード" : "Upload sources")}
                 </span>
             </Button>
+            {!compact && (
+                <p className="mt-2 max-w-[22rem] text-xs leading-5 text-muted-foreground">
+                    {language === "ja"
+                        ? "PDF、Markdown、ドキュメント、画像、CSV、JSON などを追加できます。Action が内容を抽出し、適切なトピックへ振り分けてグラフを更新します。"
+                        : "Add files like PDF, Markdown, docs, images, CSV, or JSON. Action extracts the content, routes it to the right topic, and updates the graph."}
+                </p>
+            )}
             {state === "error" && errorMsg && (
                 <span className="text-xs text-destructive ml-2">{errorMsg}</span>
             )}

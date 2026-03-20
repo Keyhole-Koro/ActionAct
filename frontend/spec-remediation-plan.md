@@ -65,11 +65,26 @@ Work:
 - Keep thought out of canonical contentMd.
 - Project grounding metadata to References and tool metadata to diagnostics surface.
 
+5. Always-on grounding and thought surface.
+Files:
+- [ActionAct/frontend/src/features/agentTools/runtime/act-runner.ts](ActionAct/frontend/src/features/agentTools/runtime/act-runner.ts)
+- [ActionAct/frontend/src/services/act/rpc-client.ts](ActionAct/frontend/src/services/act/rpc-client.ts)
+- [ActionAct/frontend/src/services/actDraft/firestore.ts](ActionAct/frontend/src/services/actDraft/firestore.ts)
+- [ActionAct/frontend/src/features/graph/hooks/useGraphSubscriptions.ts](ActionAct/frontend/src/features/graph/hooks/useGraphSubscriptions.ts)
+- [ActionAct/frontend/src/features/graph/components/GraphNodeCard.tsx](ActionAct/frontend/src/features/graph/components/GraphNodeCard.tsx)
+- [ActionAct/frontend/src/features/agentTools/runtime/frontend-tool-registry.ts](ActionAct/frontend/src/features/agentTools/runtime/frontend-tool-registry.ts)
+
+Work:
+- Force grounding and thinking on for every RunAct request.
+- Remove frontend toggles that disable thought display or web grounding.
+- Persist `thoughtMd` to `actDrafts` and restore it from Firestore snapshots.
+- Render thought as a separate always-visible surface, not as part of canonical `contentMd`.
+
 ### Done Criteria
 
 - No duplicated content when stream reconnects or retries.
 - done/error remains stable even with duplicate terminal events.
-- Thought can be toggled and does not mix into markdown body.
+- Thought is always collected, persisted, and rendered separately from markdown body.
 
 ---
 
@@ -176,4 +191,3 @@ Risk notes:
 - Offset mismatch handling tests.
 - Selection group lifecycle and non-blocking canvas interaction tests.
 - Topic activity rendering tests for each upload status.
-

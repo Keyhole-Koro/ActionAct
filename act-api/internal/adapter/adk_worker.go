@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,19 +21,24 @@ import (
 // to the act-adk-worker service via HTTP and streaming ndjson responses.
 type ADKWorkerExecutor struct {
 	workerURL  string
+	gcsBucket  string // used to construct full gs:// URIs for MediaRef
 	httpClient *http.Client
 	recorder   domain.ActRunRecorder
 	idem       domain.IdempotencyGate
 }
 
-func NewADKWorkerExecutor(workerURL string, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
-	return &ADKWorkerExecutor{
-		workerURL: workerURL,
-		httpClient: &http.Client{
+func NewADKWorkerExecutor(workerURL string, gcsBucket string, httpClient *http.Client, recorder domain.ActRunRecorder, idem domain.IdempotencyGate) *ADKWorkerExecutor {
+	if httpClient == nil {
+		httpClient = &http.Client{
 			Timeout: 5 * time.Minute,
-		},
-		recorder: recorder,
-		idem:     idem,
+		}
+	}
+	return &ADKWorkerExecutor{
+		workerURL:  workerURL,
+		gcsBucket:  gcsBucket,
+		httpClient: httpClient,
+		recorder:   recorder,
+		idem:       idem,
 	}
 }
 
@@ -65,8 +69,9 @@ type workerSelectedNodeContext struct {
 }
 
 type workerMedia struct {
-	MimeType   string `json:"mime_type"`
-	DataBase64 string `json:"data_base64"`
+	MimeType  string `json:"mime_type"`
+	GCSUri    string `json:"gcs_uri"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
 }
 
 type workerLLMConfig struct {
@@ -140,10 +145,11 @@ func (e *ADKWorkerExecutor) Execute(
 	log := slog.With("trace_id", input.TraceID, "request_id", input.RequestID)
 
 	var userMedia []workerMedia
-	for _, m := range input.UserMedia {
+	for _, m := range input.UserMediaRefs {
 		userMedia = append(userMedia, workerMedia{
-			MimeType:   m.MimeType,
-			DataBase64: base64.StdEncoding.EncodeToString(m.Data),
+			MimeType:  m.MimeType,
+			GCSUri:    fmt.Sprintf("gs://%s/%s", e.gcsBucket, m.GCSObjectKey),
+			SizeBytes: m.SizeBytes,
 		})
 	}
 
@@ -172,6 +178,11 @@ func (e *ADKWorkerExecutor) Execute(
 		AnchorNodeID:         input.AnchorID,
 		ContextNodeIDs:       input.ContextIDs,
 		SelectedNodeContexts: selectedNodeContexts,
+		LLMConfig: &workerLLMConfig{
+			Model:           input.LLMConfig.Model,
+			EnableGrounding: input.LLMConfig.EnableGrounding,
+			EnableThinking:  input.LLMConfig.EnableThinking,
+		},
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

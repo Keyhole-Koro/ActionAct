@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FolderKanban, Plus, ArrowRight, Globe, Clock, Database, FileText } from "lucide-react";
 
@@ -97,7 +97,7 @@ function WorkspaceGrid({
     );
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
     const { user, loading, isAuthenticated } = useRequireAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -108,34 +108,37 @@ export default function DashboardPage() {
     const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
     const [loadingPublic, setLoadingPublic] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+    const [publicWorkspaceError, setPublicWorkspaceError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!user) return;
         setLoadingWorkspaces(true);
+        setWorkspaceError(null);
         listUserWorkspaces(user.uid)
             .then((all) => {
-                console.log("[Debug] All workspaces returned to dashboard:", all);
-                const owned = all.filter((ws) => {
-                    const isOwned = ws.createdBy === user.uid;
-                    console.log(`[Debug] Workspace ${ws.id}: createdBy=${ws.createdBy}, user.uid=${user.uid}, isOwned=${isOwned}`);
-                    return isOwned;
-                });
+                const owned = all.filter((ws) => ws.createdBy === user.uid);
                 const shared = all.filter((ws) => ws.createdBy !== user.uid);
-                console.log("[Debug] Owned workspaces:", owned);
-                console.log("[Debug] Shared workspaces:", shared);
                 setWorkspaces(owned);
                 setSharedWorkspaces(shared);
             })
-            .catch(console.error)
+            .catch((error) => {
+                console.error(error);
+                setWorkspaceError(error instanceof Error ? error.message : "Failed to load workspaces");
+            })
             .finally(() => setLoadingWorkspaces(false));
 
         setLoadingPublic(true);
+        setPublicWorkspaceError(null);
         listPublicWorkspaces()
             .then((all) => {
                 // Exclude workspaces the user is already a member of (shown in My Workspaces)
                 setPublicWorkspaces(all);
             })
-            .catch(console.error)
+            .catch((error) => {
+                console.error(error);
+                setPublicWorkspaceError(error instanceof Error ? error.message : "Failed to load public workspaces");
+            })
             .finally(() => setLoadingPublic(false));
     }, [user]);
 
@@ -218,6 +221,10 @@ export default function DashboardPage() {
                         </div>
                         {loadingWorkspaces ? (
                             <div className="text-sm text-muted-foreground">Loading workspaces...</div>
+                        ) : workspaceError ? (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                                Failed to load workspaces: {workspaceError}
+                            </div>
                         ) : workspaces.length === 0 ? (
                             <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
                                 <FolderKanban className="h-10 w-10 text-muted-foreground" />
@@ -251,6 +258,10 @@ export default function DashboardPage() {
                         </div>
                         {loadingPublic ? (
                             <div className="text-sm text-muted-foreground">Loading public workspaces...</div>
+                        ) : publicWorkspaceError ? (
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                                Failed to load public workspaces: {publicWorkspaceError}
+                            </div>
                         ) : publicWorkspaces.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No public workspaces available.</p>
                         ) : (
@@ -260,5 +271,17 @@ export default function DashboardPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function DashboardPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen w-full items-center justify-center text-sm text-muted-foreground">
+                Loading...
+            </div>
+        }>
+            <DashboardContent />
+        </Suspense>
     );
 }

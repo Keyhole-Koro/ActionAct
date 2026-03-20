@@ -11,7 +11,6 @@ import {
     ChevronRight,
     ChevronDown,
     Bot,
-    UserRound,
     FileUp,
     Loader2,
     Code,
@@ -22,7 +21,6 @@ import {
     Globe,
 } from 'lucide-react';
 import type { GraphNodeRender } from '@/features/graph/types';
-import { useStreamPreferencesStore } from '@/features/agentTools/store/stream-preferences-store';
 import {
     GRAPH_NODE_EXPANDED_MAX_HEIGHT,
     GRAPH_NODE_EXPANDED_WIDTH,
@@ -40,6 +38,7 @@ const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; 
     investigate: { bar: 'bg-emerald-500', dot: 'bg-emerald-500', accent: 'text-emerald-600', ring: 'ring-emerald-500/35', ringActive: 'ring-emerald-500/80', ringDescendant: 'ring-emerald-400/50', bgTint: 'bg-emerald-50/50', topGrad: 'from-emerald-400 via-teal-300 to-emerald-400' },
     consult:     { bar: 'bg-amber-500',   dot: 'bg-amber-500',   accent: 'text-amber-600',   ring: 'ring-amber-500/35',   ringActive: 'ring-amber-500/80',   ringDescendant: 'ring-amber-400/50',   bgTint: 'bg-amber-50/50',   topGrad: 'from-amber-400 via-yellow-300 to-amber-400' },
     act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  ringActive: 'ring-violet-500/80',  ringDescendant: 'ring-violet-400/50',  bgTint: 'bg-violet-50/50',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
+    agent_act:   { bar: 'bg-cyan-500',    dot: 'bg-cyan-500',    accent: 'text-cyan-700',    ring: 'ring-cyan-500/35',    ringActive: 'ring-cyan-500/80',    ringDescendant: 'ring-cyan-400/50',    bgTint: 'bg-cyan-50/50',    topGrad: 'from-cyan-400 via-sky-300 to-cyan-400' },
 };
 
 // Per-author color palette for user-created act nodes
@@ -68,6 +67,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     investigate: { gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent', accent: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
     note: { gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent', accent: 'text-amber-500', glow: 'shadow-amber-500/20' },
     act: { gradient: 'from-blue-500/10 via-indigo-500/5 to-transparent', accent: 'text-blue-500', glow: 'shadow-blue-500/20' },
+    agent_act: { gradient: 'from-cyan-500/10 via-sky-500/5 to-transparent', accent: 'text-cyan-600', glow: 'shadow-cyan-500/20' },
     suggestion: { gradient: 'from-violet-500/10 via-purple-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     topic: { gradient: 'from-blue-500/20 via-cyan-500/10 to-transparent', accent: 'text-blue-600', glow: 'shadow-blue-500/25' },
     cluster: { gradient: 'from-teal-500/20 via-emerald-500/10 to-transparent', accent: 'text-teal-600', glow: 'shadow-teal-500/25' },
@@ -78,7 +78,6 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
 
 export function GraphNodeCard({ id, type, data, selected, isConnectable, sourcePosition, targetPosition }: NodeProps<GraphNodeRender>) {
     const updateNodeInternals = useUpdateNodeInternals();
-    const showThoughts = useStreamPreferencesStore((state) => state.showThoughts);
     const nodeKind = data.kind;
     const cfg = typeConfig[nodeKind ?? 'default'] || typeConfig.default;
     const kindLabel = nodeKind ? nodeKind.replace(/_/g, ' ') : undefined;
@@ -94,17 +93,39 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const actStage = data.actStage;
     const isRadialMode = data.layoutMode === 'radial' && data.nodeSource === 'persisted';
     const [editValue, setEditValue] = useState(data.label);
+    const [followupValue, setFollowupValue] = useState('');
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
-    const isActNode = data.kind === 'act';
-    const isDraftAct = isActNode && actStage === 'draft';
+    const isPrimaryActNode = data.kind === 'act';
+    const isAgentActNode = data.kind === 'agent_act';
+    const isActNode = isPrimaryActNode || isAgentActNode;
+    const isDraftAct = isPrimaryActNode && actStage === 'draft';
     const nodeDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
+    const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
+
+    const atc = createdBy === 'user'
+        ? (authorUid ? uidToAuthorPalette(authorUid) : AUTHOR_PALETTES[0])
+        : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
+
+    const statusDot = isDraftAct
+        ? 'bg-slate-300'
+        : isNodeStreaming
+            ? `${atc.dot} animate-pulse`
+            : atc.dot;
+
+    const relationClass = selected
+        ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
+        : activeRelation === 'self'
+            ? `ring-2 ${atc.ringActive} ring-offset-2 ring-offset-background border-transparent shadow-[0_0_16px_-2px_var(--tw-ring-color)] scale-[1.01]`
+            : activeRelation === 'descendant'
+                ? `ring-1 ${atc.ringDescendant} ring-offset-1 ring-offset-background ${atc.bgTint}`
+                : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]';
+
     const rootHue = typeof data.rootHue === 'number' ? data.rootHue : 210;
     const depthBgColor = isActNode ? undefined
         : `hsl(${rootHue}, ${Math.max(40 - nodeDepth * 10, 6)}%, ${Math.min(92 + nodeDepth * 2, 98.5)}%)`;
     const activityOpacity = isActNode && typeof data.activityOpacity === 'number'
         ? data.activityOpacity
         : undefined;
-    const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
     const currentTitle = (isEditing ? editValue : data.label || '').trim();
     const collapsedTitleWidth = getCollapsedNodeWidth(currentTitle, data.kind, hasChildNodes);
     const expandedTitleWidth = getExpandedNodeWidth(currentTitle, data.kind);
@@ -120,7 +141,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const inputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
     const showMetaRow = isExpanded || isNodeStreaming;
-    const hasThoughtText = Boolean(showThoughts && data.thoughtMd);
+    const hasThoughtText = Boolean(data.thoughtMd);
     const hasBodyText = Boolean(data.contextSummary || data.contentMd || hasThoughtText);
     const hasActionButtons = Boolean(data.actions && data.actions.length > 0);
     const hasReferences = referencedNodes.length > 0;
@@ -130,6 +151,10 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
     const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
     const hasRunTrace = usedContextNodeIds.length > 0 || usedTools.length > 0 || usedSources.length > 0;
+    const canSubmitFollowup = isPrimaryActNode
+        && isExpanded
+        && typeof data.onRunAction === 'function'
+        && !isNodeStreaming;
     const [runTraceOpen, setRunTraceOpen] = useState(false);
     const nodeContextLabelMap = React.useMemo(() => {
         const map: Record<string, string> = {};
@@ -175,31 +200,39 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     }, [data.label]);
 
     useEffect(() => {
+        setFollowupValue('');
+    }, [id]);
+
+    useEffect(() => {
         window.requestAnimationFrame(() => {
             updateNodeInternals(id);
         });
     }, [id, internalsSignature, updateNodeInternals]);
 
     const commitAction = useCallback(() => {
-        data.onCommitLabel?.(editValue);
+        void data.onCommitLabel?.(editValue);
     }, [data, editValue]);
 
     const handleBlur = useCallback(() => {
         if (!isEditing) return;
-        // Just save the text without triggering backend run
-        data.onUpdateLabel?.(editValue);
+        // Blur only persists the draft title and exits editing. Run submission is Enter-only.
+        void data.onUpdateLabel?.(editValue);
     }, [data, editValue, isEditing]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
             commitAction();
         } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
             // Restore original or clear if it's a new empty node
             const defaultVal = data.label || '';
             setEditValue(defaultVal);
-            data.onUpdateLabel?.(defaultVal);
+            void data.onUpdateLabel?.(defaultVal);
         }
-    }, [commitAction, data, editValue]);
+    }, [commitAction, data]);
 
     const handleMediaFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -216,6 +249,23 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
             }
         }
     }, [data]);
+
+    const submitFollowup = useCallback(() => {
+        const nextQuery = followupValue.trim();
+        if (!nextQuery || !data.onRunAction || isNodeStreaming) {
+            return;
+        }
+        data.onRunAction(nextQuery);
+        setFollowupValue('');
+    }, [data, followupValue, isNodeStreaming]);
+
+    const handleFollowupKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            submitFollowup();
+        }
+    }, [submitFollowup]);
 
     if (data.kind === 'suggestion') {
         const suggestionQuery = typeof data.contentMd === 'string' ? data.contentMd : '';
@@ -248,23 +298,6 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     }
 
     if (isActNode) {
-        const atc = createdBy === 'user'
-            ? (authorUid ? uidToAuthorPalette(authorUid) : AUTHOR_PALETTES[0])
-            : (actTypeConfig[nodeKind ?? 'act'] ?? actTypeConfig.act);
-        const statusDot = isDraftAct
-            ? 'bg-slate-300'
-            : isNodeStreaming
-                ? `${atc.dot} animate-pulse`
-                : atc.dot;
-
-        const relationClass = selected
-            ? `ring-2 ${atc.ring} ring-offset-1 ring-offset-background border-transparent scale-[1.015] shadow-[0_8px_28px_-8px_rgba(15,23,42,0.22)]`
-            : activeRelation === 'self'
-                ? `ring-2 ${atc.ringActive} ring-offset-2 ring-offset-background border-transparent shadow-[0_0_16px_-2px_var(--tw-ring-color)] scale-[1.01]`
-                : activeRelation === 'descendant'
-                    ? `ring-1 ${atc.ringDescendant} ring-offset-1 ring-offset-background ${atc.bgTint}`
-                    : 'hover:border-slate-300/70 hover:shadow-[0_6px_24px_-8px_rgba(15,23,42,0.22)]';
-
         return (
             <div className="relative group">
                 <input
@@ -291,6 +324,9 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                         isExpanded ? 'nowheel' : '',
                     ].join(' ')}
                 >
+                    <div className="drag-handle absolute inset-x-0 top-0 z-[1] flex h-4 cursor-grab items-start justify-center active:cursor-grabbing">
+                        <div className="mt-1.5 h-1 w-12 rounded-full bg-slate-300/50 transition-colors group-hover:bg-slate-400/70" />
+                    </div>
                     {/* Top gradient line — actType colour, visible when ready/expanded */}
                     {!isDraftAct && (
                         <div className={`absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r ${atc.topGrad} ${isNodeStreaming ? 'opacity-100' : 'opacity-60'}`}>
@@ -508,9 +544,9 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                         dangerouslySetInnerHTML={{ __html: data.detailHtml }}
                                     />
                                 )}
-                                {showThoughts && data.thoughtMd && (
+                                {data.thoughtMd && (
                                     <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
-                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought Process</p>
                                         <div className="text-[12px] whitespace-pre-wrap leading-relaxed text-amber-900/85">
                                             {data.thoughtMd}
                                         </div>
@@ -588,6 +624,44 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                         <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
                                             {hiddenChildCount} child{hiddenChildCount > 1 ? 'ren' : ''} hidden
                                         </span>
+                                    </div>
+                                )}
+                                {canSubmitFollowup && (
+                                    <div className={`mt-3 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2.5 ${hasBodyText || hasRunTrace ? '' : 'border-dashed'}`}>
+                                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                            Follow-up
+                                        </p>
+                                        <textarea
+                                            value={followupValue}
+                                            onChange={(event) => setFollowupValue(event.target.value)}
+                                            onKeyDown={handleFollowupKeyDown}
+                                            onClick={(event) => event.stopPropagation()}
+                                            onMouseDown={(event) => event.stopPropagation()}
+                                            placeholder="Ask the next question from this node..."
+                                            rows={2}
+                                            className="nodrag nopan w-full resize-none rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[12px] leading-relaxed text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-300"
+                                        />
+                                        <div className="mt-2 flex items-center justify-between gap-2">
+                                            <span className="text-[10px] text-slate-400">
+                                                Enter to send, Shift+Enter for newline
+                                            </span>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="h-7 rounded-md border border-slate-200 bg-white px-2.5 text-[11px] font-semibold shadow-sm transition-all hover:border-primary hover:bg-primary hover:text-white"
+                                                disabled={!followupValue.trim() || isNodeStreaming}
+                                                onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+                                                onPointerUp={(event: React.PointerEvent) => event.stopPropagation()}
+                                                onMouseDown={(event: React.MouseEvent) => event.stopPropagation()}
+                                                onClick={(event: React.MouseEvent) => {
+                                                    event.stopPropagation();
+                                                    submitFollowup();
+                                                }}
+                                            >
+                                                <Play className="mr-1.5 h-3.5 w-3.5" />
+                                                Ask Next
+                                            </Button>
+                                        </div>
                                     </div>
                                 )}
                                 {/* Action buttons */}
@@ -854,6 +928,23 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                         </span>
                                     )
                                 )}
+                                {isExpanded && isAgentActNode && data.agentRole === 'search' && (
+                                    <span className={`inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium text-cyan-700`}>
+                                        <Globe className="h-3 w-3" />
+                                        Search
+                                    </span>
+                                )}
+                                {isExpanded && isAgentActNode && data.status && (
+                                    <span className={`inline-flex items-center rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium ${
+                                        data.status === 'running'
+                                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                            : data.status === 'completed'
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                : 'border-rose-200 bg-rose-50 text-rose-700'
+                                    }`}>
+                                        {data.status}
+                                    </span>
+                                )}
                                 {(data.detailHtml || data.contentMd) && (
                                     <span className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/50 ${isActNode ? 'px-1 py-0.5' : 'px-1.5 py-0.5'} text-slate-500`}>
                                         {data.detailHtml ? (
@@ -1000,9 +1091,9 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                 </div>
                             ) : null}
 
-                            {showThoughts && data.thoughtMd ? (
+                            {data.thoughtMd ? (
                                 <div className="mt-3 rounded-md border border-amber-200/80 bg-amber-50/60 px-3 py-2">
-                                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought</p>
+                                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Thought Process</p>
                                     <div className={`${isActNode ? 'text-[12px]' : 'text-xs'} whitespace-pre-wrap leading-relaxed text-amber-900/85`}>
                                         {data.thoughtMd}
                                     </div>

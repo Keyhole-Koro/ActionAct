@@ -121,3 +121,50 @@ async def test_gemini_llm_keeps_context_out_of_user_turn():
     assert "supporting material" in system_instruction
     assert "AWS" in system_instruction
     assert "You are helpful." in system_instruction
+
+
+@pytest.mark.asyncio
+async def test_gemini_llm_resolves_profile_aliases_to_supported_models():
+    llm = GeminiLLM(project="local-dev", api_key="test-key")
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
+
+    async for _ in llm.generate(
+        PromptBundle(user_prompt="test question"),
+        LLMConfig(model="flash"),
+    ):
+        pass
+
+    assert fake_aio.models.calls[0]["model"] == "gemini-3-flash-preview"
+
+
+@pytest.mark.asyncio
+async def test_gemini_llm_resolves_deep_research_alias_to_supported_model():
+    llm = GeminiLLM(project="local-dev", api_key="test-key")
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
+
+    async for _ in llm.generate(
+        PromptBundle(user_prompt="test question"),
+        LLMConfig(model="deep_research"),
+    ):
+        pass
+
+    assert fake_aio.models.calls[0]["model"] == "gemini-3-pro-preview"
+
+
+@pytest.mark.asyncio
+async def test_gemini_llm_disables_function_tools_when_grounding_is_enabled():
+    llm = GeminiLLM(project="local-dev", api_key="test-key")
+    fake_aio = _FakeAioClient()
+    llm._client = SimpleNamespace(aio=fake_aio)
+
+    async for _ in llm.generate(
+        PromptBundle(user_prompt="latest AI news"),
+        LLMConfig(enable_grounding=True, enable_act_tools=True),
+    ):
+        pass
+
+    config = fake_aio.models.calls[0]["config"]
+    dumped = config.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["tools"] == [{"googleSearch": {}}]

@@ -705,13 +705,10 @@ const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: "set_stream_preferences",
-    description: "thought 表示や、auto grounding を上書きする明示設定など、stream 表示と送信の既定設定を更新する",
+    description: "stream の固定既定設定を更新する。thought と grounding は常時有効のため、ここでは model profile のみ変更する",
     input_schema: {
       type: "object",
       properties: {
-        show_thoughts: { type: "boolean" },
-        include_thoughts: { type: "boolean" },
-        use_web_grounding: { type: ["boolean", "null"] },
         model_profile: { type: "string", enum: ["flash", "deep_research"] },
       },
       additionalProperties: false,
@@ -719,32 +716,19 @@ const toolDefinitions: ToolDefinition[] = [
     output_schema: {
       type: "object",
       properties: {
-        show_thoughts: { type: "boolean" },
-        include_thoughts: { type: "boolean" },
-        use_web_grounding: { type: ["boolean", "null"] },
         model_profile: { type: "string" },
       },
-      required: ["show_thoughts", "include_thoughts", "use_web_grounding", "model_profile"],
+      required: ["model_profile"],
       additionalProperties: false,
     },
     invoke(input) {
       const parsed = requireObject(input);
-      rejectUnknownKeys(parsed, ["show_thoughts", "include_thoughts", "use_web_grounding", "model_profile"]);
-      const useWebGrounding = parsed.use_web_grounding;
-      if (useWebGrounding !== undefined && useWebGrounding !== null && typeof useWebGrounding !== "boolean") {
-        throw toolError("INVALID_INPUT", "use_web_grounding must be boolean or null");
-      }
+      rejectUnknownKeys(parsed, ["model_profile"]);
       useStreamPreferencesStore.getState().setPreferences({
-        showThoughts: optionalBoolean(parsed, "show_thoughts"),
-        includeThoughts: optionalBoolean(parsed, "include_thoughts"),
-        useWebGroundingOverride: useWebGrounding === undefined ? undefined : (useWebGrounding as boolean | null),
         modelProfile: optionalString(parsed, "model_profile") as "flash" | "deep_research" | undefined,
       });
       const next = useStreamPreferencesStore.getState();
       return {
-        show_thoughts: next.showThoughts,
-        include_thoughts: next.includeThoughts,
-        use_web_grounding: next.useWebGroundingOverride,
         model_profile: next.modelProfile,
       };
     },

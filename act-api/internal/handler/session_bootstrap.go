@@ -66,7 +66,7 @@ func (h *SessionBootstrapHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		Path:     "/",
 		MaxAge:   h.sidTTLSeconds,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 		Secure:   true,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -75,10 +75,11 @@ func (h *SessionBootstrapHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		Path:     "/",
 		MaxAge:   h.csrfTTLSeconds,
 		HttpOnly: false,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 		Secure:   true,
 		Expires:  time.Now().Add(time.Duration(h.csrfTTLSeconds) * time.Second),
 	})
+	w.Header().Set("X-CSRF-Token", csrfToken)
 
 	w.WriteHeader(http.StatusNoContent)
 }

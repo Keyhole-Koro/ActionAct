@@ -6,5 +6,7 @@
   "firebaseAppId": "replace-me",
   "firebaseAuthEmulatorHost": "",
   "firestoreEmulatorHost": "",
-  "gcloudProject": "prod"
+  "gcloudProject": "prod",
+  "requireBootstrapCsrfHeader": true,
+  "useActApiProxy": true
 }

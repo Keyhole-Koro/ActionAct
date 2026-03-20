@@ -1,6 +1,7 @@
 "use client";
 
 import { config } from "@/lib/config";
+import { getCSRFToken } from "@/services/firebase/csrf";
 import { getFirebaseIdToken } from "@/services/firebase/token";
 
 export type VisibleGraphCandidateNode = {
@@ -44,6 +45,7 @@ export async function resolveNodeCandidates(params: {
     headers: {
       Authorization: authHeader,
       "Content-Type": "application/json",
+      "X-CSRF-Token": getCSRFToken(),
     },
     credentials: "include",
     body: JSON.stringify({

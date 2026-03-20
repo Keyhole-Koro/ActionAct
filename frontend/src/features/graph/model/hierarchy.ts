@@ -44,9 +44,10 @@ export function buildVisibleHierarchy(
     const expandedSet = new Set(expandedBranchNodeIds);
     const visibleNodeIds = new Set<string>(rootIds);
     const queue = [...rootIds];
+    let queueIndex = 0;
 
-    while (queue.length > 0) {
-        const currentId = queue.shift()!;
+    while (queueIndex < queue.length) {
+        const currentId = queue[queueIndex++]!;
         if (!expandedSet.has(currentId)) {
             continue;
         }
@@ -83,8 +84,9 @@ export function buildVisibleHierarchy(
 
     const depthById = new Map<string, number>();
     const depthQueue = rootIds.map((nodeId) => ({ nodeId, depth: 0 }));
-    while (depthQueue.length > 0) {
-        const { nodeId, depth } = depthQueue.shift()!;
+    let depthQueueIndex = 0;
+    while (depthQueueIndex < depthQueue.length) {
+        const { nodeId, depth } = depthQueue[depthQueueIndex++]!;
         if (depthById.has(nodeId)) {
             continue;
         }

@@ -81,12 +81,13 @@ function mapTopicNode(
   data: Record<string, unknown>,
 ): TopicNode {
   const nodeId = readString(data.nodeId) ?? docId;
+  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? nodeId;
 
   return {
     id: nodeId,
     topicId: readString(data.topicId),
     inputId: readString(data.sourceInputId),
-    title: readString(data.title) ?? nodeId,
+    title: resolvedTitle,
     kind: readString(data.kind),
     parentId: readString(data.parentId),
     contextSummary: readString(data.contextSummary),
@@ -275,26 +276,67 @@ export const firestoreOrganizeService: OrganizePort = {
       throw new Error("Sign in required before uploading files");
     }
 
-    const formData = new FormData();
-    formData.append("workspace_id", workspaceId);
-    formData.append("file", file);
-
     const { config } = await import("@/lib/config");
-    const res = await fetch(`${config.actApiBaseUrl}/api/upload`, {
+    const apiBase = config.actApiBaseUrl;
+    const mimeType = file.type || "application/octet-stream";
+
+    // Step 1: get presigned upload URL
+    const presignRes = await fetch(`${apiBase}/api/upload/presign`, {
       method: "POST",
+      credentials: "include",
       headers: {
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      credentials: "include",
-      body: formData,
+      body: JSON.stringify({ workspace_id: workspaceId, mime_type: mimeType }),
+    });
+    if (!presignRes.ok) {
+      const msg = await presignRes.text().catch(() => "");
+      throw new Error(`Presign failed: ${presignRes.status} ${msg}`);
+    }
+    const { object_key, upload_url } = (await presignRes.json()) as {
+      object_key: string;
+      upload_url: string;
+    };
+
+    // Step 2: upload directly to GCS (or act-api proxy in local dev)
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", upload_url);
+      xhr.setRequestHeader("Content-Type", mimeType);
+      xhr.onload = () => {
+        if (xhr.status === 200 || xhr.status === 204) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload network error"));
+      xhr.send(file);
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Upload failed: ${res.status} ${text}`);
+    // Step 3: notify act-api to record in Firestore and publish media.received
+    const completeRes = await fetch(`${apiBase}/api/upload/complete`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        object_key,
+        filename: file.name,
+        content_type: mimeType,
+        size_bytes: file.size,
+      }),
+    });
+    if (!completeRes.ok) {
+      const msg = await completeRes.text().catch(() => "");
+      throw new Error(`Upload complete failed: ${completeRes.status} ${msg}`);
     }
 
-    const json = (await res.json()) as { input_id: string; topic_id?: string };
+    const json = (await completeRes.json()) as { input_id: string; topic_id?: string };
     return {
       inputId: json.input_id,
       topicId: typeof json.topic_id === "string" && json.topic_id.trim() ? json.topic_id : `topic:${json.input_id}`,

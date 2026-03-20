@@ -12,14 +12,17 @@ import (
 )
 
 type ADKWorkerNodeCandidateResolver struct {
-	workerURL   string
-	httpClient  *http.Client
+	workerURL  string
+	httpClient *http.Client
 }
 
-func NewADKWorkerNodeCandidateResolver(workerURL string) *ADKWorkerNodeCandidateResolver {
+func NewADKWorkerNodeCandidateResolver(workerURL string, httpClient *http.Client) *ADKWorkerNodeCandidateResolver {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
 	return &ADKWorkerNodeCandidateResolver{
-		workerURL: workerURL,
-		httpClient: &http.Client{},
+		workerURL:  workerURL,
+		httpClient: httpClient,
 	}
 }
 

@@ -11,15 +11,21 @@ export interface TopicNode {
     inputId?: string;
     title: string;
     kind?: string;
+    status?: 'running' | 'completed' | 'failed';
+    agentRole?: 'search';
     createdBy?: 'user' | 'agent';
     authorUid?: string;
     parentId?: string;
     referencedNodeIds?: string[];
+    isManualPosition?: boolean;
+    positionX?: number;
+    positionY?: number;
 
     // Detailed fields (often populated by A7 summary agent)
     contextSummary?: string;
     detailHtml?: string;
     contentMd?: string;
+    thoughtMd?: string;
     evidenceRefs?: EvidenceRef[];
 }
 

@@ -18,6 +18,10 @@ type Config struct {
 	PubSubTopic       string
 	StorageEmulatorHost string
 	PubSubEmulatorHost  string
+	// UploadProxyOrigin, when set, causes /api/upload/presign to return a
+	// proxy URL pointing at this origin instead of a real GCS signed URL.
+	// Use for local development: e.g. "http://localhost:8080".
+	UploadProxyOrigin string
 	SIDStrict         bool
 	SIDTTLSeconds     int
 	CSRFTTLSeconds    int
@@ -42,6 +46,7 @@ func MustLoad() *Config {
 		PubSubTopic:       pubsubTopic,
 		StorageEmulatorHost: os.Getenv("STORAGE_EMULATOR_HOST"),
 		PubSubEmulatorHost:  os.Getenv("PUBSUB_EMULATOR_HOST"),
+		UploadProxyOrigin:   os.Getenv("UPLOAD_PROXY_ORIGIN"),
 		SIDStrict:         mustBoolEnv("SID_STRICT"),
 		SIDTTLSeconds:     mustIntEnv("SID_TTL_SECONDS"),
 		CSRFTTLSeconds:    mustIntEnv("CSRF_TTL_SECONDS"),

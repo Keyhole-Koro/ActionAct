@@ -4,34 +4,46 @@ import { firestore } from "@/services/firebase/firestore";
 import { type WorkspaceData } from "./workspace-service";
 
 export async function listUserWorkspaces(uid: string): Promise<WorkspaceData[]> {
-    console.log(`[Debug] Listing workspaces for uid: ${uid}`);
     const membersQuery = query(
         collectionGroup(firestore, "members"),
         where("uid", "==", uid),
     );
 
-    const memberSnaps = await getDocs(membersQuery);
-    console.log(`[Debug] Found ${memberSnaps.docs.length} membership documents`);
-
+    let memberSnaps;
+    try {
+        memberSnaps = await getDocs(membersQuery);
+    } catch (error) {
+        console.error("listUserWorkspaces.membersQuery failed", {
+            uid,
+            message: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error(`members query failed for uid=${uid}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const workspaces: WorkspaceData[] = [];
 
     for (const memberDoc of memberSnaps.docs) {
-        console.log(`[Debug] Member doc path: ${memberDoc.ref.path}`);
         const workspaceRef = memberDoc.ref.parent.parent;
-        if (!workspaceRef) {
-            console.log(`[Debug] No parent workspace found for member doc`);
-            continue;
-        }
+        if (!workspaceRef) continue;
 
-        const workspaceSnap = await getDoc(workspaceRef);
-        if (!workspaceSnap.exists()) {
-            console.log(`[Debug] Workspace document does not exist: ${workspaceRef.path}`);
-            continue;
+        let workspaceSnap;
+        try {
+            workspaceSnap = await getDoc(workspaceRef);
+        } catch (error) {
+            console.error("listUserWorkspaces.workspaceGet failed", {
+                uid,
+                workspacePath: workspaceRef.path,
+                memberPath: memberDoc.ref.path,
+                memberDocId: memberDoc.id,
+                memberUid: memberDoc.data()?.uid,
+                message: error instanceof Error ? error.message : String(error),
+            });
+            throw new Error(
+                `workspace read failed for ${workspaceRef.path} via ${memberDoc.ref.path}: ${error instanceof Error ? error.message : String(error)}`,
+            );
         }
+        if (!workspaceSnap.exists()) continue;
 
         const data = workspaceSnap.data();
-        console.log(`[Debug] Workspace data for ${workspaceSnap.id}:`, data);
-
         const updatedAt = data.updatedAt && typeof data.updatedAt.toMillis === "function"
             ? data.updatedAt.toMillis()
             : undefined;
@@ -47,6 +59,5 @@ export async function listUserWorkspaces(uid: string): Promise<WorkspaceData[]> 
         });
     }
 
-    console.log(`[Debug] Returning ${workspaces.length} workspaces total`);
     return workspaces;
 }

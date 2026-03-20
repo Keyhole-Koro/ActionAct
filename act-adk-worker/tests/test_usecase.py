@@ -14,6 +14,47 @@ class FakeLLM:
         yield LLMChunk(is_done=True)
 
 
+class FakeLLMStartActMissingAnchor:
+    async def generate(self, _bundle, _config):
+        yield LLMChunk(
+            is_done=True,
+            function_calls=[
+                {
+                    "name": "start_act",
+                    "args": {
+                        "user_message": "look deeper",
+                    },
+                }
+            ],
+        )
+
+
+class RecordingGroundedLLM:
+    def __init__(self):
+        self.calls = []
+
+    async def generate(self, bundle, config):
+        self.calls.append((bundle, config))
+        if len(self.calls) == 1:
+            yield LLMChunk(text="grounded summary")
+            yield LLMChunk(is_done=True)
+            return
+        yield LLMChunk(text="final answer")
+        yield LLMChunk(
+            is_done=True,
+            function_calls=[
+                {
+                    "name": "suggest_deep_dives",
+                    "args": {
+                        "suggestions": [
+                            {"label": "next", "query": "go deeper"},
+                        ],
+                    },
+                }
+            ],
+        )
+
+
 def _input(**overrides) -> RunActInput:
     defaults = dict(
         trace_id="t1",
@@ -101,3 +142,45 @@ async def test_usecase_event_ordering():
     assert first_upsert_idx is not None, "should have upsert"
     assert first_append_idx is not None, "should have append_md"
     assert first_upsert_idx < first_append_idx, "upsert must come before append_md"
+
+
+@pytest.mark.asyncio
+async def test_usecase_drops_start_act_without_anchor_node_id():
+    uc = RunActUsecase(assembly=StubAssembly(), llm=FakeLLMStartActMissingAnchor())
+
+    events = []
+    async for event in uc.execute(_input(anchor_node_id="root-node")):
+        events.append(event)
+
+    action_triggers = [event for event in events if event.type == "action_trigger"]
+    assert action_triggers == []
+    assert events[-1].type == "terminal"
+    assert events[-1].done is True
+
+
+@pytest.mark.asyncio
+async def test_usecase_creates_agent_act_node_for_grounding_subflow():
+    llm = RecordingGroundedLLM()
+    uc = RunActUsecase(assembly=StubAssembly(), llm=llm)
+
+    events = []
+    async for event in uc.execute(_input(llm_config={"enable_grounding": True})):
+        events.append(event)
+
+    patch_events = [event for event in events if event.type == "patch_ops" and event.ops]
+    agent_upserts = [
+        event for event in patch_events
+        if event.ops[0].op == "upsert" and event.ops[0].kind == "agent_act"
+    ]
+    assert len(agent_upserts) == 1
+    assert agent_upserts[0].ops[0].parent_id == events[0].ops[0].node_id
+
+    terminal = events[-1]
+    assert terminal.type == "terminal"
+    assert terminal.done is True
+    assert "llm.search_subflow" in terminal.used_tools
+
+    assert llm.calls[0][1].enable_grounding is True
+    assert llm.calls[0][1].enable_act_tools is False
+    assert llm.calls[1][1].enable_grounding is False
+    assert llm.calls[1][1].enable_act_tools is True
