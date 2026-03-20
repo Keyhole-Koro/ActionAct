@@ -79,7 +79,7 @@ export function useGraphLayout({
     const effectiveTopicId = usePersistedGraphMock ? 'topic-mock-1' : undefined;
 
     // Structural key: only fields that affect tree topology and Y-anchoring.
-    const actNodesStructuralKey = (actNodes as GraphNodeBase[]).map((n) => {
+    const actNodesStructuralKey = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => {
         const refs = Array.isArray(n.data?.referencedNodeIds)
             ? (n.data.referencedNodeIds as unknown[])
                 .filter((v): v is string => typeof v === 'string')
@@ -88,7 +88,7 @@ export function useGraphLayout({
         const parentId = typeof n.data?.parentId === 'string' ? n.data.parentId : '';
         const kind = typeof n.data?.kind === 'string' ? n.data.kind : '';
         return `${n.id}:${kind}:${parentId}:${refs}`;
-    }).join('|');
+    }).join('|'), [actNodes]);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const actNodesForLayout = useMemo(() => (actNodes as GraphNodeBase[]).map((n) => ({

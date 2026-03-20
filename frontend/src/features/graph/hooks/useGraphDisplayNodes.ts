@@ -499,20 +499,35 @@ export function useGraphDisplayNodes({
 
         const actIdSet = new Set(actDisplayNodes.map((n) => n.id));
 
-        const findUserOwner = (nodeId: string, seen = new Set<string>()): string | null => {
-            if (seen.has(nodeId)) return null;
-            seen.add(nodeId);
-            const data = fullActNodeDataById.get(nodeId);
-            if (!data) return null;
-            if (data.createdBy === 'user') return nodeId;
-            const parentId = typeof data.parentId === 'string' ? data.parentId : undefined;
-            if (parentId && actIdSet.has(parentId)) return findUserOwner(parentId, seen);
+        // Resolve user-owner iteratively to avoid O(depth) recursion per node
+        const ownerCache = new Map<string, string | null>();
+        const resolveOwner = (startId: string): string | null => {
+            if (ownerCache.has(startId)) return ownerCache.get(startId)!;
+            const path: string[] = [];
+            let cur: string | undefined = startId;
+            while (cur) {
+                if (ownerCache.has(cur)) {
+                    const result = ownerCache.get(cur)!;
+                    for (const id of path) ownerCache.set(id, result);
+                    return result;
+                }
+                path.push(cur);
+                const data = fullActNodeDataById.get(cur);
+                if (!data) { for (const id of path) ownerCache.set(id, null); return null; }
+                if (data.createdBy === 'user') {
+                    for (const id of path) ownerCache.set(id, cur);
+                    return cur;
+                }
+                const parentId = typeof data.parentId === 'string' ? data.parentId : undefined;
+                cur = parentId && actIdSet.has(parentId) ? parentId : undefined;
+            }
+            for (const id of path) ownerCache.set(id, null);
             return null;
         };
 
         const byOwner = new Map<string, typeof actDisplayNodes>();
         for (const node of actDisplayNodes) {
-            const ownerId = findUserOwner(node.id);
+            const ownerId = resolveOwner(node.id);
             if (!ownerId) continue;
             const group = byOwner.get(ownerId) ?? [];
             group.push(node);

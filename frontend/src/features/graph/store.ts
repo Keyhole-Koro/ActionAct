@@ -573,24 +573,45 @@ export const useGraphStore = create<GraphState>((set) => ({
             : (Array.isArray(existingNode?.data?.referencedNodeIds)
                 ? existingNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
                 : []);
-        return {
-            actNodes: state.actNodes.map((node) =>
-                node.id === nodeId
-                    ? {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            ...(payload?.label !== undefined ? { label: payload.label } : {}),
-                            ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
-                            contentMd: '',
-                            thoughtMd: '',
-                            contextSummary: '',
-                            detailHtml: '',
-                        },
+
+        // Collect all descendant node IDs (search, suggestion, etc.) to remove
+        const descendants = new Set<string>();
+        const queue = [nodeId];
+        while (queue.length > 0) {
+            const cur = queue.shift()!;
+            for (const n of state.actNodes) {
+                if (n.id !== nodeId && typeof n.data?.parentId === 'string' && n.data.parentId === cur) {
+                    if (!descendants.has(n.id)) {
+                        descendants.add(n.id);
+                        queue.push(n.id);
                     }
-                    : node,
-            ),
-            actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
+                }
+            }
+        }
+
+        const filteredEdges = state.actEdges.filter((e) => !descendants.has(e.source) && !descendants.has(e.target));
+        return {
+            actNodes: state.actNodes
+                .filter((node) => !descendants.has(node.id))
+                .map((node) =>
+                    node.id === nodeId
+                        ? {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                ...(payload?.label !== undefined ? { label: payload.label } : {}),
+                                ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
+                                contentMd: '',
+                                thoughtMd: '',
+                                contextSummary: '',
+                                detailHtml: '',
+                            },
+                        }
+                        : node,
+                ),
+            actEdges: syncActReferenceEdges(filteredEdges, nodeId, nextReferencedNodeIds),
+            expandedBranchNodeIds: state.expandedBranchNodeIds.filter((id) => !descendants.has(id)),
+            streamingNodeIds: state.streamingNodeIds.filter((id) => !descendants.has(id)),
         };
     }),
 

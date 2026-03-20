@@ -13,6 +13,7 @@ import {
     useReactFlow,
     useViewport,
 } from '@xyflow/react';
+import type { PresenceUser } from '@/services/presence/firestore';
 import '@xyflow/react/dist/style.css';
 
 import { useGraphStore } from '@/features/graph/store';
@@ -44,6 +45,57 @@ import { useGraphDisplayNodes } from '../hooks/useGraphDisplayNodes';
 import { useGraphDisplayEdges } from '../hooks/useGraphDisplayEdges';
 import { useGraphCamera } from '../hooks/useGraphCamera';
 import { useGraphInteractions } from '../hooks/useGraphInteractions';
+
+// Isolated component so useViewport() only re-renders cursors, not GraphCanvas
+function MultiplayerCursors({ otherCursors }: { otherCursors: PresenceUser[] }) {
+    const viewport = useViewport();
+    return (
+        <>
+            {otherCursors.map((user) => {
+                if (!user.cursor) return null;
+                const cssX = user.cursor.x * viewport.zoom + viewport.x;
+                const cssY = user.cursor.y * viewport.zoom + viewport.y;
+                const hue = user.uid.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 360;
+                const color = `hsl(${hue}, 70%, 50%)`;
+                const displayName = user.displayName || 'Guest';
+
+                return (
+                    <div
+                        key={user.uid}
+                        className="pointer-events-none absolute top-0 left-0 z-50"
+                        style={{
+                            transform: `translate(${cssX}px, ${cssY}px)`,
+                            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
+                        }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'rotate(-22deg)', transformOrigin: 'top left' }}>
+                            <path
+                                d="M0 0L16 6L6 16L0 0Z"
+                                fill={color}
+                                stroke="white"
+                                strokeWidth="1.5"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                        <div
+                            className="ml-4 mt-1 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                            style={{ backgroundColor: color }}
+                        >
+                            {user.photoURL && (
+                                <img
+                                    src={user.photoURL}
+                                    alt=""
+                                    className="h-3 w-3 rounded-full border border-white/40"
+                                />
+                            )}
+                            {displayName}
+                        </div>
+                    </div>
+                );
+            })}
+        </>
+    );
+}
 
 const edgeTypes = {
     bundled: BundledEdge,
@@ -89,7 +141,6 @@ export function GraphCanvas() {
     const collapseThresholdMinutes = useStreamPreferencesStore((state) => state.collapseThresholdMinutes);
     const commands = useGraphCommands({ workspaceId });
     const reactFlowInstance = useReactFlow();
-    const viewport = useViewport();
     const searchParams = useSearchParams();
 
     // Refs shared across hooks
@@ -258,6 +309,11 @@ export function GraphCanvas() {
 
     const { otherCursors, handleCursorMove } = useGraphPresence({ effectiveWorkspaceId });
 
+    const allDisplayNodes = useMemo(
+        () => [...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[],
+        [actTreeGroupNodes, emphasizedDisplayNodes],
+    );
+
     // ── JSX ──────────────────────────────────────────────────────────────────
 
     const layoutToggle = (
@@ -338,7 +394,7 @@ export function GraphCanvas() {
                 </div>
             </div>
             <ReactFlow
-                nodes={[...actTreeGroupNodes, ...emphasizedDisplayNodes] as GraphNodeRender[]}
+                nodes={allDisplayNodes}
                 edges={displayEdges}
                 onDoubleClick={handlePaneDoubleClick}
                 defaultEdgeOptions={{
@@ -501,48 +557,7 @@ export function GraphCanvas() {
             </ReactFlow>
 
             {/* Multiplayer cursors */}
-            {otherCursors.map((user) => {
-                if (!user.cursor) return null;
-                const cssX = user.cursor.x * viewport.zoom + viewport.x;
-                const cssY = user.cursor.y * viewport.zoom + viewport.y;
-                const hue = user.uid.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 360;
-                const color = `hsl(${hue}, 70%, 50%)`;
-                const displayName = user.displayName || 'Guest';
-
-                return (
-                    <div
-                        key={user.uid}
-                        className="pointer-events-none absolute top-0 left-0 z-50"
-                        style={{
-                            transform: `translate(${cssX}px, ${cssY}px)`,
-                            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
-                        }}
-                    >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'rotate(-22deg)', transformOrigin: 'top left' }}>
-                            <path
-                                d="M0 0L16 6L6 16L0 0Z"
-                                fill={color}
-                                stroke="white"
-                                strokeWidth="1.5"
-                                strokeLinejoin="round"
-                            />
-                        </svg>
-                        <div
-                            className="ml-4 mt-1 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
-                            style={{ backgroundColor: color }}
-                        >
-                            {user.photoURL && (
-                                <img
-                                    src={user.photoURL}
-                                    alt=""
-                                    className="h-3 w-3 rounded-full border border-white/40"
-                                />
-                            )}
-                            {displayName}
-                        </div>
-                    </div>
-                );
-            })}
+            <MultiplayerCursors otherCursors={otherCursors} />
         </div>
     );
 }

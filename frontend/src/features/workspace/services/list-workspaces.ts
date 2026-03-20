@@ -9,14 +9,38 @@ export async function listUserWorkspaces(uid: string): Promise<WorkspaceData[]> 
         where("uid", "==", uid),
     );
 
-    const memberSnaps = await getDocs(membersQuery);
+    let memberSnaps;
+    try {
+        memberSnaps = await getDocs(membersQuery);
+    } catch (error) {
+        console.error("listUserWorkspaces.membersQuery failed", {
+            uid,
+            message: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error(`members query failed for uid=${uid}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const workspaces: WorkspaceData[] = [];
 
     for (const memberDoc of memberSnaps.docs) {
         const workspaceRef = memberDoc.ref.parent.parent;
         if (!workspaceRef) continue;
 
-        const workspaceSnap = await getDoc(workspaceRef);
+        let workspaceSnap;
+        try {
+            workspaceSnap = await getDoc(workspaceRef);
+        } catch (error) {
+            console.error("listUserWorkspaces.workspaceGet failed", {
+                uid,
+                workspacePath: workspaceRef.path,
+                memberPath: memberDoc.ref.path,
+                memberDocId: memberDoc.id,
+                memberUid: memberDoc.data()?.uid,
+                message: error instanceof Error ? error.message : String(error),
+            });
+            throw new Error(
+                `workspace read failed for ${workspaceRef.path} via ${memberDoc.ref.path}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
         if (!workspaceSnap.exists()) continue;
 
         const data = workspaceSnap.data();

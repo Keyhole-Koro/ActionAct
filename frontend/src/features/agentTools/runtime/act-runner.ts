@@ -110,21 +110,7 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
   const existingTargetNode = targetNodeId
     ? graphStore.actNodes.find((node) => node.id === targetNodeId)
     : undefined;
-  const targetKind = typeof existingTargetNode?.data?.kind === "string" ? existingTargetNode.data.kind : undefined;
-  const targetHasResolvedContent = [
-    existingTargetNode?.data?.contentMd,
-    existingTargetNode?.data?.contextSummary,
-    existingTargetNode?.data?.detailHtml,
-  ].some((value) => typeof value === "string" && value.trim().length > 0);
-  const targetHasStartedRun = existingTargetNode?.data?.hasStartedRun === true;
-  const shouldForkFromExistingActNode = Boolean(
-    targetNodeId
-      && existingTargetNode
-      && (targetKind === "act" || targetKind === "agent_act")
-      && (targetHasStartedRun || targetHasResolvedContent),
-  );
-  const isExistingActTarget = Boolean(targetNodeId && existingTargetNode && !shouldForkFromExistingActNode);
-  const frontendRootNodeId = isExistingActTarget && targetNodeId ? targetNodeId : `act-${requestId}`;
+  const frontendRootNodeId = (targetNodeId && existingTargetNode) ? targetNodeId : `act-${requestId}`;
   const backendToFrontendNodeIds = new Map<string, string>([["root", frontendRootNodeId]]);
   if (targetNodeId) {
     backendToFrontendNodeIds.set(targetNodeId, frontendRootNodeId);
@@ -163,7 +149,6 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
       kind: "act",
       createdBy: "agent" as const,
       referencedNodeIds,
-      ...(shouldForkFromExistingActNode && targetNodeId ? { parentId: targetNodeId } : {}),
     }),
   });
   graphStore.addStreamingNode(frontendRootNodeId);
