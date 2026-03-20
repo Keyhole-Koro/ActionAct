@@ -76,7 +76,7 @@ export function useGraphCommands({ workspaceId }: Params) {
             return;
         }
         try {
-            await actDraftService.saveDraftSnapshot(workspaceId, nodeId, {
+            await actDraftService.patchDraft(workspaceId, nodeId, {
                 title: nextLabel,
             });
         } catch (error) {

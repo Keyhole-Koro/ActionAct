@@ -94,10 +94,15 @@ export const actDraftService = {
     });
   },
 
+  /**
+   * Full write for a draft node. Always supply createdBy — this is the source of truth
+   * for user/agent attribution and must not be omitted or defaulted silently.
+   * For metadata-only updates (e.g. title rename), use patchDraft instead.
+   */
   async saveDraftSnapshot(
     workspaceId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
+    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
   ) {
     await setDoc(
       draftDoc(workspaceId, nodeId),
@@ -106,7 +111,7 @@ export const actDraftService = {
         topicId: draft.topicId ?? '',
         title: draft.title ?? "",
         kind: draft.kind ?? "act",
-        createdBy: draft.createdBy ?? "agent",
+        createdBy: draft.createdBy,
         ...(draft.authorUid !== undefined ? { authorUid: draft.authorUid } : {}),
         contentMd: draft.contentMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
@@ -141,6 +146,27 @@ export const actDraftService = {
       pinned: false,
     };
     await setDoc(draftDoc(workspaceId, patch.nodeId), payload, { merge: true });
+  },
+
+  /**
+   * Partial update for a draft node. Only the explicitly provided fields are written.
+   * Never touches createdBy — use saveDraftSnapshot for full writes that set attribution.
+   */
+  async patchDraft(
+    workspaceId: string,
+    nodeId: string,
+    fields: { title?: string; contentMd?: string; positionX?: number; positionY?: number },
+  ) {
+    const payload: Record<string, unknown> = {
+      updatedAt: serverTimestamp(),
+      lastTouchedAt: serverTimestamp(),
+      expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
+    };
+    if (fields.title !== undefined) payload.title = fields.title;
+    if (fields.contentMd !== undefined) payload.contentMd = fields.contentMd;
+    if (fields.positionX !== undefined) payload.positionX = fields.positionX;
+    if (fields.positionY !== undefined) payload.positionY = fields.positionY;
+    await updateDoc(draftDoc(workspaceId, nodeId), payload);
   },
 
   async touchDraft(workspaceId: string, nodeId: string) {
