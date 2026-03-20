@@ -91,6 +91,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const actStage = data.actStage;
     const isRadialMode = data.layoutMode === 'radial' && data.nodeSource === 'persisted';
     const [editValue, setEditValue] = useState(data.label);
+    const [followupValue, setFollowupValue] = useState('');
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const isActNode = data.kind === 'act';
     const isDraftAct = isActNode && actStage === 'draft';
@@ -146,6 +147,10 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
     const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
     const hasRunTrace = usedContextNodeIds.length > 0 || usedTools.length > 0 || usedSources.length > 0;
+    const canSubmitFollowup = isActNode
+        && isExpanded
+        && typeof data.onRunAction === 'function'
+        && !isNodeStreaming;
     const [runTraceOpen, setRunTraceOpen] = useState(false);
     const nodeContextLabelMap = React.useMemo(() => {
         const map: Record<string, string> = {};
@@ -189,6 +194,10 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     useEffect(() => {
         setEditValue(data.label);
     }, [data.label]);
+
+    useEffect(() => {
+        setFollowupValue('');
+    }, [id]);
 
     useEffect(() => {
         window.requestAnimationFrame(() => {
@@ -236,6 +245,23 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
             }
         }
     }, [data]);
+
+    const submitFollowup = useCallback(() => {
+        const nextQuery = followupValue.trim();
+        if (!nextQuery || !data.onRunAction || isNodeStreaming) {
+            return;
+        }
+        data.onRunAction(nextQuery);
+        setFollowupValue('');
+    }, [data, followupValue, isNodeStreaming]);
+
+    const handleFollowupKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            submitFollowup();
+        }
+    }, [submitFollowup]);
 
     if (data.kind === 'suggestion') {
         const suggestionQuery = typeof data.contentMd === 'string' ? data.contentMd : '';
@@ -591,6 +617,44 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                         <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
                                             {hiddenChildCount} child{hiddenChildCount > 1 ? 'ren' : ''} hidden
                                         </span>
+                                    </div>
+                                )}
+                                {canSubmitFollowup && (
+                                    <div className={`mt-3 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2.5 ${hasBodyText || hasRunTrace ? '' : 'border-dashed'}`}>
+                                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                            Follow-up
+                                        </p>
+                                        <textarea
+                                            value={followupValue}
+                                            onChange={(event) => setFollowupValue(event.target.value)}
+                                            onKeyDown={handleFollowupKeyDown}
+                                            onClick={(event) => event.stopPropagation()}
+                                            onMouseDown={(event) => event.stopPropagation()}
+                                            placeholder="Ask the next question from this node..."
+                                            rows={2}
+                                            className="nodrag nopan w-full resize-none rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[12px] leading-relaxed text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-300"
+                                        />
+                                        <div className="mt-2 flex items-center justify-between gap-2">
+                                            <span className="text-[10px] text-slate-400">
+                                                Enter to send, Shift+Enter for newline
+                                            </span>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="h-7 rounded-md border border-slate-200 bg-white px-2.5 text-[11px] font-semibold shadow-sm transition-all hover:border-primary hover:bg-primary hover:text-white"
+                                                disabled={!followupValue.trim() || isNodeStreaming}
+                                                onPointerDown={(event: React.PointerEvent) => event.stopPropagation()}
+                                                onPointerUp={(event: React.PointerEvent) => event.stopPropagation()}
+                                                onMouseDown={(event: React.MouseEvent) => event.stopPropagation()}
+                                                onClick={(event: React.MouseEvent) => {
+                                                    event.stopPropagation();
+                                                    submitFollowup();
+                                                }}
+                                            >
+                                                <Play className="mr-1.5 h-3.5 w-3.5" />
+                                                Ask Next
+                                            </Button>
+                                        </div>
                                     </div>
                                 )}
                                 {/* Action buttons */}
