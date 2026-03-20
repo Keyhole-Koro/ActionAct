@@ -206,7 +206,7 @@ export function createRpcActService(): ActPort {
         try {
           const runContext = useRunContextStore.getState();
           const workspaceId = options?.workspaceId ?? runContext.workspaceId;
-          const topicId = options?.topicId ?? runContext.topicId;
+          const topicId = options?.topicId ?? 'act';
           const queryWithLanguagePreference = applyResponseLanguagePreference(query);
           const model = resolveLlmModel(options?.modelProfile);
           const headers = await buildHeaders();
@@ -216,14 +216,14 @@ export function createRpcActService(): ActPort {
             requestId: options?.requestId ?? null,
             actType: options?.actType ?? "explore",
             userMessage: queryWithLanguagePreference,
-            userMediaCount: options?.userMedia?.length ?? 0,
+            userMediaRefsCount: options?.userMediaRefs?.length ?? 0,
             anchorNodeId: options?.anchorNodeId ?? "",
             contextNodeIds: options?.contextNodeIds ?? [],
             selectedNodeContextsCount: options?.selectedNodeContexts?.length ?? 0,
             llmConfig: {
               model,
-              enableGrounding: options?.enableGrounding ?? false,
-              enableThinking: options?.includeThoughts ?? false,
+              enableGrounding: true,
+              enableThinking: true,
               modelProfile: options?.modelProfile ?? "flash",
             },
           });
@@ -234,7 +234,11 @@ export function createRpcActService(): ActPort {
               requestId: options?.requestId ?? uuidv4(),
               actType: mapActType(options?.actType),
               userMessage: queryWithLanguagePreference,
-              userMedia: options?.userMedia ?? [],
+              userMediaRefs: (options?.userMediaRefs ?? []).map((r) => ({
+                mimeType: r.mimeType,
+                gcsObjectKey: r.gcsObjectKey,
+                sizeBytes: BigInt(r.sizeBytes),
+              })),
               anchorNodeId: options?.anchorNodeId ?? "",
               contextNodeIds: options?.contextNodeIds ?? [],
               selectedNodeContexts: (options?.selectedNodeContexts ?? []).map((ctx) => ({
@@ -248,8 +252,8 @@ export function createRpcActService(): ActPort {
               })),
               llmConfig: {
                 model,
-                enableGrounding: options?.enableGrounding ?? false,
-                enableThinking: options?.includeThoughts ?? false,
+                enableGrounding: true,
+                enableThinking: true,
               },
             },
             {

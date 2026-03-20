@@ -1,3 +1,5 @@
+import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force';
+
 import type { GraphNodeBase } from '@/features/graph/types';
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -33,18 +35,21 @@ const SECTOR_GAP = 0.05;
 // Max arc (radians) that act nodes for one topic may occupy within its sector
 const ACT_SECTOR_MAX_SPREAD = Math.PI / 6; // 30°
 
-// Spacing between act nodes in the center grid (unmatched)
-const ACT_SPACING_X = 140;
-const ACT_SPACING_Y = 100;
+// Collision radius per node type (half approximate card width + padding)
+const ACT_COLLISION_RADIUS = 140;
+const PERSISTED_COLLISION_RADIUS = 75;
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
  * Orbit layout:
- *   - Act nodes with a matching topicId: inner ring near their topic (r=290)
- *   - Act nodes with no topic match: compact grid at canvas center
  *   - Topic root nodes: outer ring (r=480), sectors proportional to subtree size
  *   - Children: spread radially outward per sector
+ *   - Act nodes: force simulation, seeded near their referenced persisted nodes
+ *
+ * When act nodes are present, persisted nodes participate in the force simulation
+ * with a strong home spring so they yield slightly to act-node collisions instead
+ * of overlapping.
  *
  * `childrenByParent` must already be filtered to visible nodes (as provided by
  * buildVisibleHierarchy). This layout does not re-check expansion state.
@@ -55,17 +60,24 @@ export function layoutOrbit({
     childrenByParent,
     actNodes = [],
 }: OrbitLayoutParams): GraphNodeBase[] {
-    const { positions: persistedPositions, sectorByRootId } = placePersistedNodes({ rootIds, childrenByParent });
-    const actPositions = placeActNodes(actNodes, sectorByRootId);
+    const { positions: homePositions, sectorByRootId } = placePersistedNodes({ rootIds, childrenByParent });
+
+    // No act nodes → use home positions directly, no simulation needed
+    if (actNodes.length === 0) {
+        return nodes.map((node) => ({
+            ...node,
+            position: homePositions.get(node.id) ?? node.position,
+        }));
+    }
+
+    // Act nodes present → run combined simulation so persisted nodes can yield
+    const finalPositions = runCombinedSimulation(actNodes, homePositions, sectorByRootId);
 
     const allNodes = [...nodes, ...actNodes];
-    return allNodes.map((node) => {
-        const pos =
-            persistedPositions.get(node.id) ??
-            actPositions.get(node.id) ??
-            node.position;
-        return { ...node, position: pos };
-    });
+    return allNodes.map((node) => ({
+        ...node,
+        position: finalPositions.get(node.id) ?? node.position,
+    }));
 }
 
 // ── Persisted node placement ──────────────────────────────────────────────────
@@ -159,64 +171,260 @@ function placeChildren({
     }
 }
 
-// ── Act node placement ────────────────────────────────────────────────────────
+// ── Combined force simulation ─────────────────────────────────────────────────
+
+interface SimNode extends SimulationNodeDatum {
+    id: string;
+}
+interface SimLink extends SimulationLinkDatum<SimNode> {
+    distance: number;
+    strength: number;
+}
+
+// Module-level cache: skip full re-simulation when node topology is unchanged.
+// Key encodes act node IDs + their references + persisted node IDs.
+let _simCache: { key: string; positions: Map<string, { x: number; y: number }> } | null = null;
+
+function buildSimCacheKey(
+    actNodes: GraphNodeBase[],
+    homePositions: Map<string, { x: number; y: number }>,
+): string {
+    const actParts = actNodes.map((n) => {
+        const refs = Array.isArray(n.data.referencedNodeIds) ? (n.data.referencedNodeIds as string[]).join('+') : '';
+        const parentId = typeof n.data.parentId === 'string' ? n.data.parentId : '';
+        const manual = n.data?.isManualPosition === true
+            ? `@${Math.round(n.position.x)},${Math.round(n.position.y)}`
+            : '';
+        return `${n.id}:${refs}:${parentId}${manual}`;
+    });
+    const persistedIds = [...homePositions.keys()].sort().join(',');
+    return `${actParts.join('|')}||${persistedIds}`;
+}
 
 /**
- * Route act nodes to their associated topic sector (inner ring, r=290), or to
- * the center grid if no matching topic is found.
+ * Run a unified force simulation over both persisted and act nodes.
+ *
+ * Persisted nodes are NOT fixed. Instead they have a strong forceX/Y pulling
+ * them back to their computed home position (strength=0.8). This lets them
+ * yield slightly when an act node collides with them, preventing overlap while
+ * keeping the orbit ring structure intact.
+ *
+ * Act nodes repel each other, spring toward their referenced/parent nodes, and
+ * have a weak pull toward the canvas center as fallback.
  */
-function placeActNodes(
+function runCombinedSimulation(
     actNodes: GraphNodeBase[],
+    homePositions: Map<string, { x: number; y: number }>,
     sectorByRootId: Map<string, SectorInfo>,
 ): Map<string, { x: number; y: number }> {
+    // Return cached result if node topology (IDs + references) is unchanged
+    const cacheKey = buildSimCacheKey(actNodes, homePositions);
+    if (_simCache?.key === cacheKey) return _simCache.positions;
+
+    const actIds = new Set(actNodes.map((n) => n.id));
+    const persistedIds = new Set(homePositions.keys());
+
+    // Per-sector max radius: how far expanded children reach in each sector.
+    const sectorMaxRadius = computeSectorMaxRadius(homePositions, sectorByRootId);
+
+    // ── Seed act node positions ───────────────────────────────────────────────
+    const actSeedPositions = computeActSeedPositions(actNodes, homePositions, sectorByRootId);
+
+    // Per-act-node target: seed angle + sector-aware radius.
+    // Angle from seed = "which direction this node naturally belongs to."
+    // Radius from sector state = "how far out based on expansion."
+    const actTargetPositions = computeActTargetPositions(actNodes, sectorByRootId, sectorMaxRadius, actSeedPositions);
+
+    // ── Build simulation nodes ────────────────────────────────────────────────
+    const allSimNodes: SimNode[] = [
+        // Persisted: start at home position, will be pulled back by forceX/Y
+        ...[...homePositions.entries()].map(([id, pos]) => ({ id, x: pos.x, y: pos.y } as SimNode)),
+        // Act: start at seed position; pin manually-placed nodes
+        ...actNodes.map((node) => {
+            const seed = actSeedPositions.get(node.id) ?? { x: ORBIT_CENTER_X, y: ORBIT_CENTER_Y };
+            const simNode: SimNode = { id: node.id, x: seed.x, y: seed.y };
+            if (node.data?.isManualPosition === true && node.position) {
+                simNode.fx = node.position.x;
+                simNode.fy = node.position.y;
+            }
+            return simNode;
+        }),
+    ];
+
+    const simNodeById = new Map(allSimNodes.map((n) => [n.id, n]));
+
+    // ── Build links ───────────────────────────────────────────────────────────
+    const links: SimLink[] = [];
+
+    for (const node of actNodes) {
+        // Loose spring toward referenced persisted nodes — weak so center pull dominates
+        const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
+        for (const refId of refs) {
+            if (simNodeById.has(refId) && !actIds.has(refId)) {
+                links.push({ source: node.id, target: refId, distance: 200, strength: 0.08 });
+            }
+        }
+
+        // Suggestion nodes spring toward their parent act node — keep groups together
+        const parentId = typeof node.data.parentId === 'string' ? node.data.parentId : undefined;
+        if (parentId && simNodeById.has(parentId)) {
+            links.push({ source: node.id, target: parentId, distance: 140, strength: 0.6 });
+        }
+    }
+
+    // ── Run simulation ────────────────────────────────────────────────────────
+    const simulation = forceSimulation<SimNode>(allSimNodes)
+        // Repulsion between act nodes so they spread out without flying far
+        .force('charge', forceManyBody<SimNode>()
+            .strength((d) => actIds.has(d.id) ? -300 : 0)
+            .distanceMax(400))
+        .force(
+            'link',
+            forceLink<SimNode, SimLink>(links)
+                .id((d) => d.id)
+                .distance((l) => l.distance)
+                .strength((l) => l.strength),
+        )
+        // Per-node collision radius: act nodes are larger cards
+        .force('collide', forceCollide<SimNode>((d) => actIds.has(d.id) ? ACT_COLLISION_RADIUS : PERSISTED_COLLISION_RADIUS).iterations(6))
+        // Persisted: strong home spring. Act: per-node target (seed angle + sector radius).
+        .force('x', forceX<SimNode>((d) => {
+            if (persistedIds.has(d.id)) return homePositions.get(d.id)?.x ?? ORBIT_CENTER_X;
+            return actTargetPositions.get(d.id)?.x ?? ORBIT_CENTER_X;
+        }).strength((d) => persistedIds.has(d.id) ? 0.8 : 0.45))
+        .force('y', forceY<SimNode>((d) => {
+            if (persistedIds.has(d.id)) return homePositions.get(d.id)?.y ?? ORBIT_CENTER_Y;
+            return actTargetPositions.get(d.id)?.y ?? ORBIT_CENTER_Y;
+        }).strength((d) => persistedIds.has(d.id) ? 0.8 : 0.45))
+        .stop();
+
+    simulation.tick(120);
+
+    const result = new Map<string, { x: number; y: number }>();
+    for (const simNode of allSimNodes) {
+        result.set(simNode.id, { x: simNode.x ?? ORBIT_CENTER_X, y: simNode.y ?? ORBIT_CENTER_Y });
+    }
+
+    _simCache = { key: cacheKey, positions: result };
+    return result;
+}
+
+/**
+ * Compute seed (initial) positions for act nodes before the simulation runs.
+ * Primary: average position of referenced persisted nodes.
+ * Fallback: topicId sector inner ring → canvas center.
+ */
+/**
+ * For each topic sector, compute the maximum radius of persisted nodes within it.
+ * Sectors with no expanded children return TOPIC_RING_RADIUS (480).
+ * Sectors with expanded children return the outermost child radius.
+ */
+function computeSectorMaxRadius(
+    homePositions: Map<string, { x: number; y: number }>,
+    sectorByRootId: Map<string, SectorInfo>,
+): Map<string, number> {
+    const result = new Map<string, number>();
+    for (const rootId of sectorByRootId.keys()) {
+        result.set(rootId, TOPIC_RING_RADIUS);
+    }
+
+    for (const [, pos] of homePositions) {
+        const dx = pos.x - ORBIT_CENTER_X;
+        const dy = pos.y - ORBIT_CENTER_Y;
+        const radius = Math.sqrt(dx * dx + dy * dy);
+        // Normalize angle to match sector range (sectors start at -PI/2)
+        let angle = Math.atan2(dy, dx);
+        if (angle < -Math.PI / 2) angle += Math.PI * 2;
+
+        for (const [rootId, sector] of sectorByRootId) {
+            if (angle >= sector.startAngle && angle <= sector.endAngle) {
+                const current = result.get(rootId) ?? TOPIC_RING_RADIUS;
+                if (radius > current) result.set(rootId, radius);
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+/**
+ * Compute per-act-node target position by combining:
+ *   - Angle from seed position (= direction toward referenced nodes → natural sector alignment)
+ *   - Radius from sector expansion state (= how far out to place in that direction)
+ *
+ * When a sector has no expanded children, its max radius is TOPIC_RING_RADIUS (480),
+ * so act nodes target r=630 — the empty space just outside the topic ring.
+ * When children are expanded to r=710, act nodes target r=860.
+ */
+function computeActTargetPositions(
+    actNodes: GraphNodeBase[],
+    sectorByRootId: Map<string, SectorInfo>,
+    sectorMaxRadius: Map<string, number>,
+    seedPositions: Map<string, { x: number; y: number }>,
+): Map<string, { x: number; y: number }> {
+    const globalMax = sectorMaxRadius.size > 0
+        ? Math.max(...sectorMaxRadius.values())
+        : TOPIC_RING_RADIUS;
     const result = new Map<string, { x: number; y: number }>();
 
-    // Group act nodes by topicId
-    const byTopic = new Map<string, GraphNodeBase[]>();
-    const unmatched: GraphNodeBase[] = [];
+    for (const node of actNodes) {
+        const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
+        const sectorRootId = refs.find((id) => sectorByRootId.has(id));
+        const maxR = sectorRootId ? (sectorMaxRadius.get(sectorRootId) ?? TOPIC_RING_RADIUS) : globalMax;
+        const targetRadius = maxR + 150;
 
+        // Derive angle from seed position — points toward referenced/associated nodes naturally
+        const seed = seedPositions.get(node.id) ?? { x: ORBIT_CENTER_X + targetRadius, y: ORBIT_CENTER_Y };
+        const dx = seed.x - ORBIT_CENTER_X;
+        const dy = seed.y - ORBIT_CENTER_Y;
+        const seedAngle = (dx === 0 && dy === 0) ? 0 : Math.atan2(dy, dx);
+
+        result.set(node.id, polarToCartesian(targetRadius, seedAngle));
+    }
+    return result;
+}
+
+function computeActSeedPositions(
+    actNodes: GraphNodeBase[],
+    persistedPositions: Map<string, { x: number; y: number }>,
+    sectorByRootId: Map<string, SectorInfo>,
+): Map<string, { x: number; y: number }> {
+    // Precompute topic-sector seed positions for fallback
+    const byTopic = new Map<string, GraphNodeBase[]>();
     for (const node of actNodes) {
         const topicId = node.data.topicId;
         if (topicId && sectorByRootId.has(topicId)) {
             const group = byTopic.get(topicId) ?? [];
             group.push(node);
             byTopic.set(topicId, group);
-        } else {
-            unmatched.push(node);
         }
     }
-
-    // Place matched act nodes on the inner ring within their topic's sector
+    const topicSeedByNodeId = new Map<string, { x: number; y: number }>();
     for (const [topicId, group] of byTopic) {
         const sector = sectorByRootId.get(topicId)!;
         const n = group.length;
-
-        // Spread within a bounded arc centered on the sector midAngle
         const availableArc = Math.min(ACT_SECTOR_MAX_SPREAD, sector.endAngle - sector.startAngle * 0.8);
         const step = n === 1 ? 0 : availableArc / (n - 1);
         const arcStart = sector.midAngle - availableArc / 2;
-
         group.forEach((node, i) => {
             const angle = n === 1 ? sector.midAngle : arcStart + i * step;
-            result.set(node.id, polarToCartesian(ACT_NEAR_TOPIC_RADIUS, angle));
+            topicSeedByNodeId.set(node.id, polarToCartesian(ACT_NEAR_TOPIC_RADIUS, angle));
         });
     }
 
-    // Place unmatched act nodes in a compact grid at the canvas center
-    const cols = Math.min(unmatched.length, 3);
-    unmatched.forEach((node, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const rowCount = Math.min(cols, unmatched.length - row * cols);
-        const offsetX = (col - (rowCount - 1) / 2) * ACT_SPACING_X;
-        const offsetY = row * ACT_SPACING_Y;
-        result.set(node.id, {
-            x: ORBIT_CENTER_X + offsetX,
-            y: ORBIT_CENTER_Y + offsetY,
-        });
-    });
-
-    return result;
+    const seeds = new Map<string, { x: number; y: number }>();
+    for (const node of actNodes) {
+        const refs = Array.isArray(node.data.referencedNodeIds) ? node.data.referencedNodeIds as string[] : [];
+        const refPositions = refs.map((id) => persistedPositions.get(id)).filter(Boolean) as { x: number; y: number }[];
+        if (refPositions.length > 0) {
+            const avgX = refPositions.reduce((s, p) => s + p.x, 0) / refPositions.length;
+            const avgY = refPositions.reduce((s, p) => s + p.y, 0) / refPositions.length;
+            seeds.set(node.id, { x: avgX, y: avgY });
+        } else {
+            seeds.set(node.id, topicSeedByNodeId.get(node.id) ?? { x: ORBIT_CENTER_X, y: ORBIT_CENTER_Y });
+        }
+    }
+    return seeds;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

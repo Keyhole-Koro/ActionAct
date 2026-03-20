@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/storage"
@@ -12,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"google.golang.org/api/option"
 
 	"act-api/gen/act/v1/actv1connect"
 	"act-api/internal/adapter"
@@ -19,8 +23,6 @@ import (
 	"act-api/internal/handler"
 	"act-api/internal/usecase"
 )
-
-const devFrontendOrigin = "http://localhost:3000"
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -70,10 +72,19 @@ func main() {
 		os.Exit(1)
 	}
 	defer actRunRecorder.Close()
-	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, actRunRecorder, idempotencyGate)
 
 	// ── GCS ──
-	gcsClient, err := storage.NewClient(ctx)
+	var gcsOpts []option.ClientOption
+	if cfg.StorageEmulatorHost != "" {
+		endpoint := cfg.StorageEmulatorHost
+		if !strings.HasSuffix(endpoint, "/storage/v1/") {
+			endpoint = fmt.Sprintf("%s/storage/v1/", strings.TrimSuffix(endpoint, "/"))
+		}
+		slog.Info("using GCS emulator", "endpoint", endpoint)
+		gcsOpts = append(gcsOpts, option.WithEndpoint(endpoint))
+		gcsOpts = append(gcsOpts, option.WithoutAuthentication())
+	}
+	gcsClient, err := storage.NewClient(ctx, gcsOpts...)
 	if err != nil {
 		slog.Error("gcs client init failed", "err", err)
 		os.Exit(1)
@@ -81,8 +92,20 @@ func main() {
 	gcsStorage := adapter.NewGCSStorage(gcsClient, cfg.GCSBucket)
 	defer gcsStorage.Close()
 
+	workerHTTPClient, err := adapter.NewCloudRunServiceHTTPClient(ctx, cfg.ADKWorkerURL, 5*time.Minute)
+	if err != nil {
+		slog.Error("cloud run worker client init failed", "audience", cfg.ADKWorkerURL, "err", err)
+		os.Exit(1)
+	}
+
 	// ── Pub/Sub ──
-	pubsubClient, err := pubsub.NewClient(ctx, cfg.GCloudProject)
+	var psOpts []option.ClientOption
+	if cfg.PubSubEmulatorHost != "" {
+		slog.Info("using Pub/Sub emulator", "endpoint", cfg.PubSubEmulatorHost)
+		psOpts = append(psOpts, option.WithEndpoint(cfg.PubSubEmulatorHost))
+		psOpts = append(psOpts, option.WithoutAuthentication())
+	}
+	pubsubClient, err := pubsub.NewClient(ctx, cfg.GCloudProject, psOpts...)
 	if err != nil {
 		slog.Error("pubsub client init failed", "err", err)
 		os.Exit(1)
@@ -99,18 +122,22 @@ func main() {
 	}
 	inputRecorder := adapter.NewFirestoreInputRecorder(fsClient)
 	workspaceRenamer := adapter.NewFirestoreWorkspaceRenamer(fsClient)
+	workspaceVisibilityUpdater := adapter.NewFirestoreWorkspaceVisibilityUpdater(fsClient)
 	workspaceMemberManager := adapter.NewFirestoreWorkspaceMemberManager(fsClient, authClient)
 	defer inputRecorder.Close()
 
 	// ── Usecase layer ──
+	actExecutor := adapter.NewADKWorkerExecutor(cfg.ADKWorkerURL, cfg.GCSBucket, workerHTTPClient, actRunRecorder, idempotencyGate)
 	uc := usecase.NewRunActUsecase(authVerifier, authzVerifier, sessionValidator, csrfValidator, actExecutor, actRunRecorder, idempotencyGate)
 	uploadUC := usecase.NewUploadUsecase(authVerifier, gcsStorage, inputRecorder, pubsubPublisher)
+	presignUC := usecase.NewPresignUsecase(authVerifier, gcsStorage, cfg.UploadProxyOrigin)
 	renameWorkspaceUC := usecase.NewRenameWorkspaceUsecase(authVerifier, workspaceRenamer)
+	updateWorkspaceVisibilityUC := usecase.NewUpdateWorkspaceVisibilityUsecase(authVerifier, workspaceVisibilityUpdater)
 	searchWorkspaceUsersUC := usecase.NewSearchWorkspaceUsersUsecase(authVerifier, workspaceMemberManager)
 	addWorkspaceMemberUC := usecase.NewAddWorkspaceMemberUsecase(authVerifier, workspaceMemberManager)
-	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL)
+	nodeCandidateResolver := adapter.NewADKWorkerNodeCandidateResolver(cfg.ADKWorkerURL, workerHTTPClient)
 	resolveNodeCandidatesUC := usecase.NewResolveNodeCandidatesUsecase(authVerifier, authzVerifier, nodeCandidateResolver)
-	actDecisionResolver := adapter.NewADKWorkerActDecisionResolver(cfg.ADKWorkerURL)
+	actDecisionResolver := adapter.NewADKWorkerActDecisionResolver(cfg.ADKWorkerURL, workerHTTPClient)
 	decideActActionUC := usecase.NewDecideActActionUsecase(authVerifier, authzVerifier, actDecisionResolver)
 
 	// ── Handler layer ──
@@ -122,7 +149,9 @@ func main() {
 		cfg.CSRFTTLSeconds,
 	)
 	uploadHandler := handler.NewUploadHandler(uploadUC)
+	presignHandler := handler.NewPresignHandler(presignUC, gcsStorage)
 	workspaceRenameHandler := handler.NewWorkspaceRenameHandler(renameWorkspaceUC)
+	workspaceVisibilityHandler := handler.NewWorkspaceVisibilityHandler(updateWorkspaceVisibilityUC)
 	workspaceMemberSearchHandler := handler.NewWorkspaceMemberSearchHandler(searchWorkspaceUsersUC)
 	workspaceMemberAddHandler := handler.NewWorkspaceMemberAddHandler(addWorkspaceMemberUC)
 	resolveNodeCandidatesHandler := handler.NewResolveNodeCandidatesHandler(resolveNodeCandidatesUC)
@@ -132,8 +161,10 @@ func main() {
 	path, connectHandler := actv1connect.NewActServiceHandler(h)
 	mux.Handle(path, connectHandler)
 	mux.Handle("/auth/session/bootstrap", sessionBootstrapHandler)
-	mux.Handle("/api/upload", uploadHandler)
+	uploadHandler.Register(mux)
+	presignHandler.Register(mux)
 	mux.Handle("/api/workspace/rename", workspaceRenameHandler)
+	mux.Handle("/api/workspace/visibility", workspaceVisibilityHandler)
 	mux.Handle("/api/workspace/members/search", workspaceMemberSearchHandler)
 	mux.Handle("/api/workspace/members/add", workspaceMemberAddHandler)
 	mux.Handle("/api/resolve-node-candidates", resolveNodeCandidatesHandler)
@@ -144,7 +175,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: withCORS(h2c.NewHandler(mux, &http2.Server{})),
+		Handler: withCORS(h2c.NewHandler(mux, &http2.Server{}), cfg.CORSAllowedOrigins),
 	}
 
 	slog.Info("act-api listening", "addr", srv.Addr, "adk_worker_url", cfg.ADKWorkerURL)
@@ -154,20 +185,27 @@ func main() {
 	}
 }
 
-func withCORS(next http.Handler) http.Handler {
+func withCORS(next http.Handler, allowedOrigins []string) http.Handler {
+	allowedOriginSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowedOriginSet[origin] = struct{}{}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == devFrontendOrigin {
+		_, allowed := allowedOriginSet[origin]
+		if allowed {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, Connect-Protocol-Version, Connect-Timeout-Ms")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Expose-Headers", "X-CSRF-Token")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, PUT, OPTIONS")
 			w.Header().Set("Access-Control-Max-Age", "600")
 		}
 
 		if r.Method == http.MethodOptions {
-			if origin != devFrontendOrigin {
+			if !allowed {
 				http.Error(w, "origin not allowed", http.StatusForbidden)
 				return
 			}

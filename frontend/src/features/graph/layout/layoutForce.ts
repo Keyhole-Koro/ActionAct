@@ -46,6 +46,10 @@ interface SimLink extends SimulationLinkDatum<SimNode> {
     strength: number;
 }
 
+function makeUndirectedEdgeKey(source: string, target: string) {
+    return source < target ? `${source}|${target}` : `${target}|${source}`;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PADDING = 120;
@@ -123,6 +127,7 @@ export function layoutPersistedForce({
             distance: e.relationType === 'contains' ? HIERARCHY_DISTANCE : RELATION_DISTANCE,
             strength: e.relationType === 'contains' ? HIERARCHY_STRENGTH  : RELATION_STRENGTH,
         }));
+    const linkedPairs = new Set(simLinks.map((link) => makeUndirectedEdgeKey(String(link.source), String(link.target))));
 
     // Add parent→child hierarchy edges that might not be in `edges`
     // (ensures subtree cohesion even when some edges aren't in visibleEdges)
@@ -130,12 +135,9 @@ export function layoutPersistedForce({
         if (!simNodeById.has(parentId)) continue;
         for (const childId of children) {
             if (!simNodeById.has(childId)) continue;
-            const alreadyLinked = simLinks.some(
-                (l) =>
-                    (l.source === parentId && l.target === childId) ||
-                    (l.source === childId  && l.target === parentId),
-            );
-            if (!alreadyLinked) {
+            const pairKey = makeUndirectedEdgeKey(parentId, childId);
+            if (!linkedPairs.has(pairKey)) {
+                linkedPairs.add(pairKey);
                 simLinks.push({ source: parentId, target: childId, distance: HIERARCHY_DISTANCE, strength: HIERARCHY_STRENGTH });
             }
         }
@@ -168,7 +170,7 @@ export function layoutPersistedForce({
     }
 
     // ── Run simulation synchronously ─────────────────────────────────────────
-    const simulation = forceSimulation<SimNode>(simNodes)
+    const simulation = (forceSimulation<SimNode>(simNodes) as any)
         .velocityDecay(0.45) // Higher decay = more friction, less jumping
         .force(
             'charge',

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useUploadStore } from '@/features/action/actionOrganize/store/useUploadStore';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
+import { useGraphStore } from '@/features/graph/store';
 import { organizeService } from '@/services/organize';
 import type { TopicActivityItem } from '@/services/organize/port';
 
@@ -16,30 +17,35 @@ function priority(item: TopicActivityItem) {
 }
 
 export function useTopicActivity() {
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId } = useRunContextStore();
     const uploads = useUploadStore((state) => state.uploads);
+    const persistedNodes = useGraphStore((state) => state.persistedNodes);
     const [items, setItems] = useState<TopicActivityItem[]>([]);
     const [filter, setFilter] = useState<TopicActivityFilter>('all');
 
     useEffect(() => {
-        if (!workspaceId || !topicId) {
+        if (!workspaceId) {
             return;
         }
 
-        return organizeService.subscribeTopicActivity(workspaceId, topicId, setItems);
-    }, [topicId, workspaceId]);
+        return organizeService.subscribeTopicActivity(workspaceId, setItems);
+    }, [workspaceId]);
 
     const filteredItems = useMemo(() => {
-        if (!workspaceId || !topicId) {
+        if (!workspaceId) {
             return [];
         }
 
         const uploadById = new Map(Object.values(uploads).map((upload) => [upload.id, upload]));
+        const topicTitleById = new Map(
+            persistedNodes.map((node) => [node.id, typeof node.data?.label === 'string' ? node.data.label : undefined]),
+        );
         const merged = items.map((item) => {
             const upload = uploadById.get(item.inputId);
             return {
                 ...item,
                 title: upload?.filename ?? item.inputId,
+                resolvedTopicTitle: item.resolvedTopicId ? topicTitleById.get(item.resolvedTopicId) : undefined,
             };
         });
 
@@ -64,7 +70,7 @@ export function useTopicActivity() {
             }
             return (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
         });
-    }, [filter, items, topicId, uploads, workspaceId]);
+    }, [filter, items, persistedNodes, uploads, workspaceId]);
 
     return {
         filter,

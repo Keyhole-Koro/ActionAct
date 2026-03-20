@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -118,6 +119,112 @@ func (u *UploadUsecase) Execute(
 	} else {
 		return u.processFile(ctx, workspaceID, filename, contentType, data)
 	}
+}
+
+// CompleteUpload is called after a client-side presign upload to GCS.
+// It records the input in Firestore and publishes the media.received event.
+func (u *UploadUsecase) CompleteUpload(
+	ctx context.Context,
+	authHeader string,
+	workspaceID string,
+	objectKey string,
+	filename string,
+	contentType string,
+	sizeBytes int64,
+) (*domain.UploadResult, error) {
+	if _, err := u.authVerifier.VerifyToken(ctx, authHeader); err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
+	}
+	if workspaceID == "" {
+		return nil, fmt.Errorf("workspace_id is required")
+	}
+	if !strings.HasPrefix(objectKey, "mind/inputs/") {
+		return nil, fmt.Errorf("invalid object_key")
+	}
+
+	// Derive inputID from object key: mind/inputs/{inputID}.raw
+	base := path.Base(objectKey)
+	inputID := strings.TrimSuffix(base, ".raw")
+	if inputID == "" || inputID == base {
+		return nil, fmt.Errorf("cannot derive inputId from object_key %q", objectKey)
+	}
+
+	gcsURI := fmt.Sprintf("gs://%s/%s", u.storage.BucketName(), objectKey)
+
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if filename == "" {
+		filename = base
+	}
+
+	input := domain.UploadInput{
+		InputID:          inputID,
+		WorkspaceID:      workspaceID,
+		ContentType:      contentType,
+		OriginalFilename: filename,
+		SizeBytes:        sizeBytes,
+	}
+	if err := u.inputRecorder.RecordInput(ctx, input, gcsURI, ""); err != nil {
+		return nil, fmt.Errorf("firestore record: %w", err)
+	}
+	slog.Info("recorded input in Firestore (presign complete)", "inputId", inputID, "workspaceId", workspaceID)
+
+	topicID := "topic:" + inputID
+	idempotencyKey := fmt.Sprintf("type:media.received/topicId:%s/inputId:%s", topicID, inputID)
+	if err := u.publisher.Publish(ctx, "media.received", workspaceID, topicID, idempotencyKey, map[string]string{
+		"inputId":     inputID,
+		"workspaceId": workspaceID,
+		"topicId":     topicID,
+		"rawRef":      gcsURI,
+		"contentType": contentType,
+	}); err != nil {
+		slog.Error("pubsub publish failed (non-fatal)", "inputId", inputID, "err", err)
+	} else {
+		slog.Info("published media.received event (presign complete)", "inputId", inputID)
+	}
+
+	return &domain.UploadResult{
+		InputID: inputID,
+		TopicID: topicID,
+		GCSUri:  gcsURI,
+		Status:  "uploaded",
+	}, nil
+}
+
+func (u *UploadUsecase) DownloadInput(
+	ctx context.Context,
+	authHeader string,
+	workspaceID string,
+	inputID string,
+) (*domain.DownloadResult, error) {
+	// 1. Auth verification
+	_, err := u.authVerifier.VerifyToken(ctx, authHeader)
+	if err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
+	}
+
+	// 2. Retrieve metadata from Firestore
+	detail, err := u.inputRecorder.GetInput(ctx, workspaceID, inputID)
+	if err != nil {
+		return nil, fmt.Errorf("get input: %w", err)
+	}
+
+	// 3. Download from GCS
+	if detail.GCSUri == "" {
+		return nil, fmt.Errorf("no GCS URI found for input")
+	}
+
+	data, err := u.storage.Download(ctx, detail.GCSUri)
+	if err != nil {
+		return nil, fmt.Errorf("storage download: %w", err)
+	}
+
+	return &domain.DownloadResult{
+		Content:     data,
+		ContentType: detail.ContentType,
+		Filename:    detail.OriginalFilename,
+	}, nil
 }
 
 func (u *UploadUsecase) processFile(

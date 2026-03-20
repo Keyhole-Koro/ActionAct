@@ -11,30 +11,30 @@ import {
 import { firestore } from "@/services/firebase/firestore";
 import type { EvidenceRef, InputProgress, InputProgressStatus, OrganizePort, ReviewOpItem, ReviewOpState, TopicActivityItem, TopicNode } from "./port";
 
-function topicNodesCollection(workspaceId: string, topicId: string) {
-  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/nodes`);
+function workspaceNodesCollection(workspaceId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/nodes`);
 }
 
-function topicNodeDoc(workspaceId: string, topicId: string, nodeId: string) {
-  return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/nodes/${nodeId}`);
+function workspaceNodeDoc(workspaceId: string, nodeId: string) {
+  return doc(firestore, `workspaces/${workspaceId}/nodes/${nodeId}`);
 }
 
-function inputProgressDoc(workspaceId: string, topicId: string, inputId: string) {
-  return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/inputProgress/${inputId}`);
+function inputProgressDoc(workspaceId: string, inputId: string) {
+  return doc(firestore, `workspaces/${workspaceId}/inputProgress/${inputId}`);
 }
 
-function inputProgressCollection(workspaceId: string, topicId: string) {
-  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/inputProgress`);
+function inputProgressCollection(workspaceId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/inputProgress`);
 }
 
-function organizeOpsCollection(workspaceId: string, topicId: string) {
-  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/organizeOps`);
+function organizeOpsCollection(workspaceId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/organizeOps`);
 }
 
-function evidenceCollection(workspaceId: string, topicId: string, nodeId: string) {
+function evidenceCollection(workspaceId: string, nodeId: string) {
   return collection(
     firestore,
-    `workspaces/${workspaceId}/topics/${topicId}/nodes/${nodeId}/evidence`,
+    `workspaces/${workspaceId}/nodes/${nodeId}/evidence`,
   );
 }
 
@@ -77,16 +77,17 @@ function mapEvidence(docId: string, data: Record<string, unknown>): EvidenceRef 
 }
 
 function mapTopicNode(
-  topicId: string,
   docId: string,
   data: Record<string, unknown>,
 ): TopicNode {
   const nodeId = readString(data.nodeId) ?? docId;
+  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? nodeId;
 
   return {
     id: nodeId,
-    topicId,
-    title: readString(data.title) ?? nodeId,
+    topicId: readString(data.topicId),
+    inputId: readString(data.sourceInputId),
+    title: resolvedTitle,
     kind: readString(data.kind),
     parentId: readString(data.parentId),
     contextSummary: readString(data.contextSummary),
@@ -97,7 +98,6 @@ function mapTopicNode(
 
 function readInputProgress(
   workspaceId: string,
-  topicId: string,
   inputId: string,
   data: Record<string, unknown> | undefined,
 ): InputProgress | null {
@@ -112,7 +112,7 @@ function readInputProgress(
 
   return {
     inputId: readString(data.inputId) ?? inputId,
-    topicId: readString(data.topicId) ?? topicId,
+    topicId: readString(data.topicId) ?? '',
     workspaceId: readString(data.workspaceId) ?? workspaceId,
     status,
     currentPhase: readString(data.currentPhase),
@@ -130,11 +130,10 @@ function readInputProgress(
 
 function readTopicActivity(
   workspaceId: string,
-  topicId: string,
   inputId: string,
   data: Record<string, unknown>,
 ): TopicActivityItem | null {
-  const base = readInputProgress(workspaceId, topicId, inputId, data);
+  const base = readInputProgress(workspaceId, inputId, data);
   if (!base) {
     return null;
   }
@@ -167,14 +166,13 @@ function normalizeReviewState(value: string | undefined): ReviewOpState {
 
 function readReviewOp(
   workspaceId: string,
-  topicId: string,
   opId: string,
   data: Record<string, unknown>,
 ): ReviewOpItem {
   const opType = readString(data.opType) ?? "unknown";
   return {
     opId,
-    topicId: readString(data.topicId) ?? topicId,
+    topicId: readString(data.topicId) ?? '',
     workspaceId: readString(data.workspaceId) ?? workspaceId,
     title: readString(data.title) ?? `${opType} proposal`,
     opType,
@@ -192,12 +190,11 @@ function readReviewOp(
 }
 
 export const firestoreOrganizeService: OrganizePort = {
-  subscribeTree: (workspaceId, topicId, callback) => onSnapshot(
-    query(topicNodesCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
+  subscribeTree: (workspaceId, callback) => onSnapshot(
+    query(workspaceNodesCollection(workspaceId), orderBy("updatedAt", "desc")),
     (nodeSnapshot) => {
       const topicNodes = nodeSnapshot.docs.map((nodeDoc) =>
         mapTopicNode(
-          topicId,
           nodeDoc.id,
           nodeDoc.data() as Record<string, unknown>,
         ),
@@ -206,8 +203,8 @@ export const firestoreOrganizeService: OrganizePort = {
     },
   ),
 
-  subscribeNodeEvidence: (workspaceId, topicId, nodeId, callback) => onSnapshot(
-    query(evidenceCollection(workspaceId, topicId, nodeId)),
+  subscribeNodeEvidence: (workspaceId, nodeId, callback) => onSnapshot(
+    query(evidenceCollection(workspaceId, nodeId)),
     (snapshot) => {
       callback(snapshot.docs.map((evidenceDoc) =>
         mapEvidence(evidenceDoc.id, evidenceDoc.data() as Record<string, unknown>),
@@ -215,25 +212,23 @@ export const firestoreOrganizeService: OrganizePort = {
     },
   ),
 
-  subscribeInputProgress: (workspaceId, topicId, inputId, callback) => onSnapshot(
-    inputProgressDoc(workspaceId, topicId, inputId),
+  subscribeInputProgress: (workspaceId, inputId, callback) => onSnapshot(
+    inputProgressDoc(workspaceId, inputId),
     (snapshot) => {
       callback(readInputProgress(
         workspaceId,
-        topicId,
         inputId,
         snapshot.exists() ? snapshot.data() as Record<string, unknown> : undefined,
       ));
     },
   ),
 
-  subscribeTopicActivity: (workspaceId, topicId, callback) => onSnapshot(
-    query(inputProgressCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
+  subscribeTopicActivity: (workspaceId, callback) => onSnapshot(
+    query(inputProgressCollection(workspaceId), orderBy("updatedAt", "desc")),
     (snapshot) => {
       callback(snapshot.docs
         .map((progressDoc) => readTopicActivity(
           workspaceId,
-          topicId,
           progressDoc.id,
           progressDoc.data() as Record<string, unknown>,
         ))
@@ -241,30 +236,35 @@ export const firestoreOrganizeService: OrganizePort = {
     },
   ),
 
-  subscribeOrganizeOps: (workspaceId, topicId, callback) => onSnapshot(
-    query(organizeOpsCollection(workspaceId, topicId), orderBy("updatedAt", "desc")),
+  subscribeOrganizeOps: (workspaceId, callback) => onSnapshot(
+    query(organizeOpsCollection(workspaceId), orderBy("updatedAt", "desc")),
     (snapshot) => {
       callback(snapshot.docs.map((opDoc) => readReviewOp(
         workspaceId,
-        topicId,
         opDoc.id,
         opDoc.data() as Record<string, unknown>,
       )));
     },
   ),
 
-  renameNode: async (workspaceId, topicId, nodeId, newTitle) => {
-    await updateDoc(topicNodeDoc(workspaceId, topicId, nodeId), {
+  renameNode: async (workspaceId, nodeId, newTitle) => {
+    await updateDoc(workspaceNodeDoc(workspaceId, nodeId), {
       title: newTitle,
     });
   },
 
-  deleteNode: async (workspaceId, topicId, nodeId) => {
-    await deleteDoc(topicNodeDoc(workspaceId, topicId, nodeId));
+  updateNodeSummary: async (workspaceId, nodeId, contextSummary) => {
+    await updateDoc(workspaceNodeDoc(workspaceId, nodeId), {
+      contextSummary,
+    });
   },
 
-  moveNode: async (workspaceId, topicId, nodeId, newParentId) => {
-    await updateDoc(topicNodeDoc(workspaceId, topicId, nodeId), {
+  deleteNode: async (workspaceId, nodeId) => {
+    await deleteDoc(workspaceNodeDoc(workspaceId, nodeId));
+  },
+
+  moveNode: async (workspaceId, nodeId, newParentId) => {
+    await updateDoc(workspaceNodeDoc(workspaceId, nodeId), {
       parentId: newParentId ?? null,
     });
   },
@@ -276,26 +276,67 @@ export const firestoreOrganizeService: OrganizePort = {
       throw new Error("Sign in required before uploading files");
     }
 
-    const formData = new FormData();
-    formData.append("workspace_id", workspaceId);
-    formData.append("file", file);
-
     const { config } = await import("@/lib/config");
-    const res = await fetch(`${config.actApiBaseUrl}/api/upload`, {
+    const apiBase = config.actApiBaseUrl;
+    const mimeType = file.type || "application/octet-stream";
+
+    // Step 1: get presigned upload URL
+    const presignRes = await fetch(`${apiBase}/api/upload/presign`, {
       method: "POST",
+      credentials: "include",
       headers: {
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      credentials: "include",
-      body: formData,
+      body: JSON.stringify({ workspace_id: workspaceId, mime_type: mimeType }),
+    });
+    if (!presignRes.ok) {
+      const msg = await presignRes.text().catch(() => "");
+      throw new Error(`Presign failed: ${presignRes.status} ${msg}`);
+    }
+    const { object_key, upload_url } = (await presignRes.json()) as {
+      object_key: string;
+      upload_url: string;
+    };
+
+    // Step 2: upload directly to GCS (or act-api proxy in local dev)
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", upload_url);
+      xhr.setRequestHeader("Content-Type", mimeType);
+      xhr.onload = () => {
+        if (xhr.status === 200 || xhr.status === 204) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload network error"));
+      xhr.send(file);
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Upload failed: ${res.status} ${text}`);
+    // Step 3: notify act-api to record in Firestore and publish media.received
+    const completeRes = await fetch(`${apiBase}/api/upload/complete`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        workspace_id: workspaceId,
+        object_key,
+        filename: file.name,
+        content_type: mimeType,
+        size_bytes: file.size,
+      }),
+    });
+    if (!completeRes.ok) {
+      const msg = await completeRes.text().catch(() => "");
+      throw new Error(`Upload complete failed: ${completeRes.status} ${msg}`);
     }
 
-    const json = (await res.json()) as { input_id: string; topic_id?: string };
+    const json = (await completeRes.json()) as { input_id: string; topic_id?: string };
     return {
       inputId: json.input_id,
       topicId: typeof json.topic_id === "string" && json.topic_id.trim() ? json.topic_id : `topic:${json.input_id}`,

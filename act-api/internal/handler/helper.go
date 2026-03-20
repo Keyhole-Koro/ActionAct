@@ -106,3 +106,7 @@ func newTraceID() string {
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+func PathParts(path string) []string {
+	return strings.Split(strings.Trim(path, "/"), "/")
+}

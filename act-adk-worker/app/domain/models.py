@@ -10,14 +10,16 @@ from pydantic import BaseModel, Field
 
 
 class LLMConfig(BaseModel):
-    model: str = "gemini-3-flash"
+    model: str = "gemini-3-flash-preview"
     enable_grounding: bool = False
     enable_thinking: bool = False
+    enable_act_tools: bool = False
 
 
 class WorkerMedia(BaseModel):
     mime_type: str
-    data_base64: str
+    gcs_uri: str          # gs://bucket/object/path
+    size_bytes: int = 0
 
 
 class SelectedNodeContext(BaseModel):

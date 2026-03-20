@@ -1,12 +1,14 @@
 "use client";
 
 import { v4 as uuidv4 } from "uuid";
+import { getAuth } from "firebase/auth";
 
 import { actService } from "@/services/act";
 import { actDraftService } from "@/services/actDraft/firestore";
 import { useGraphStore } from "@/features/graph/store";
 import { useRunContextStore } from "@/features/context/store/run-context-store";
 import { useStreamPreferencesStore } from "@/features/agentTools/store/stream-preferences-store";
+import { uniqueNodeIds } from "@/features/agentTools/utils";
 import type { PatchOp, StreamActOptions } from "@/services/act/port";
 
 const MAX_TRIGGER_DEPTH = 3;
@@ -15,30 +17,33 @@ export type StartActRunParams = {
   targetNodeId: string | null;
   query: string;
   workspaceId?: string;
-  topicId?: string;
   options?: StreamActOptions & { clear?: boolean };
   triggerDepth?: number;
 };
 
 export type StartActRunResult = {
   requestId: string;
+  frontendNodeId: string;
   cancel: () => void;
 };
 
-const GROUNDING_HINT_PATTERN = /\b(latest|current|today|news|price|pricing|version|release|official|source|reference|references|citation|citations|compare|comparison|docs?|documentation)\b|最新|現在|今日|ニュース|価格|料金|相場|バージョン|リリース|公式|出典|ソース|参考|比較|ドキュメント/u;
+function deriveAgentRole(kind: unknown): "search" | undefined {
+  return kind === "agent_act" ? "search" : undefined;
+}
 
-function uniqueNodeIds(nodeIds: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  nodeIds.forEach((nodeId) => {
-    const value = nodeId.trim();
-    if (!value || seen.has(value)) {
-      return;
+function finalizeAgentNodes(nodeIds: Iterable<string>, status: "completed" | "failed") {
+  const store = useGraphStore.getState();
+  const actNodesById = new Map(store.actNodes.map((node) => [node.id, node]));
+  for (const nodeId of nodeIds) {
+    const node = actNodesById.get(nodeId);
+    if (!node || node.data?.kind !== "agent_act") {
+      continue;
     }
-    seen.add(value);
-    ordered.push(value);
-  });
-  return ordered;
+    store.addOrUpdateActNode(nodeId, {
+      status,
+      agentRole: "search",
+    });
+  }
 }
 
 function compactText(value: unknown, maxLength = 500): string | null {
@@ -96,27 +101,21 @@ function buildSelectedNodeContexts(
   });
 }
 
-function shouldAutoEnableGrounding(query: string, actType: StreamActOptions["actType"]) {
-  if (GROUNDING_HINT_PATTERN.test(query)) {
-    return true;
-  }
-
-  return actType === "investigate";
-}
-
-export function startActRun({ targetNodeId, query, workspaceId, topicId, options, triggerDepth = 0 }: StartActRunParams): StartActRunResult {
+export function startActRun({ targetNodeId, query, workspaceId, options, triggerDepth = 0 }: StartActRunParams): StartActRunResult {
   const graphStore = useGraphStore.getState();
   const runContext = useRunContextStore.getState();
   const preferences = useStreamPreferencesStore.getState();
+  const currentUserUid = getAuth().currentUser?.uid;
   const requestId = options?.requestId ?? uuidv4();
-  const isExistingActTarget = targetNodeId ? graphStore.actNodes.some((node) => node.id === targetNodeId) : false;
-  const frontendRootNodeId = isExistingActTarget && targetNodeId ? targetNodeId : `act-${requestId}`;
+  const existingTargetNode = targetNodeId
+    ? graphStore.actNodes.find((node) => node.id === targetNodeId)
+    : undefined;
+  const frontendRootNodeId = (targetNodeId && existingTargetNode) ? targetNodeId : `act-${requestId}`;
   const backendToFrontendNodeIds = new Map<string, string>([["root", frontendRootNodeId]]);
   if (targetNodeId) {
     backendToFrontendNodeIds.set(targetNodeId, frontendRootNodeId);
   }
   const effectiveWorkspaceId = workspaceId ?? runContext.workspaceId;
-  const effectiveTopicId = topicId ?? runContext.topicId;
   const selectedNodeIds = graphStore.selectedNodeIds;
   const referencedNodeIds = uniqueNodeIds([
     ...(targetNodeId ? [targetNodeId] : []),
@@ -129,12 +128,11 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
   );
   const existingFrontendRootNode = graphStore.actNodes.find((node) => node.id === frontendRootNodeId);
 
-  if (effectiveWorkspaceId !== runContext.workspaceId || effectiveTopicId !== runContext.topicId) {
-    runContext.setContext(effectiveWorkspaceId, effectiveTopicId);
+  if (effectiveWorkspaceId !== runContext.workspaceId) {
+    runContext.setContext(effectiveWorkspaceId);
   }
   if (typeof window !== "undefined") {
     window.localStorage.setItem("run_context.workspaceId", effectiveWorkspaceId);
-    window.localStorage.setItem("run_context.topicId", effectiveTopicId);
   }
 
   graphStore.setStreamRunning(true);
@@ -144,6 +142,15 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       referencedNodeIds,
     });
   }
+  graphStore.addOrUpdateActNode(frontendRootNodeId, {
+    hasStartedRun: true,
+    ...(existingFrontendRootNode ? {} : {
+      label: query,
+      kind: "act",
+      createdBy: "agent" as const,
+      referencedNodeIds,
+    }),
+  });
   graphStore.addStreamingNode(frontendRootNodeId);
 
   const touchedNodeIds = new Set<string>();
@@ -158,14 +165,21 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
         if (!node) {
           return;
         }
-        await actDraftService.saveDraftSnapshot(effectiveWorkspaceId, effectiveTopicId, nodeId, {
+        await actDraftService.saveDraftSnapshot(effectiveWorkspaceId, nodeId, {
           title: typeof node.data?.label === "string" ? node.data.label : query,
           kind: typeof node.data?.kind === "string" ? node.data.kind : "act",
+          status: node.data?.status === "running" || node.data?.status === "completed" || node.data?.status === "failed"
+            ? node.data.status
+            : undefined,
+          agentRole: node.data?.agentRole === "search" ? "search" : deriveAgentRole(node.data?.kind),
           createdBy: node.data?.createdBy === "user" ? "user" : "agent",
+          authorUid: typeof node.data?.authorUid === "string" ? node.data.authorUid : undefined,
           contentMd: typeof node.data?.contentMd === "string" ? node.data.contentMd : "",
+          thoughtMd: typeof node.data?.thoughtMd === "string" ? node.data.thoughtMd : "",
           referencedNodeIds: Array.isArray(node.data?.referencedNodeIds)
             ? node.data.referencedNodeIds.filter((value): value is string => typeof value === "string")
             : referencedNodeIds,
+          parentId: typeof node.data?.parentId === "string" ? node.data.parentId : undefined,
         });
       }),
     );
@@ -182,6 +196,14 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
     return mapped;
   };
 
+  const getKnownFrontendNodeId = (backendNodeId: string) => {
+    const mapped = backendToFrontendNodeIds.get(backendNodeId);
+    if (mapped) {
+      return mapped;
+    }
+    return graphStore.actNodes.some((node) => node.id === backendNodeId) ? backendNodeId : null;
+  };
+
   const cancel = actService.streamAct(
     query,
     (patch: PatchOp) => {
@@ -194,12 +216,16 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
         const resolvedParentId = patch.data.parentId
           ? resolveFrontendNodeId(patch.data.parentId)
           : undefined;
+        const resolvedCreatedBy = patch.data.createdBy ?? (existingNode ? undefined : "agent");
         useGraphStore.getState().addOrUpdateActNode(normalizedNodeId, {
           label:
             patch.data.label ??
             (existingNode ? undefined : query),
           kind: patch.data.kind ?? "act",
-          createdBy: patch.data.createdBy ?? (existingNode ? undefined : "agent"),
+          status: patch.data.status ?? ((patch.data.kind ?? existingNode?.data?.kind) === "agent_act" ? "running" : undefined),
+          agentRole: patch.data.agentRole ?? deriveAgentRole(patch.data.kind ?? existingNode?.data?.kind),
+          createdBy: resolvedCreatedBy,
+          ...(resolvedCreatedBy === 'user' && currentUserUid ? { authorUid: currentUserUid } : {}),
           referencedNodeIds:
             patch.data.referencedNodeIds ??
             (existingNode
@@ -262,11 +288,13 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       }
     },
     async () => {
+      finalizeAgentNodes(touchedNodeIds, "completed");
       await persistTouchedNodes();
       useGraphStore.getState().clearStreamingNodes([...touchedNodeIds]);
       useGraphStore.getState().setStreamRunning(false);
     },
     (error) => {
+      finalizeAgentNodes(touchedNodeIds, "failed");
       void persistTouchedNodes();
       console.error("Stream error:", error);
       useGraphStore.getState().clearStreamingNodes([...touchedNodeIds]);
@@ -278,10 +306,8 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       anchorNodeId: targetNodeId ?? options?.anchorNodeId,
       contextNodeIds: options?.contextNodeIds ?? selectedNodeIds,
       selectedNodeContexts,
-      enableGrounding: options?.enableGrounding
-        ?? preferences.useWebGroundingOverride
-        ?? shouldAutoEnableGrounding(query, options?.actType),
-      includeThoughts: options?.includeThoughts ?? preferences.includeThoughts,
+      enableGrounding: true,
+      includeThoughts: true,
       modelProfile: options?.modelProfile ?? preferences.modelProfile,
     },
     triggerDepth < MAX_TRIGGER_DEPTH
@@ -291,12 +317,33 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
               const payload = JSON.parse(trigger.payloadJson) as Record<string, unknown>;
               const triggerQuery = typeof payload.user_message === "string" ? payload.user_message : "";
               const anchorNodeId = typeof payload.anchor_node_id === "string" ? payload.anchor_node_id : undefined;
+              console.info("[RunAct] start_act received", {
+                requestId,
+                payloadJson: trigger.payloadJson,
+                anchorNodeId: anchorNodeId ?? null,
+                triggerQuery,
+              });
               if (triggerQuery) {
+                const resolvedAnchorNodeId = anchorNodeId ? getKnownFrontendNodeId(anchorNodeId) : null;
+                if (anchorNodeId && !resolvedAnchorNodeId) {
+                  console.warn("[RunAct] Dropping start_act because anchor_node_id does not resolve to a known frontend node", {
+                    anchorNodeId,
+                    requestId,
+                    triggerQuery,
+                    payloadJson: trigger.payloadJson,
+                  });
+                  return;
+                }
+                console.info("[RunAct] start_act launching child run", {
+                  requestId,
+                  anchorNodeId: anchorNodeId ?? null,
+                  resolvedAnchorNodeId,
+                  triggerQuery,
+                });
                 startActRun({
-                  targetNodeId: anchorNodeId ? resolveFrontendNodeId(anchorNodeId) : null,
+                  targetNodeId: resolvedAnchorNodeId,
                   query: triggerQuery,
                   workspaceId: effectiveWorkspaceId,
-                  topicId: effectiveTopicId,
                   triggerDepth: triggerDepth + 1,
                 });
               }
@@ -308,5 +355,5 @@ export function startActRun({ targetNodeId, query, workspaceId, topicId, options
       : undefined,
   );
 
-  return { requestId, cancel };
+  return { requestId, frontendNodeId: frontendRootNodeId, cancel };
 }

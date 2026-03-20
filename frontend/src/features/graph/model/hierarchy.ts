@@ -44,9 +44,10 @@ export function buildVisibleHierarchy(
     const expandedSet = new Set(expandedBranchNodeIds);
     const visibleNodeIds = new Set<string>(rootIds);
     const queue = [...rootIds];
+    let queueIndex = 0;
 
-    while (queue.length > 0) {
-        const currentId = queue.shift()!;
+    while (queueIndex < queue.length) {
+        const currentId = queue[queueIndex++]!;
         if (!expandedSet.has(currentId)) {
             continue;
         }
@@ -60,16 +61,32 @@ export function buildVisibleHierarchy(
         }
     }
 
+    // Fallback 1: nothing visible at all → show everything
     if (visibleNodeIds.size === 0) {
         for (const node of persistedNodes) {
             visibleNodeIds.add(node.id);
         }
     }
 
+    // Fallback 2: only root nodes are visible but they all have children and none are
+    // expanded — this typically means expandedBranchNodeIds was unexpectedly cleared.
+    // Show the first level of children so the graph doesn't appear empty.
+    const onlyRootsVisible = visibleNodeIds.size === rootIds.length
+        && rootIds.every((id) => visibleNodeIds.has(id));
+    const hasHiddenChildren = rootIds.some((id) => (childrenByParent.get(id) ?? []).length > 0);
+    if (onlyRootsVisible && hasHiddenChildren && expandedBranchNodeIds.length === 0) {
+        for (const rootId of rootIds) {
+            for (const childId of childrenByParent.get(rootId) ?? []) {
+                visibleNodeIds.add(childId);
+            }
+        }
+    }
+
     const depthById = new Map<string, number>();
     const depthQueue = rootIds.map((nodeId) => ({ nodeId, depth: 0 }));
-    while (depthQueue.length > 0) {
-        const { nodeId, depth } = depthQueue.shift()!;
+    let depthQueueIndex = 0;
+    while (depthQueueIndex < depthQueue.length) {
+        const { nodeId, depth } = depthQueue[depthQueueIndex++]!;
         if (depthById.has(nodeId)) {
             continue;
         }

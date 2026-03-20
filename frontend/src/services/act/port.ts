@@ -4,6 +4,9 @@ export interface PatchOp {
     data?: Partial<{
         label: string;
         kind: string;
+        status: 'running' | 'completed' | 'failed';
+        agentRole: 'search';
+        topicId: string;
         parentId: string;
         contentMd: string;
         seq: bigint;
@@ -51,6 +54,9 @@ export interface StreamActOptions {
     anchorNodeId?: string;
     contextNodeIds?: string[];
     selectedNodeContexts?: SelectedNodeContext[];
+    /** GCS references for files uploaded via /api/upload/presign. */
+    userMediaRefs?: { mimeType: string; gcsObjectKey: string; sizeBytes: number }[];
+    /** raw binary data for local processing before upload. */
     userMedia?: { mimeType: string; data: Uint8Array }[];
     requestId?: string;
     includeThoughts?: boolean;

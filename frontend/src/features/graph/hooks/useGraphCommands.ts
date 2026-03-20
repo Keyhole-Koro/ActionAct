@@ -10,14 +10,14 @@ import { createDirectFrontendToolClient } from '@/features/agentTools/runtime/fr
 import { prepareAnchoredActRun } from '@/features/agentTools/runtime/frontend-tool-orchestrator';
 import { useActClarificationStore } from '@/features/agentTools/store/act-clarification-store';
 import { clearAllActNodes, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
+import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
 
 type Params = {
     workspaceId: string;
-    topicId: string;
 };
 
-export function useGraphCommands({ workspaceId, topicId }: Params) {
+export function useGraphCommands({ workspaceId }: Params) {
     const {
         actNodes,
         setActiveNode,
@@ -25,6 +25,7 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         toggleExpandedBranchNode,
         expandBranchNode,
         updateActNodeLabel,
+        setEditingNode,
         expandNode,
         recordNodeUsed,
     } = useGraphStore();
@@ -61,8 +62,27 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
             });
             return;
         }
-        startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
-    }, [frontendToolClient, recordNodeUsed, setPendingClarification, setSelectedNodes]);
+        const { frontendNodeId } = startActRun({ targetNodeId: nodeId, query, options: { clear: false, contextNodeIds: prepared.contextNodeIds } });
+        setActiveNode(frontendNodeId);
+        expandNode(frontendNodeId);
+        recordNodeUsed(frontendNodeId);
+    }, [expandNode, frontendToolClient, recordNodeUsed, setActiveNode, setPendingClarification, setSelectedNodes]);
+
+    const persistActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
+        const nextLabel = rawLabel.trim();
+        updateActNodeLabel(nodeId, nextLabel);
+        setEditingNode(null);
+        if (!workspaceId) {
+            return;
+        }
+        try {
+            await actDraftService.patchDraft(workspaceId, nodeId, {
+                title: nextLabel,
+            });
+        } catch (error) {
+            console.error('Failed to persist act draft label', { nodeId, error });
+        }
+    }, [setEditingNode, updateActNodeLabel, workspaceId]);
 
     const commitActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
         const trimmed = rawLabel.trim();
@@ -77,11 +97,11 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
             : [];
 
         if (!trimmed) {
-            await removeActNodeAndDraft(workspaceId, topicId, nodeId);
+            await removeActNodeAndDraft(workspaceId, nodeId);
             return;
         }
 
-        updateActNodeLabel(nodeId, trimmed);
+        await persistActNodeLabel(nodeId, trimmed);
         if (!hasResolvedContent) {
             setSelectedNodes([nodeId]);
             const prepared = await prepareAnchoredActRun(frontendToolClient, {
@@ -106,11 +126,11 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
                 options: { clear: false, contextNodeIds: prepared.contextNodeIds },
             });
         }
-    }, [actNodes, frontendToolClient, setPendingClarification, setSelectedNodes, topicId, updateActNodeLabel, workspaceId]);
+    }, [actNodes, frontendToolClient, persistActNodeLabel, setPendingClarification, setSelectedNodes, workspaceId]);
 
     const clearAct = useCallback(async () => {
-        await clearAllActNodes(workspaceId, topicId);
-    }, [topicId, workspaceId]);
+        await clearAllActNodes(workspaceId);
+    }, [workspaceId]);
 
     const addMediaContext = useCallback(async (_nodeId: string, file: File) => {
         const result = await organizeService.uploadInput(workspaceId, file);
@@ -125,6 +145,8 @@ export function useGraphCommands({ workspaceId, topicId }: Params) {
         expandBranch: expandBranchNode,
         runActFromNode,
         commitActNodeLabel,
+        persistActNodeLabel,
+        updateActNodeLabel,
         addMediaContext,
         clearAct,
     };

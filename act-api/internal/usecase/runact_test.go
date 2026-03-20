@@ -50,6 +50,7 @@ func (m *mockAuthz) AuthorizeRunAct(ctx context.Context, uid, workspaceID, topic
 type mockExecutor struct {
 	called bool
 	err    error
+	input  domain.RunActInput
 }
 
 func (m *mockExecutor) Execute(
@@ -58,6 +59,7 @@ func (m *mockExecutor) Execute(
 	stream *connect.ServerStream[actv1.RunActEvent],
 ) error {
 	m.called = true
+	m.input = input
 	return m.err
 }
 
@@ -293,6 +295,50 @@ func TestRunActUsecase_HappyPath_CallsExecutor(t *testing.T) {
 	}
 	if !idem.beginCalled {
 		t.Error("expected idempotency begin to be called")
+	}
+	if !exec.input.LLMConfig.EnableGrounding {
+		t.Error("expected grounding to always be enabled")
+	}
+}
+
+func TestRunActUsecase_PropagatesLLMConfigAndForcesGrounding(t *testing.T) {
+	exec := &mockExecutor{}
+	uc := usecase.NewRunActUsecase(
+		&mockAuth{uid: "user-1"},
+		&mockAuthz{},
+		&mockSession{},
+		&mockCSRF{},
+		exec,
+		&mockActRunRecorder{},
+		&mockIdempotencyGate{},
+	)
+
+	msg := newTestMsg()
+	msg.LlmConfig = &actv1.LLMConfig{
+		Model:           "gemini-3.1-pro",
+		EnableGrounding: false,
+		EnableThinking:  true,
+	}
+
+	err := uc.Execute(
+		context.Background(),
+		usecase.RequestContext{AuthHeader: "Bearer ok"},
+		msg,
+		nil,
+		"trace-1",
+	)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exec.input.LLMConfig.Model != "gemini-3.1-pro" {
+		t.Fatalf("model = %q, want gemini-3.1-pro", exec.input.LLMConfig.Model)
+	}
+	if !exec.input.LLMConfig.EnableGrounding {
+		t.Fatal("expected grounding to be forced on")
+	}
+	if !exec.input.LLMConfig.EnableThinking {
+		t.Fatal("expected thinking to be propagated")
 	}
 }
 

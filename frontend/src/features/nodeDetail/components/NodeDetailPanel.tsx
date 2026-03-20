@@ -8,6 +8,7 @@ import { RichTextPane } from '@/features/nodeMarkdown/components/RichTextPane';
 import { ActionOrganizeBar } from '@/features/action/actionOrganize/components/ActionOrganizeBar';
 import { NodeSummaryCard } from './NodeSummaryCard';
 import { NodeEvidenceList } from './NodeEvidenceList';
+import { NodeInputMediaCard } from './NodeInputMediaCard';
 import { organizeService } from '@/services/organize';
 import type { EvidenceRef } from '@/services/organize/port';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
@@ -16,7 +17,7 @@ import { safeString, safeOptionalString } from '@/features/graph/utils/safeData'
 
 export function NodeDetailPanel() {
     const { activeNodeId, persistedNodes, actNodes, setActiveNode } = useGraphStore();
-    const { workspaceId, topicId } = useRunContextStore();
+    const { workspaceId } = useRunContextStore();
     const [evidenceState, setEvidenceState] = useState<{ nodeId: string | null; refs: EvidenceRef[] | undefined }>({
         nodeId: null,
         refs: undefined,
@@ -28,12 +29,12 @@ export function NodeDetailPanel() {
     );
 
     const data = (activeNode?.data ?? {}) as Record<string, unknown>;
-    const nodeTopicId = safeString(data, 'topicId', topicId);
     const title = safeString(data, 'label', 'Untitled');
     const kindLabel = safeOptionalString(data, 'kind');
     const contentMd = safeString(data, 'contentMd');
     const contextSummary = safeOptionalString(data, 'contextSummary');
     const detailHtml = safeOptionalString(data, 'detailHtml');
+    const inputId = safeOptionalString(data, 'inputId');
     const nodeSource = (safeOptionalString(data, 'nodeSource') as 'persisted' | 'act' | undefined) ?? 'persisted';
 
     // Evidence subscription — deps are primitives only (no object ref) to avoid flickering
@@ -42,10 +43,10 @@ export function NodeDetailPanel() {
             return;
         }
 
-        return organizeService.subscribeNodeEvidence(workspaceId, nodeTopicId, activeNodeId, (nextEvidenceRefs) => {
+        return organizeService.subscribeNodeEvidence(workspaceId, activeNodeId, (nextEvidenceRefs) => {
             setEvidenceState({ nodeId: activeNodeId, refs: nextEvidenceRefs });
         });
-    }, [activeNodeId, nodeSource, nodeTopicId, workspaceId]);
+    }, [activeNodeId, nodeSource, workspaceId]);
 
     const evidenceRefs = nodeSource === 'persisted' && evidenceState.nodeId === activeNodeId
         ? evidenceState.refs
@@ -76,7 +77,6 @@ export function NodeDetailPanel() {
                     </div>
                     <ActionOrganizeBar
                         workspaceId={workspaceId}
-                        topicId={nodeTopicId}
                         nodeId={activeNode.id}
                         nodeSource={nodeSource}
                         currentTitle={title}
@@ -100,6 +100,13 @@ export function NodeDetailPanel() {
                         (!contextSummary && !detailHtml) && (
                             <div className="text-sm italic text-muted-foreground py-4">No content generated yet.</div>
                         )
+                    )}
+
+                    {nodeSource === 'persisted' && inputId && (
+                        <NodeInputMediaCard
+                            workspaceId={workspaceId}
+                            inputId={inputId}
+                        />
                     )}
 
                     <NodeEvidenceList evidenceRefs={evidenceRefs} />

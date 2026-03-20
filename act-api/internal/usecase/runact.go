@@ -148,11 +148,12 @@ func (uc *RunActUsecase) Execute(
 		"act_type", msg.GetActType(),
 	)
 
-	var userMedia []domain.MediaData
-	for _, m := range msg.GetUserMedia() {
-		userMedia = append(userMedia, domain.MediaData{
-			MimeType: m.GetMimeType(),
-			Data:     m.GetData(),
+	var userMediaRefs []domain.MediaRef
+	for _, m := range msg.GetUserMediaRefs() {
+		userMediaRefs = append(userMediaRefs, domain.MediaRef{
+			MimeType:     m.GetMimeType(),
+			GCSObjectKey: m.GetGcsObjectKey(),
+			SizeBytes:    m.GetSizeBytes(),
 		})
 	}
 
@@ -177,11 +178,16 @@ func (uc *RunActUsecase) Execute(
 		TopicID:              msg.GetTopicId(),
 		WorkspaceID:          msg.GetWorkspaceId(),
 		UserMessage:          msg.GetUserMessage(),
-		UserMedia:            userMedia,
+		UserMediaRefs:        userMediaRefs,
 		ActType:              msg.GetActType().String(),
 		AnchorID:             msg.GetAnchorNodeId(),
 		ContextIDs:           msg.GetContextNodeIds(),
 		SelectedNodeContexts: selectedNodeContexts,
+		LLMConfig: domain.LLMConfig{
+			Model:           msg.GetLlmConfig().GetModel(),
+			EnableGrounding: true,
+			EnableThinking:  msg.GetLlmConfig().GetEnableThinking(),
+		},
 	}
 
 	if uc.runs != nil {
@@ -203,8 +209,8 @@ func validateRequest(msg *actv1.RunActRequest) error {
 		field string
 		value string
 	}{
-		{"topic_id", msg.GetTopicId()},
 		{"workspace_id", msg.GetWorkspaceId()},
+		{"topic_id", msg.GetTopicId()},
 		{"request_id", msg.GetRequestId()},
 		{"user_message", msg.GetUserMessage()},
 	}

@@ -95,12 +95,12 @@ type RunActRequest struct {
 	LlmConfig *LLMConfig `protobuf:"bytes,8,opt,name=llm_config,json=llmConfig,proto3" json:"llm_config,omitempty"`
 	// 旧クライアント互換用。認証正本には使わない（deprecated）
 	Uid string `protobuf:"bytes,9,opt,name=uid,proto3" json:"uid,omitempty"`
-	// インラインメディア（画像、ファイル等）
-	UserMedia []*MediaData `protobuf:"bytes,10,rep,name=user_media,json=userMedia,proto3" json:"user_media,omitempty"`
 	// frontend が送る選択ノードの内容スナップショット
 	SelectedNodeContexts []*SelectedNodeContext `protobuf:"bytes,11,rep,name=selected_node_contexts,json=selectedNodeContexts,proto3" json:"selected_node_contexts,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// GCS に事前アップロード済みファイルの参照。
+	UserMediaRefs []*MediaRef `protobuf:"bytes,12,rep,name=user_media_refs,json=userMediaRefs,proto3" json:"user_media_refs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunActRequest) Reset() {
@@ -196,16 +196,16 @@ func (x *RunActRequest) GetUid() string {
 	return ""
 }
 
-func (x *RunActRequest) GetUserMedia() []*MediaData {
+func (x *RunActRequest) GetSelectedNodeContexts() []*SelectedNodeContext {
 	if x != nil {
-		return x.UserMedia
+		return x.SelectedNodeContexts
 	}
 	return nil
 }
 
-func (x *RunActRequest) GetSelectedNodeContexts() []*SelectedNodeContext {
+func (x *RunActRequest) GetUserMediaRefs() []*MediaRef {
 	if x != nil {
-		return x.SelectedNodeContexts
+		return x.UserMediaRefs
 	}
 	return nil
 }
@@ -302,28 +302,31 @@ func (x *SelectedNodeContext) GetDetailHtml() string {
 	return ""
 }
 
-type MediaData struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MimeType      string                 `protobuf:"bytes,1,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
-	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+// MediaRef references a file already uploaded to GCS via /api/upload/presign.
+type MediaRef struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	MimeType string                 `protobuf:"bytes,1,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	// Object path within the bucket (e.g. "mind/inputs/in_abc123.raw").
+	GcsObjectKey  string `protobuf:"bytes,2,opt,name=gcs_object_key,json=gcsObjectKey,proto3" json:"gcs_object_key,omitempty"`
+	SizeBytes     int64  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *MediaData) Reset() {
-	*x = MediaData{}
+func (x *MediaRef) Reset() {
+	*x = MediaRef{}
 	mi := &file_act_v1_act_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *MediaData) String() string {
+func (x *MediaRef) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MediaData) ProtoMessage() {}
+func (*MediaRef) ProtoMessage() {}
 
-func (x *MediaData) ProtoReflect() protoreflect.Message {
+func (x *MediaRef) ProtoReflect() protoreflect.Message {
 	mi := &file_act_v1_act_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -335,23 +338,30 @@ func (x *MediaData) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use MediaData.ProtoReflect.Descriptor instead.
-func (*MediaData) Descriptor() ([]byte, []int) {
+// Deprecated: Use MediaRef.ProtoReflect.Descriptor instead.
+func (*MediaRef) Descriptor() ([]byte, []int) {
 	return file_act_v1_act_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *MediaData) GetMimeType() string {
+func (x *MediaRef) GetMimeType() string {
 	if x != nil {
 		return x.MimeType
 	}
 	return ""
 }
 
-func (x *MediaData) GetData() []byte {
+func (x *MediaRef) GetGcsObjectKey() string {
 	if x != nil {
-		return x.Data
+		return x.GcsObjectKey
 	}
-	return nil
+	return ""
+}
+
+func (x *MediaRef) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
 }
 
 type LLMConfig struct {
@@ -1027,7 +1037,7 @@ var File_act_v1_act_proto protoreflect.FileDescriptor
 
 const file_act_v1_act_proto_rawDesc = "" +
 	"\n" +
-	"\x10act/v1/act.proto\x12\x06act.v1\"\xd4\x03\n" +
+	"\x10act/v1/act.proto\x12\x06act.v1\"\xee\x03\n" +
 	"\rRunActRequest\x12\x19\n" +
 	"\btopic_id\x18\x01 \x01(\tR\atopicId\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x1d\n" +
@@ -1039,11 +1049,11 @@ const file_act_v1_act_proto_rawDesc = "" +
 	"\x10context_node_ids\x18\a \x03(\tR\x0econtextNodeIds\x120\n" +
 	"\n" +
 	"llm_config\x18\b \x01(\v2\x11.act.v1.LLMConfigR\tllmConfig\x12\x10\n" +
-	"\x03uid\x18\t \x01(\tR\x03uid\x120\n" +
-	"\n" +
-	"user_media\x18\n" +
-	" \x03(\v2\x11.act.v1.MediaDataR\tuserMedia\x12Q\n" +
-	"\x16selected_node_contexts\x18\v \x03(\v2\x1b.act.v1.SelectedNodeContextR\x14selectedNodeContexts\"\xe0\x01\n" +
+	"\x03uid\x18\t \x01(\tR\x03uid\x12Q\n" +
+	"\x16selected_node_contexts\x18\v \x03(\v2\x1b.act.v1.SelectedNodeContextR\x14selectedNodeContexts\x128\n" +
+	"\x0fuser_media_refs\x18\f \x03(\v2\x10.act.v1.MediaRefR\ruserMediaRefsJ\x04\b\n" +
+	"\x10\vR\n" +
+	"user_media\"\xe0\x01\n" +
 	"\x13SelectedNodeContext\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x12\n" +
@@ -1054,10 +1064,12 @@ const file_act_v1_act_proto_rawDesc = "" +
 	"\n" +
 	"thought_md\x18\x06 \x01(\tR\tthoughtMd\x12\x1f\n" +
 	"\vdetail_html\x18\a \x01(\tR\n" +
-	"detailHtml\"<\n" +
-	"\tMediaData\x12\x1b\n" +
-	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"u\n" +
+	"detailHtml\"l\n" +
+	"\bMediaRef\x12\x1b\n" +
+	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12$\n" +
+	"\x0egcs_object_key\x18\x02 \x01(\tR\fgcsObjectKey\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\"u\n" +
 	"\tLLMConfig\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12)\n" +
 	"\x10enable_grounding\x18\x02 \x01(\bR\x0fenableGrounding\x12'\n" +
@@ -1134,7 +1146,7 @@ var file_act_v1_act_proto_goTypes = []any{
 	(ActType)(0),                // 0: act.v1.ActType
 	(*RunActRequest)(nil),       // 1: act.v1.RunActRequest
 	(*SelectedNodeContext)(nil), // 2: act.v1.SelectedNodeContext
-	(*MediaData)(nil),           // 3: act.v1.MediaData
+	(*MediaRef)(nil),            // 3: act.v1.MediaRef
 	(*LLMConfig)(nil),           // 4: act.v1.LLMConfig
 	(*RunActEvent)(nil),         // 5: act.v1.RunActEvent
 	(*TextDelta)(nil),           // 6: act.v1.TextDelta
@@ -1148,8 +1160,8 @@ var file_act_v1_act_proto_goTypes = []any{
 var file_act_v1_act_proto_depIdxs = []int32{
 	0,  // 0: act.v1.RunActRequest.act_type:type_name -> act.v1.ActType
 	4,  // 1: act.v1.RunActRequest.llm_config:type_name -> act.v1.LLMConfig
-	3,  // 2: act.v1.RunActRequest.user_media:type_name -> act.v1.MediaData
-	2,  // 3: act.v1.RunActRequest.selected_node_contexts:type_name -> act.v1.SelectedNodeContext
+	2,  // 2: act.v1.RunActRequest.selected_node_contexts:type_name -> act.v1.SelectedNodeContext
+	3,  // 3: act.v1.RunActRequest.user_media_refs:type_name -> act.v1.MediaRef
 	6,  // 4: act.v1.RunActEvent.text_delta:type_name -> act.v1.TextDelta
 	7,  // 5: act.v1.RunActEvent.patch_ops:type_name -> act.v1.PatchOps
 	11, // 6: act.v1.RunActEvent.terminal:type_name -> act.v1.Terminal

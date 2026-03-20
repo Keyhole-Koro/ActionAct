@@ -3,7 +3,7 @@ import { organizeService } from '@/services/organize';
 import { actDraftService } from '@/services/actDraft/firestore';
 import { toast } from 'sonner';
 
-export function useActionOrganize(workspaceId: string, topicId: string, nodeSource: 'persisted' | 'act') {
+export function useActionOrganize(workspaceId: string, nodeSource: 'persisted' | 'act') {
     const [isRenaming, setIsRenaming] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -11,9 +11,9 @@ export function useActionOrganize(workspaceId: string, topicId: string, nodeSour
         setIsRenaming(true);
         try {
             if (nodeSource === 'persisted') {
-                await organizeService.renameNode(workspaceId, topicId, nodeId, newTitle);
+                await organizeService.renameNode(workspaceId, nodeId, newTitle);
             } else {
-                await actDraftService.renameDraft(workspaceId, topicId, nodeId, newTitle);
+                await actDraftService.renameDraft(workspaceId, nodeId, newTitle);
             }
             toast.success('Node renamed successfully');
         } catch (error) {
@@ -28,9 +28,9 @@ export function useActionOrganize(workspaceId: string, topicId: string, nodeSour
         setIsDeleting(true);
         try {
             if (nodeSource === 'persisted') {
-                await organizeService.deleteNode(workspaceId, topicId, nodeId);
+                await organizeService.deleteNode(workspaceId, nodeId);
             } else {
-                await actDraftService.deleteDraft(workspaceId, topicId, nodeId);
+                await actDraftService.deleteDraft(workspaceId, nodeId);
             }
             toast.success('Node deleted successfully');
         } catch (error) {

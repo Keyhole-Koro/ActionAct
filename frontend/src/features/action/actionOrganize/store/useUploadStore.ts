@@ -35,7 +35,9 @@ export interface UploadTask {
     topicId: string;
     status: InputProgressStatus;
     progressPercentage: number;
+    resolutionMode?: string;
     resolvedTopicId?: string;
+    errorMessage?: string;
 }
 
 const statusPercentages: Record<InputProgressStatus, number> = {
@@ -61,7 +63,6 @@ export const useUploadStore = create<UploadStoreState>()(
         uploads: {},
 
         addUpload: (workspaceId, topicId, inputId, filename) => {
-            // Persist to localStorage so reload can recover in-progress uploads.
             const existing = loadPending().filter(e => e.inputId !== inputId);
             savePending([...existing, { workspaceId, topicId, inputId, filename, addedAt: Date.now() }]);
 
@@ -79,7 +80,7 @@ export const useUploadStore = create<UploadStoreState>()(
                 },
             }));
 
-            const unsubscribe = organizeService.subscribeInputProgress(workspaceId, topicId, inputId, (progress) => {
+            const unsubscribe = organizeService.subscribeInputProgress(workspaceId, inputId, (progress) => {
                 get().updateProgress(inputId, progress);
             });
             unsubscribers.set(inputId, unsubscribe);
@@ -111,7 +112,9 @@ export const useUploadStore = create<UploadStoreState>()(
                             ...existing,
                             status: progress.status,
                             progressPercentage: statusPercentages[progress.status] ?? existing.progressPercentage,
+                            resolutionMode: progress.resolutionMode ?? existing.resolutionMode,
                             resolvedTopicId: progress.resolvedTopicId ?? existing.resolvedTopicId,
+                            errorMessage: progress.errorMessage ?? existing.errorMessage,
                         },
                     },
                 };
@@ -144,7 +147,7 @@ export const useUploadStore = create<UploadStoreState>()(
                         },
                     },
                 }));
-                const unsubscribe = organizeService.subscribeInputProgress(workspaceId, topicId, inputId, (progress) => {
+                const unsubscribe = organizeService.subscribeInputProgress(workspaceId, inputId, (progress) => {
                     get().updateProgress(inputId, progress);
                 });
                 unsubscribers.set(inputId, unsubscribe);

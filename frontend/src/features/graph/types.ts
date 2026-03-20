@@ -15,10 +15,15 @@ export type ReferencedNodeView = {
 
 export type BaseNodeData = {
     nodeSource?: 'persisted' | 'act';
+    hasStartedRun?: boolean;
     createdBy?: 'user' | 'agent';
+    authorUid?: string;
     topicId?: string;
+    inputId?: string;
     label: string;
     kind?: string;
+    status?: 'running' | 'completed' | 'failed';
+    agentRole?: 'search';
     actions?: GraphNodeAction[];
     contentMd?: string;
     thoughtMd?: string;
@@ -40,7 +45,7 @@ export type PersistedNodeData = BaseNodeData & {
 };
 
 export type ActNodeData = BaseNodeData & {
-    kind: 'act';
+    kind: 'act' | 'agent_act' | 'suggestion';
 };
 
 export type GraphNodeBaseData = PersistedNodeData | ActNodeData;
@@ -50,6 +55,7 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     radialDepth?: number;
     rootHue?: number;
     activityOpacity?: number;
+    activeRelation?: 'self' | 'descendant' | null;
     actStage?: 'draft' | 'thinking' | 'ready';
     referencedNodes?: ReferencedNodeView[];
     hasChildNodes?: boolean;
@@ -58,12 +64,22 @@ export type GraphNodeRenderData = GraphNodeBaseData & {
     isExpanded?: boolean;
     isEditing?: boolean;
     isStreaming?: boolean;
+    childActNodes?: ReferencedNodeView[];
+    parentActNode?: ReferencedNodeView;
     onToggleBranch?: () => void;
     onOpenDetails?: () => void;
     onOpenReferencedNode?: (nodeId: string) => void;
+    onNavigateToNode?: (nodeId: string) => void;
     onCommitLabel?: (label: string) => void;
-    onRunAction?: (label: string) => void;
+    onUpdateLabel?: (label: string) => void;
+    onRunAction?: (query: string) => void;
+
     onAddMedia?: (file: File) => Promise<void> | void;
+    onGenerateBrief?: () => void;
+    briefGenerating?: boolean;
+    customWidth?: number;
+    customHeight?: number;
+    onResize?: (width: number, height: number) => void;
 };
 
 export type GraphNodeBase = Node<GraphNodeBaseData>;

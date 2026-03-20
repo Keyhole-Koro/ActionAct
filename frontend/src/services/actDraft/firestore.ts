@@ -17,12 +17,12 @@ import type { TopicNode } from "@/services/organize/port";
 
 const DRAFT_TTL_MS = 72 * 60 * 60 * 1000;
 
-function draftsCollection(workspaceId: string, topicId: string) {
-  return collection(firestore, `workspaces/${workspaceId}/topics/${topicId}/actDrafts`);
+function draftsCollection(workspaceId: string) {
+  return collection(firestore, `workspaces/${workspaceId}/actDrafts`);
 }
 
-function draftDoc(workspaceId: string, topicId: string, nodeId: string) {
-  return doc(firestore, `workspaces/${workspaceId}/topics/${topicId}/actDrafts/${nodeId}`);
+function draftDoc(workspaceId: string, nodeId: string) {
+  return doc(firestore, `workspaces/${workspaceId}/actDrafts/${nodeId}`);
 }
 
 function readString(value: unknown): string | undefined {
@@ -37,6 +37,14 @@ function readStringArray(value: unknown): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function expiredAt(data: DocumentData): boolean {
   if (data.pinned) {
     return false;
@@ -49,14 +57,25 @@ function expiredAt(data: DocumentData): boolean {
 }
 
 function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
+  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? "";
   return {
     id: nodeId,
-    title: readString(data.title) ?? nodeId,
+    title: resolvedTitle,
     kind: readString(data.kind) ?? "act",
+    status: readString(data.status) === "running" || readString(data.status) === "completed" || readString(data.status) === "failed"
+      ? readString(data.status) as "running" | "completed" | "failed"
+      : undefined,
+    agentRole: readString(data.agentRole) === "search" ? "search" : undefined,
     createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
+    authorUid: readString(data.authorUid),
     topicId: readString(data.topicId),
+    parentId: readString(data.parentId),
     referencedNodeIds: readStringArray(data.referencedNodeIds),
+    isManualPosition: readBoolean(data.isManualPosition),
+    positionX: readNumber(data.positionX),
+    positionY: readNumber(data.positionY),
     contentMd: readString(data.contentMd),
+    thoughtMd: readString(data.thoughtMd),
     contextSummary: readString(data.contextSummary),
     detailHtml: readString(data.detailHtml),
     evidenceRefs: [],
@@ -64,8 +83,8 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
 }
 
 export const actDraftService = {
-  subscribeDrafts(workspaceId: string, topicId: string, callback: (nodes: TopicNode[]) => void) {
-    const q = query(draftsCollection(workspaceId, topicId), orderBy("lastTouchedAt", "desc"));
+  subscribeDrafts(workspaceId: string, callback: (nodes: TopicNode[]) => void) {
+    const q = query(draftsCollection(workspaceId), orderBy("lastTouchedAt", "desc"));
 
     return onSnapshot(q, (snapshot) => {
       const nextNodes = snapshot.docs.flatMap((draftSnapshot) => {
@@ -80,22 +99,34 @@ export const actDraftService = {
     });
   },
 
+  /**
+   * Full write for a draft node. Always supply createdBy — this is the source of truth
+   * for user/agent attribution and must not be omitted or defaulted silently.
+   * For metadata-only updates (e.g. title rename), use patchDraft instead.
+   */
   async saveDraftSnapshot(
     workspaceId: string,
-    topicId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; referencedNodeIds?: string[]; createdBy?: 'user' | 'agent' },
+    draft: { title?: string; kind?: string; status?: 'running' | 'completed' | 'failed'; agentRole?: 'search'; contentMd?: string; thoughtMd?: string; referencedNodeIds?: string[]; createdBy: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
   ) {
     await setDoc(
-      draftDoc(workspaceId, topicId, nodeId),
+      draftDoc(workspaceId, nodeId),
       {
         nodeId,
-        topicId,
-        title: draft.title ?? nodeId,
+        topicId: draft.topicId ?? '',
+        title: draft.title ?? "",
         kind: draft.kind ?? "act",
-        createdBy: draft.createdBy ?? "agent",
+        ...(draft.status !== undefined ? { status: draft.status } : {}),
+        ...(draft.agentRole !== undefined ? { agentRole: draft.agentRole } : {}),
+        createdBy: draft.createdBy,
+        ...(draft.authorUid !== undefined ? { authorUid: draft.authorUid } : {}),
         contentMd: draft.contentMd ?? "",
+        thoughtMd: draft.thoughtMd ?? "",
         referencedNodeIds: draft.referencedNodeIds ?? [],
+        ...(draft.parentId !== undefined ? { parentId: draft.parentId } : {}),
+        ...(draft.isManualPosition !== undefined ? { isManualPosition: draft.isManualPosition } : {}),
+        ...(draft.positionX !== undefined ? { positionX: draft.positionX } : {}),
+        ...(draft.positionY !== undefined ? { positionY: draft.positionY } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastTouchedAt: serverTimestamp(),
@@ -106,32 +137,60 @@ export const actDraftService = {
     );
   },
 
-  async applyPatch(workspaceId: string, topicId: string, patch: PatchOp, queryText: string) {
+  async applyPatch(workspaceId: string, patch: PatchOp, queryText: string, authorUid?: string) {
     const payload = {
       nodeId: patch.nodeId,
-      topicId,
+      topicId: patch.data?.topicId ?? '',
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
+      ...(patch.data?.status !== undefined ? { status: patch.data.status } : {}),
+      ...(patch.data?.agentRole !== undefined ? { agentRole: patch.data.agentRole } : {}),
       createdBy: patch.data?.createdBy ?? "agent",
+      ...(authorUid !== undefined ? { authorUid } : {}),
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],
+      ...(patch.data?.parentId !== undefined ? { parentId: patch.data.parentId } : {}),
       ...(patch.data?.contentMd !== undefined ? { contentMd: patch.data.contentMd } : {}),
+      ...(patch.data?.thoughtMd !== undefined ? { thoughtMd: patch.data.thoughtMd } : {}),
       lastTouchedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
       pinned: false,
     };
-    await setDoc(draftDoc(workspaceId, topicId, patch.nodeId), payload, { merge: true });
+    await setDoc(draftDoc(workspaceId, patch.nodeId), payload, { merge: true });
   },
 
-  async touchDraft(workspaceId: string, topicId: string, nodeId: string) {
-    await updateDoc(draftDoc(workspaceId, topicId, nodeId), {
+  /**
+   * Partial update for a draft node. Only the explicitly provided fields are written.
+   * Never touches createdBy — use saveDraftSnapshot for full writes that set attribution.
+   */
+  async patchDraft(
+    workspaceId: string,
+    nodeId: string,
+    fields: { title?: string; contentMd?: string; thoughtMd?: string; positionX?: number; positionY?: number; isManualPosition?: boolean },
+  ) {
+    const payload: Record<string, unknown> = {
+      updatedAt: serverTimestamp(),
+      lastTouchedAt: serverTimestamp(),
+      expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
+    };
+    if (fields.title !== undefined) payload.title = fields.title;
+    if (fields.contentMd !== undefined) payload.contentMd = fields.contentMd;
+    if (fields.thoughtMd !== undefined) payload.thoughtMd = fields.thoughtMd;
+    if (fields.positionX !== undefined) payload.positionX = fields.positionX;
+    if (fields.positionY !== undefined) payload.positionY = fields.positionY;
+    if (fields.isManualPosition !== undefined) payload.isManualPosition = fields.isManualPosition;
+    await updateDoc(draftDoc(workspaceId, nodeId), payload);
+  },
+
+  async touchDraft(workspaceId: string, nodeId: string) {
+    await updateDoc(draftDoc(workspaceId, nodeId), {
       lastTouchedAt: serverTimestamp(),
       expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
     });
   },
 
-  async renameDraft(workspaceId: string, topicId: string, nodeId: string, newTitle: string) {
-    await updateDoc(draftDoc(workspaceId, topicId, nodeId), {
+  async renameDraft(workspaceId: string, nodeId: string, newTitle: string) {
+    await updateDoc(draftDoc(workspaceId, nodeId), {
       title: newTitle,
       updatedAt: serverTimestamp(),
       lastTouchedAt: serverTimestamp(),
@@ -139,7 +198,7 @@ export const actDraftService = {
     });
   },
 
-  async deleteDraft(workspaceId: string, topicId: string, nodeId: string) {
-    await deleteDoc(draftDoc(workspaceId, topicId, nodeId));
+  async deleteDraft(workspaceId: string, nodeId: string) {
+    await deleteDoc(draftDoc(workspaceId, nodeId));
   },
 };

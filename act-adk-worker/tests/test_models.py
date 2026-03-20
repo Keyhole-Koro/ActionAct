@@ -88,8 +88,8 @@ class TestRunActEvent:
     def test_json_excludes_none(self):
         event = RunActEvent(type="terminal", done=True)
         json_str = event.model_dump_json(exclude_none=True)
-        assert "ops" not in json_str
-        assert "text" not in json_str
+        assert '"ops":' not in json_str
+        assert '"text":' not in json_str
         assert '"done":true' in json_str
 
 

@@ -18,9 +18,12 @@ interface GraphState {
     editingNodeId: string | null;
     isStreaming: boolean;
     streamingNodeIds: string[];
+    pendingNodeIds: string[];
     nodeLastUsedAt: Record<string, number>;
     nodeUseCount: Record<string, number>;
     pinnedExpandedNodeIds: string[];
+    previewInputId: string | null;
+    previewWorkspaceId: string | null;
 
     setSelectedNodes: (ids: string[]) => void;
     setPersistedGraph: (nodes: Node[], edges: Edge[]) => void;
@@ -37,16 +40,25 @@ interface GraphState {
     setStreamRunning: (value: boolean) => void;
     addStreamingNode: (nodeId: string) => void;
     clearStreamingNodes: (nodeIds?: string[]) => void;
+    removePendingNodes: (nodeIds: string[]) => void;
     recordNodeUsed: (nodeId: string) => void;
     pinExpandedNode: (nodeId: string) => void;
     unpinExpandedNode: (nodeId: string) => void;
     collapseUnusedNodes: (nowMs: number, thresholdMs: number) => void;
+    setFilePreview: (workspaceId: string | null, inputId: string | null) => void;
 
     addOrUpdateActNode: (nodeId: string, payload: {
         label?: string;
         kind?: string;
+        status?: 'running' | 'completed' | 'failed';
+        agentRole?: 'search';
+        hasStartedRun?: boolean;
+        parentId?: string;
+        contentMd?: string;
+        thoughtMd?: string;
         referencedNodeIds?: string[];
         createdBy?: 'user' | 'agent';
+        authorUid?: string;
         usedContextNodeIds?: string[];
         usedSelectedNodeContexts?: Array<{
             nodeId: string;
@@ -64,6 +76,7 @@ interface GraphState {
     addQueryActNode: (position: { x: number; y: number }, initialLabel: string, options?: { isManualPosition?: boolean }) => string;
     resetActNode: (nodeId: string, payload?: { label?: string; referencedNodeIds?: string[] }) => void;
     updateActNodeLabel: (nodeId: string, label: string) => void;
+    updateActNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
     appendActNodeContent: (nodeId: string, content: string) => void;
     appendActNodeThought: (nodeId: string, thought: string) => void;
     removeActNode: (nodeId: string) => void;
@@ -123,6 +136,21 @@ function buildReferenceEdges(targetNodeId: string, referencedNodeIds: string[]):
         }));
 }
 
+function buildHierarchyEdge(parentId: string, childId: string): Edge {
+    return {
+        id: `edge-act-${parentId}-${childId}`,
+        source: parentId,
+        target: childId,
+    };
+}
+
+function syncActHierarchyEdges(actEdges: Edge[], nodeId: string, parentId?: string) {
+    const preservedEdges = actEdges.filter((edge) => !(edge.target === nodeId && edge.id.startsWith('edge-act-')));
+    return parentId
+        ? [...preservedEdges, buildHierarchyEdge(parentId, nodeId)]
+        : preservedEdges;
+}
+
 function syncActReferenceEdges(actEdges: Edge[], targetNodeId: string, referencedNodeIds: string[]) {
     const preservedEdges = actEdges.filter((edge) => !(edge.target === targetNodeId && edge.id.startsWith('edge-ctx-')));
     return [
@@ -145,9 +173,12 @@ export const useGraphStore = create<GraphState>((set) => ({
     editingNodeId: null,
     isStreaming: false,
     streamingNodeIds: [],
+    pendingNodeIds: [],
     nodeLastUsedAt: {},
     nodeUseCount: {},
     pinnedExpandedNodeIds: [],
+    previewInputId: null,
+    previewWorkspaceId: null,
 
     setSelectedNodes: (ids) => set((state) => {
         const nextIds = uniqueIds(ids).sort();
@@ -191,6 +222,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             activeNodeId,
             editingNodeId,
             streamingNodeIds: state.streamingNodeIds.filter((id) => !actNodeIds.has(id)),
+            pendingNodeIds: state.pendingNodeIds.filter((id) => !actNodeIds.has(id)),
         };
     }),
     clearSelection: () => set((state) => {
@@ -283,11 +315,21 @@ export const useGraphStore = create<GraphState>((set) => ({
     )),
     clearStreamingNodes: (nodeIds?: string[]) => set((state) => {
         if (!nodeIds || nodeIds.length === 0) {
-            return { streamingNodeIds: [] };
+            return {
+                streamingNodeIds: [],
+                pendingNodeIds: uniqueIds([...state.pendingNodeIds, ...state.streamingNodeIds]),
+            };
         }
         const toClear = new Set(nodeIds);
         return {
             streamingNodeIds: state.streamingNodeIds.filter((nodeId) => !toClear.has(nodeId)),
+            pendingNodeIds: uniqueIds([...state.pendingNodeIds, ...nodeIds]),
+        };
+    }),
+    removePendingNodes: (nodeIds) => set((state) => {
+        const toRemove = new Set(nodeIds);
+        return {
+            pendingNodeIds: state.pendingNodeIds.filter((id) => !toRemove.has(id)),
         };
     }),
     recordNodeUsed: (nodeId) => set((state) => ({
@@ -302,6 +344,10 @@ export const useGraphStore = create<GraphState>((set) => ({
     unpinExpandedNode: (nodeId) => set((state) => ({
         pinnedExpandedNodeIds: state.pinnedExpandedNodeIds.filter((id) => id !== nodeId),
     })),
+    setFilePreview: (workspaceId, inputId) => set({
+        previewWorkspaceId: workspaceId,
+        previewInputId: inputId,
+    }),
     collapseUnusedNodes: (nowMs, thresholdMs) => set((state) => {
         const pinnedSet = new Set(state.pinnedExpandedNodeIds);
         const streamingSet = new Set(state.streamingNodeIds);
@@ -360,12 +406,10 @@ export const useGraphStore = create<GraphState>((set) => ({
             return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
         });
 
-        // Collapse branch expansions for unused nodes
-        const nextExpandedBranchNodeIds = state.expandedBranchNodeIds.filter((nodeId) => {
-            if (isProtected(nodeId)) return true;
-            const lastUsed = state.nodeLastUsedAt[nodeId];
-            return lastUsed !== undefined && nowMs - lastUsed < thresholdMs;
-        });
+        // Keep persisted branch visibility stable. Auto-collapse is limited to
+        // node detail surfaces so derived canvas elements like tree edges do
+        // not disappear after an inactivity timeout.
+        const nextExpandedBranchNodeIds = state.expandedBranchNodeIds;
 
         if (
             nextExpandedNodeIds.length === state.expandedNodeIds.length &&
@@ -380,12 +424,17 @@ export const useGraphStore = create<GraphState>((set) => ({
 
     addOrUpdateActNode: (nodeId, payload) => set((state) => {
         const exists = state.actNodes.find(n => n.id === nodeId);
+        const now = Date.now();
         if (exists) {
             const nextReferencedNodeIds = payload.referencedNodeIds !== undefined
                 ? payload.referencedNodeIds
                 : (Array.isArray(exists.data?.referencedNodeIds)
                     ? exists.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
                     : []);
+            const nextParentId = payload.parentId !== undefined
+                ? payload.parentId
+                : (typeof exists.data?.parentId === 'string' ? exists.data.parentId : undefined);
+            const edgesWithHierarchy = syncActHierarchyEdges(state.actEdges, nodeId, nextParentId);
             return {
                 actNodes: state.actNodes.map(n =>
                     n.id === nodeId
@@ -395,8 +444,15 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...n.data,
                                 ...(payload.label !== undefined ? { label: payload.label } : {}),
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                                ...(payload.status !== undefined ? { status: payload.status } : {}),
+                                ...(payload.agentRole !== undefined ? { agentRole: payload.agentRole } : {}),
+                                ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
+                                ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
+                                ...(payload.contentMd !== undefined ? { contentMd: payload.contentMd } : {}),
+                                ...(payload.thoughtMd !== undefined ? { thoughtMd: payload.thoughtMd } : {}),
                                 ...(payload.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
                                 ...(payload.createdBy !== undefined ? { createdBy: payload.createdBy } : {}),
+                                ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
                                 ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
                                 ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
                                 ...(payload.usedTools !== undefined ? { usedTools: payload.usedTools } : {}),
@@ -405,7 +461,9 @@ export const useGraphStore = create<GraphState>((set) => ({
                         }
                         : n
                 ),
-                actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
+                actEdges: syncActReferenceEdges(edgesWithHierarchy, nodeId, nextReferencedNodeIds),
+                // Update recency even on updates from agent to keep it visible while streaming
+                nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: now },
             };
         }
 
@@ -418,9 +476,15 @@ export const useGraphStore = create<GraphState>((set) => ({
                 label: payload.label ?? '',
                 nodeSource: 'act',
                 createdBy: payload.createdBy ?? 'agent',
+                ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
                 kind: payload.kind ?? 'act',
+                ...(payload.status !== undefined ? { status: payload.status } : {}),
+                ...(payload.agentRole !== undefined ? { agentRole: payload.agentRole } : {}),
+                ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                 referencedNodeIds: payload.referencedNodeIds ?? [],
-                contentMd: '',
+                contentMd: payload.contentMd ?? '',
+                thoughtMd: payload.thoughtMd ?? '',
+                ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                 ...(payload.usedContextNodeIds !== undefined ? { usedContextNodeIds: payload.usedContextNodeIds } : {}),
                 ...(payload.usedSelectedNodeContexts !== undefined ? { usedSelectedNodeContexts: payload.usedSelectedNodeContexts } : {}),
                 ...(payload.usedTools !== undefined ? { usedTools: payload.usedTools } : {}),
@@ -428,7 +492,8 @@ export const useGraphStore = create<GraphState>((set) => ({
             }
         };
 
-        const newEdges = syncActReferenceEdges(state.actEdges, nodeId, payload.referencedNodeIds ?? []);
+        const withHierarchy = syncActHierarchyEdges(state.actEdges, nodeId, payload.parentId);
+        const newEdges = syncActReferenceEdges(withHierarchy, nodeId, payload.referencedNodeIds ?? []);
         const shouldLinkToFirstActNode = state.actNodes.length > 0
             && (payload.referencedNodeIds?.length ?? 0) === 0
             && state.selectedNodeIds.length === 0;
@@ -445,11 +510,16 @@ export const useGraphStore = create<GraphState>((set) => ({
             ]
             : newEdges;
 
-        return { actNodes: [...state.actNodes, newNode], actEdges: nextActEdges };
+        return {
+            actNodes: [...state.actNodes, newNode],
+            actEdges: nextActEdges,
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: now },
+        };
     }),
 
     addEmptyActNode: (position) => {
         const id = `user-node-${++_nodeCounter}-${Date.now()}`;
+        const now = Date.now();
         set((state) => ({
             actNodes: [...state.actNodes, {
                 id,
@@ -462,12 +532,14 @@ export const useGraphStore = create<GraphState>((set) => ({
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, [id]: now },
         }));
         return id;
     },
 
     addQueryActNode: (position, initialLabel, options) => {
         const id = `act-node-${++_nodeCounter}-${Date.now()}`;
+        const now = Date.now();
         set((state) => ({
             actNodes: [...state.actNodes, {
                 id,
@@ -489,6 +561,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             expandedNodeIds: state.expandedNodeIds.includes(id)
                 ? state.expandedNodeIds
                 : [...state.expandedNodeIds, id],
+            nodeLastUsedAt: { ...state.nodeLastUsedAt, [id]: now },
         }));
         return id;
     },
@@ -500,24 +573,45 @@ export const useGraphStore = create<GraphState>((set) => ({
             : (Array.isArray(existingNode?.data?.referencedNodeIds)
                 ? existingNode.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
                 : []);
-        return {
-            actNodes: state.actNodes.map((node) =>
-                node.id === nodeId
-                    ? {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            ...(payload?.label !== undefined ? { label: payload.label } : {}),
-                            ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
-                            contentMd: '',
-                            thoughtMd: '',
-                            contextSummary: '',
-                            detailHtml: '',
-                        },
+
+        // Collect all descendant node IDs (search, suggestion, etc.) to remove
+        const descendants = new Set<string>();
+        const queue = [nodeId];
+        while (queue.length > 0) {
+            const cur = queue.shift()!;
+            for (const n of state.actNodes) {
+                if (n.id !== nodeId && typeof n.data?.parentId === 'string' && n.data.parentId === cur) {
+                    if (!descendants.has(n.id)) {
+                        descendants.add(n.id);
+                        queue.push(n.id);
                     }
-                    : node,
-            ),
-            actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
+                }
+            }
+        }
+
+        const filteredEdges = state.actEdges.filter((e) => !descendants.has(e.source) && !descendants.has(e.target));
+        return {
+            actNodes: state.actNodes
+                .filter((node) => !descendants.has(node.id))
+                .map((node) =>
+                    node.id === nodeId
+                        ? {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                ...(payload?.label !== undefined ? { label: payload.label } : {}),
+                                ...(payload?.referencedNodeIds !== undefined ? { referencedNodeIds: payload.referencedNodeIds } : {}),
+                                contentMd: '',
+                                thoughtMd: '',
+                                contextSummary: '',
+                                detailHtml: '',
+                            },
+                        }
+                        : node,
+                ),
+            actEdges: syncActReferenceEdges(filteredEdges, nodeId, nextReferencedNodeIds),
+            expandedBranchNodeIds: state.expandedBranchNodeIds.filter((id) => !descendants.has(id)),
+            streamingNodeIds: state.streamingNodeIds.filter((id) => !descendants.has(id)),
         };
     }),
 
@@ -526,6 +620,25 @@ export const useGraphStore = create<GraphState>((set) => ({
             n.id === nodeId ? { ...n, data: { ...n.data, label } } : n
         ),
         editingNodeId: null,
+    })),
+
+    updateActNodePosition: (nodeId, position) => set((state) => ({
+        actNodes: state.actNodes.map((node) => {
+            const isUserActRoot = node.id === nodeId
+                && node.data?.nodeSource === 'act'
+                && node.data?.createdBy === 'user'
+                && typeof node.data?.parentId !== 'string';
+            return isUserActRoot
+                ? {
+                    ...node,
+                    position,
+                    data: {
+                        ...node.data,
+                        isManualPosition: true,
+                    },
+                }
+                : node;
+        }),
     })),
 
     appendActNodeContent: (nodeId, content) => set((state) => ({
@@ -549,7 +662,9 @@ export const useGraphStore = create<GraphState>((set) => ({
         if (!sameIds(state.selectedNodeIds, nextSelectedNodeIds)) {
             writeStoredSelectedNodeIds(nextSelectedNodeIds);
         }
-        const { [nodeId]: _removed, ...nextNodeLastUsedAt } = state.nodeLastUsedAt;
+        const nextNodeLastUsedAt = Object.fromEntries(
+            Object.entries(state.nodeLastUsedAt).filter(([id]) => id !== nodeId),
+        );
         return {
             actNodes: state.actNodes.filter(n => n.id !== nodeId),
             actEdges: state.actEdges.filter(e => e.source !== nodeId && e.target !== nodeId),
@@ -558,6 +673,7 @@ export const useGraphStore = create<GraphState>((set) => ({
             nodeLastUsedAt: nextNodeLastUsedAt,
             selectedNodeIds: nextSelectedNodeIds,
             streamingNodeIds: state.streamingNodeIds.filter((id) => id !== nodeId),
+            pendingNodeIds: state.pendingNodeIds.filter((id) => id !== nodeId),
             activeNodeId: state.activeNodeId === nodeId ? null : state.activeNodeId,
             editingNodeId: state.editingNodeId === nodeId ? null : state.editingNodeId,
         };

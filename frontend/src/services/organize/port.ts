@@ -8,16 +8,24 @@ export interface EvidenceRef {
 export interface TopicNode {
     id: string;
     topicId?: string;
+    inputId?: string;
     title: string;
     kind?: string;
+    status?: 'running' | 'completed' | 'failed';
+    agentRole?: 'search';
     createdBy?: 'user' | 'agent';
+    authorUid?: string;
     parentId?: string;
     referencedNodeIds?: string[];
+    isManualPosition?: boolean;
+    positionX?: number;
+    positionY?: number;
 
     // Detailed fields (often populated by A7 summary agent)
     contextSummary?: string;
     detailHtml?: string;
     contentMd?: string;
+    thoughtMd?: string;
     evidenceRefs?: EvidenceRef[];
 }
 
@@ -79,16 +87,17 @@ export interface ReviewOpItem {
 }
 
 export interface OrganizePort {
-    subscribeTree: (workspaceId: string, topicId: string, callback: (nodes: TopicNode[]) => void) => () => void;
-    subscribeNodeEvidence: (workspaceId: string, topicId: string, nodeId: string, callback: (evidenceRefs: EvidenceRef[]) => void) => () => void;
-    subscribeInputProgress: (workspaceId: string, topicId: string, inputId: string, callback: (progress: InputProgress | null) => void) => () => void;
-    subscribeTopicActivity: (workspaceId: string, topicId: string, callback: (items: TopicActivityItem[]) => void) => () => void;
-    subscribeOrganizeOps: (workspaceId: string, topicId: string, callback: (items: ReviewOpItem[]) => void) => () => void;
+    subscribeTree: (workspaceId: string, callback: (nodes: TopicNode[]) => void) => () => void;
+    subscribeNodeEvidence: (workspaceId: string, nodeId: string, callback: (evidenceRefs: EvidenceRef[]) => void) => () => void;
+    subscribeInputProgress: (workspaceId: string, inputId: string, callback: (progress: InputProgress | null) => void) => () => void;
+    subscribeTopicActivity: (workspaceId: string, callback: (items: TopicActivityItem[]) => void) => () => void;
+    subscribeOrganizeOps: (workspaceId: string, callback: (items: ReviewOpItem[]) => void) => () => void;
 
     // Mutating actions
-    renameNode: (workspaceId: string, topicId: string, nodeId: string, newTitle: string) => Promise<void>;
-    deleteNode: (workspaceId: string, topicId: string, nodeId: string) => Promise<void>;
-    moveNode: (workspaceId: string, topicId: string, nodeId: string, newParentId: string | null) => Promise<void>;
+    renameNode: (workspaceId: string, nodeId: string, newTitle: string) => Promise<void>;
+    deleteNode: (workspaceId: string, nodeId: string) => Promise<void>;
+    moveNode: (workspaceId: string, nodeId: string, newParentId: string | null) => Promise<void>;
+    updateNodeSummary: (workspaceId: string, nodeId: string, contextSummary: string) => Promise<void>;
 
     // Upload
     uploadInput: (workspaceId: string, file: File) => Promise<{ inputId: string; topicId: string }>;

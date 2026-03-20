@@ -7,6 +7,7 @@ import { useGraphStore } from '@/features/graph/store';
 
 function kindLabel(kind: string): string {
     if (kind === 'act') return 'act';
+    if (kind === 'agent_act') return 'agent act';
     return kind;
 }
 

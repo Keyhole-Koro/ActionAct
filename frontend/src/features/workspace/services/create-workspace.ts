@@ -43,6 +43,7 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Crea
       workspaceId,
       name: input.workspaceName?.trim() ?? "",
       createdBy: input.uid,
+      visibility: "private",
       status: "active",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),

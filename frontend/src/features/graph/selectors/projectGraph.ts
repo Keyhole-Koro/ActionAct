@@ -94,6 +94,7 @@ type BuildDisplayNodesParams = {
     onOpenDetails: (nodeId: string) => void;
     onOpenReferencedNode: (nodeId: string) => void;
     onCommitLabel: (nodeId: string, label: string) => void;
+    onUpdateLabel: (nodeId: string, label: string) => void;
     onRunAction: (nodeId: string, label: string) => void;
     onAddMedia: (nodeId: string, file: File) => Promise<void> | void;
 };
@@ -112,6 +113,7 @@ export function buildDisplayNodes({
     onOpenDetails,
     onOpenReferencedNode,
     onCommitLabel,
+    onUpdateLabel,
     onRunAction,
     onAddMedia,
 }: BuildDisplayNodesParams): GraphNodeRender[] {
@@ -149,6 +151,7 @@ export function buildDisplayNodes({
             onOpenDetails: () => onOpenDetails(node.id),
             onOpenReferencedNode: (referencedNodeId: string) => onOpenReferencedNode(referencedNodeId),
             onCommitLabel: (label: string) => onCommitLabel(node.id, label),
+            onUpdateLabel: (label: string) => onUpdateLabel(node.id, label),
             onRunAction: (label: string) => onRunAction(node.id, label),
             onAddMedia: (file: File) => onAddMedia(node.id, file),
         };
