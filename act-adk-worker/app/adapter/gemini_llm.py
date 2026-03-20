@@ -6,16 +6,7 @@ import logging
 from typing import AsyncIterator
 
 from google import genai
-from google.genai.types import (
-    Content,
-    FunctionDeclaration,
-    GenerateContentConfig,
-    GoogleSearch,
-    Part,
-    Schema,
-    ThinkingConfig,
-    Tool,
-)
+from google.genai.types import Content, FunctionDeclaration, GenerateContentConfig, GoogleSearch, Part, Schema, ThinkingConfig, Tool
 
 from app.domain.models import LLMChunk, LLMConfig, PromptBundle
 
@@ -150,7 +141,10 @@ class GeminiLLM:
         contents = [Content(role="user", parts=parts)]
 
         base_tools: list[Tool] = []
-        if config.enable_act_tools:
+        enable_function_tools = config.enable_act_tools and not config.enable_grounding
+        if config.enable_act_tools and config.enable_grounding:
+            logger.info("Disabling act tools because grounding is enabled")
+        if enable_function_tools:
             base_tools.append(_ACT_TOOLS)
         if config.enable_grounding:
             base_tools.append(Tool(googleSearch=GoogleSearch()))
