@@ -7,7 +7,7 @@ import { upsertActNodeDraft } from '@/features/graph/runtime/act-graph-actions';
 import { buildDisplayNodes } from '../selectors/projectGraph';
 import { projectPersistedGraph } from '../selectors/projectPersistedGraph';
 import { getDisplayNodeDimensions, isRenderableCoordinate } from '../components/graphCanvas/graphCanvasUtils';
-import type { GraphNodeBase, GraphNodeRender } from '../types';
+import type { GraphNodeBase } from '../types';
 import type { useGraphCommands } from './useGraphCommands';
 
 const RADIAL_ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
@@ -145,7 +145,7 @@ export function useGraphDisplayNodes({
                 void commands.commitActNodeLabel(nodeId, label);
             },
             onUpdateLabel: (nodeId, label) => {
-                commands.updateActNodeLabel(nodeId, label);
+                void commands.persistActNodeLabel(nodeId, label);
             },
             onRunAction: commands.runActFromNode,
             onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),
@@ -223,7 +223,7 @@ export function useGraphDisplayNodes({
                 { zoom: Math.max(reactFlowInstance.getZoom(), 1.0), duration: 450 },
             );
         }
-    }, [expandedNodeIds, reactFlowInstance, toggleExpandedNode]);
+    }, [expandedNodeIdSet, reactFlowInstance, toggleExpandedNode]);
 
     const layoutAwareDisplayNodes = useMemo(() => {
         const now = Date.now();
@@ -317,7 +317,7 @@ export function useGraphDisplayNodes({
                 void commands.commitActNodeLabel(nodeId, label);
             },
             onUpdateLabel: (nodeId, label) => {
-                commands.updateActNodeLabel(nodeId, label);
+                void commands.persistActNodeLabel(nodeId, label);
             },
             onRunAction: commands.runActFromNode,
             onAddMedia: (nodeId, file) => commands.addMediaContext(nodeId, file),

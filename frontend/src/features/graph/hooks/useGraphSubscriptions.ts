@@ -77,6 +77,8 @@ export function useGraphSubscriptions({
         }
 
         const unsubscribe = actDraftService.subscribeDrafts(effectiveWorkspaceId, (draftNodes) => {
+            const graphState = useGraphStore.getState();
+            const existingActNodeById = new Map(graphState.actNodes.map((node) => [node.id, node]));
             const draftActNodes: GraphNodeBase[] = draftNodes.map((node, index) => ({
                 id: node.id,
                 type: 'customTask',
@@ -89,7 +91,11 @@ export function useGraphSubscriptions({
                     createdBy: node.createdBy ?? 'agent',
                     ...(node.authorUid !== undefined ? { authorUid: node.authorUid } : {}),
                     topicId: node.topicId,
-                    label: node.title,
+                    label: graphState.editingNodeId === node.id
+                        ? (typeof existingActNodeById.get(node.id)?.data?.label === 'string'
+                            ? existingActNodeById.get(node.id)?.data?.label as string
+                            : node.title)
+                        : node.title,
                     kind: 'act',
                     contentMd: node.contentMd,
                     contextSummary: node.contextSummary,
@@ -99,7 +105,6 @@ export function useGraphSubscriptions({
                     ...(node.isManualPosition ? { isManualPosition: true } : {}),
                 },
             }));
-            const graphState = useGraphStore.getState();
             const draftNodeIds = new Set(draftActNodes.map((node) => node.id));
 
             // Nodes that were pending (streamed but not yet in Firestore) and now appear

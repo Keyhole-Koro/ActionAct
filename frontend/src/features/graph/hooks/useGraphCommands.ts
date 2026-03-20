@@ -10,6 +10,7 @@ import { createDirectFrontendToolClient } from '@/features/agentTools/runtime/fr
 import { prepareAnchoredActRun } from '@/features/agentTools/runtime/frontend-tool-orchestrator';
 import { useActClarificationStore } from '@/features/agentTools/store/act-clarification-store';
 import { clearAllActNodes, removeActNodeAndDraft } from '@/features/graph/runtime/act-graph-actions';
+import { actDraftService } from '@/services/actDraft/firestore';
 import { organizeService } from '@/services/organize';
 
 type Params = {
@@ -24,6 +25,7 @@ export function useGraphCommands({ workspaceId }: Params) {
         toggleExpandedBranchNode,
         expandBranchNode,
         updateActNodeLabel,
+        setEditingNode,
         expandNode,
         recordNodeUsed,
     } = useGraphStore();
@@ -66,6 +68,22 @@ export function useGraphCommands({ workspaceId }: Params) {
         recordNodeUsed(frontendNodeId);
     }, [expandNode, frontendToolClient, recordNodeUsed, setActiveNode, setPendingClarification, setSelectedNodes]);
 
+    const persistActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
+        const nextLabel = rawLabel.trim();
+        updateActNodeLabel(nodeId, nextLabel);
+        setEditingNode(null);
+        if (!workspaceId) {
+            return;
+        }
+        try {
+            await actDraftService.saveDraftSnapshot(workspaceId, nodeId, {
+                title: nextLabel,
+            });
+        } catch (error) {
+            console.error('Failed to persist act draft label', { nodeId, error });
+        }
+    }, [setEditingNode, updateActNodeLabel, workspaceId]);
+
     const commitActNodeLabel = useCallback(async (nodeId: string, rawLabel: string) => {
         const trimmed = rawLabel.trim();
         const existingNode = actNodes.find((node) => node.id === nodeId);
@@ -83,7 +101,7 @@ export function useGraphCommands({ workspaceId }: Params) {
             return;
         }
 
-        updateActNodeLabel(nodeId, trimmed);
+        await persistActNodeLabel(nodeId, trimmed);
         if (!hasResolvedContent) {
             setSelectedNodes([nodeId]);
             const prepared = await prepareAnchoredActRun(frontendToolClient, {
@@ -108,7 +126,7 @@ export function useGraphCommands({ workspaceId }: Params) {
                 options: { clear: false, contextNodeIds: prepared.contextNodeIds },
             });
         }
-    }, [actNodes, frontendToolClient, setPendingClarification, setSelectedNodes, updateActNodeLabel, workspaceId]);
+    }, [actNodes, frontendToolClient, persistActNodeLabel, setPendingClarification, setSelectedNodes, workspaceId]);
 
     const clearAct = useCallback(async () => {
         await clearAllActNodes(workspaceId);
@@ -127,6 +145,7 @@ export function useGraphCommands({ workspaceId }: Params) {
         expandBranch: expandBranchNode,
         runActFromNode,
         commitActNodeLabel,
+        persistActNodeLabel,
         updateActNodeLabel,
         addMediaContext,
         clearAct,

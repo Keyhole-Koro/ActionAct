@@ -57,7 +57,7 @@ function expiredAt(data: DocumentData): boolean {
 }
 
 function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
-  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? nodeId;
+  const resolvedTitle = readString(data.title) ?? readString(data.label) ?? "";
   return {
     id: nodeId,
     title: resolvedTitle,
@@ -104,7 +104,7 @@ export const actDraftService = {
       {
         nodeId,
         topicId: draft.topicId ?? '',
-        title: draft.title ?? nodeId,
+        title: draft.title ?? "",
         kind: draft.kind ?? "act",
         createdBy: draft.createdBy ?? "agent",
         ...(draft.authorUid !== undefined ? { authorUid: draft.authorUid } : {}),

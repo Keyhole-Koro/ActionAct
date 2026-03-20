@@ -11,7 +11,6 @@ import {
     ChevronRight,
     ChevronDown,
     Bot,
-    UserRound,
     FileUp,
     Loader2,
     Code,
@@ -200,25 +199,29 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     }, [id, internalsSignature, updateNodeInternals]);
 
     const commitAction = useCallback(() => {
-        data.onCommitLabel?.(editValue);
+        void data.onCommitLabel?.(editValue);
     }, [data, editValue]);
 
     const handleBlur = useCallback(() => {
         if (!isEditing) return;
-        // Just save the text without triggering backend run
-        data.onUpdateLabel?.(editValue);
+        // Blur only persists the draft title and exits editing. Run submission is Enter-only.
+        void data.onUpdateLabel?.(editValue);
     }, [data, editValue, isEditing]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
             commitAction();
         } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
             // Restore original or clear if it's a new empty node
             const defaultVal = data.label || '';
             setEditValue(defaultVal);
-            data.onUpdateLabel?.(defaultVal);
+            void data.onUpdateLabel?.(defaultVal);
         }
-    }, [commitAction, data, editValue]);
+    }, [commitAction, data]);
 
     const handleMediaFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
