@@ -13,6 +13,9 @@ export type FrontendConfig = {
   requireBootstrapCsrfHeader: boolean;
 };
 
+type BooleanConfigKey = "requireBootstrapCsrfHeader";
+type StringConfigKey = Exclude<keyof FrontendConfig, BooleanConfigKey>;
+
 const isProd = process.env.NODE_ENV === "production";
 const staticConfig = isProd ? prodConfig : localConfig;
 const publicEnv = {
@@ -24,9 +27,9 @@ const publicEnv = {
   firebaseAuthEmulatorHost: process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
   firestoreEmulatorHost: process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST,
   gcloudProject: process.env.NEXT_PUBLIC_GCLOUD_PROJECT,
-} satisfies Partial<Record<keyof FrontendConfig, string>>;
+} satisfies Partial<Record<StringConfigKey, string>>;
 
-function getConfigValue(fieldName: keyof FrontendConfig): string {
+function getConfigValue(fieldName: StringConfigKey): string {
   const envValue = publicEnv[fieldName];
   if (envValue && envValue.trim() !== "") {
     return envValue;
@@ -40,18 +43,10 @@ function getConfigValue(fieldName: keyof FrontendConfig): string {
   return "";
 }
 
-function getBooleanConfigValue(fieldName: keyof FrontendConfig): boolean {
+function getBooleanConfigValue(fieldName: BooleanConfigKey): boolean {
   const configValue = staticConfig[fieldName];
   if (typeof configValue === "boolean") {
     return configValue;
-  }
-
-  const envValue = publicEnv[fieldName];
-  if (envValue === "true") {
-    return true;
-  }
-  if (envValue === "false") {
-    return false;
   }
 
   return false;
