@@ -174,21 +174,21 @@ class GeminiLLM:
             collected_function_calls: list[dict] = []
 
             async for response in stream:
-                # テキストチャンクをストリーム
-                if response.text:
-                    yield LLMChunk(text=response.text, is_thought=False)
-
-                # function_call パートを収集（ストリーム末尾に来る）
-                if response.candidates:
-                    for candidate in response.candidates:
-                        if candidate.content and candidate.content.parts:
-                            for part in candidate.content.parts:
-                                if part.function_call:
-                                    fc = part.function_call
-                                    collected_function_calls.append({
-                                        "name": fc.name,
-                                        "args": dict(fc.args) if fc.args else {},
-                                    })
+                if not response.candidates:
+                    continue
+                for candidate in response.candidates:
+                    if not (candidate.content and candidate.content.parts):
+                        continue
+                    for part in candidate.content.parts:
+                        if part.function_call:
+                            fc = part.function_call
+                            collected_function_calls.append({
+                                "name": fc.name,
+                                "args": dict(fc.args) if fc.args else {},
+                            })
+                        elif part.text:
+                            is_thought = bool(getattr(part, "thought", False))
+                            yield LLMChunk(text=part.text, is_thought=is_thought)
 
             yield LLMChunk(text="", is_done=True, function_calls=collected_function_calls)
 
@@ -204,6 +204,7 @@ class GeminiLLM:
         tool_executor: ToolExecutor,
         config: LLMConfig,
     ) -> AsyncIterator[LLMChunk]:
+        extra_tools = [_ACT_TOOLS] if config.enable_act_tools else None
         async for chunk in run_discord_agentic_loop(
             client=self._client,
             user_message=user_message,
@@ -211,5 +212,6 @@ class GeminiLLM:
             workspace_id=workspace_id,
             tool_executor=tool_executor,
             config=config,
+            extra_tools=extra_tools,
         ):
             yield chunk

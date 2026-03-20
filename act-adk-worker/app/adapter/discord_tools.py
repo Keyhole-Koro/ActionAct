@@ -70,6 +70,9 @@ DISCORD_TOOL = Tool(functionDeclarations=DISCORD_TOOLS)
 ToolExecutor = Callable[[str, dict, str], Awaitable[object]]
 
 
+_DISCORD_TOOL_NAMES = {fd.name for fd in DISCORD_TOOLS}
+
+
 async def run_discord_agentic_loop(
     client: genai.Client,
     user_message: str,
@@ -77,13 +80,19 @@ async def run_discord_agentic_loop(
     workspace_id: str,
     tool_executor: ToolExecutor,
     config: LLMConfig,
+    extra_tools: list[Tool] | None = None,
 ) -> AsyncIterator[LLMChunk]:
-    """Agentic loop: Gemini calls Discord tools until it can answer."""
+    """Agentic loop: Gemini calls Discord tools until it can answer.
+
+    Non-Discord function calls (e.g. suggest_deep_dives, start_act) are
+    collected and returned via the final LLMChunk(is_done=True, function_calls=...).
+    """
     model_name = _MODEL_ALIASES.get(config.model, config.model) or "gemini-3-flash-preview"
 
+    tools = [DISCORD_TOOL] + (extra_tools or [])
     gen_config = GenerateContentConfig(
         systemInstruction=system_instruction,
-        tools=[DISCORD_TOOL],
+        tools=tools,
     )
 
     contents: list[Content] = [
@@ -104,13 +113,18 @@ async def run_discord_agentic_loop(
         if not candidate:
             break
 
-        function_calls = [
+        all_calls = [
             part.function_call
             for part in candidate.content.parts
             if part.function_call is not None
         ]
+        discord_calls = [fc for fc in all_calls if fc.name in _DISCORD_TOOL_NAMES]
+        passthrough_calls = [
+            {"name": fc.name, "args": dict(fc.args) if fc.args else {}}
+            for fc in all_calls if fc.name not in _DISCORD_TOOL_NAMES
+        ]
 
-        if not function_calls:
+        if not discord_calls:
             final_text = ""
             for part in candidate.content.parts:
                 if part.text:
@@ -120,13 +134,13 @@ async def run_discord_agentic_loop(
                 chunk_size = 200
                 for i in range(0, len(final_text), chunk_size):
                     yield LLMChunk(text=final_text[i:i + chunk_size], is_thought=False)
-            yield LLMChunk(text="", is_done=True)
+            yield LLMChunk(text="", is_done=True, function_calls=passthrough_calls)
             return
 
         contents.append(candidate.content)
 
         tool_response_parts = []
-        for fc in function_calls:
+        for fc in discord_calls:
             fn_name = fc.name
             fn_args = dict(fc.args) if fc.args else {}
             logger.info("Executing tool %s args=%r", fn_name, fn_args)

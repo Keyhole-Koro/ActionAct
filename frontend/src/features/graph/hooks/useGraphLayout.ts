@@ -101,6 +101,7 @@ export function useGraphLayout({
             referencedNodeIds: n.data?.referencedNodeIds,
             parentId: n.data?.parentId,
             isManualPosition: n.data?.isManualPosition,
+            createdBy: n.data?.createdBy,
         },
     } as GraphNodeBase)), [actNodesStructuralKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
