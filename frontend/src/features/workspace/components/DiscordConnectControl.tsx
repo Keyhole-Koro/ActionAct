@@ -85,14 +85,24 @@ export function DiscordConnectControl({ workspaceId }: DiscordConnectControlProp
   }, [open, session?.sessionId, workspaceId]);
 
   const handleOpenInvite = async () => {
+    const popup = window.open("", "_blank", "noopener,noreferrer");
     setLoadingInvite(true);
     try {
       const nextSession = await workspaceDiscordService.createInstallSession(workspaceId);
       setSession(nextSession);
       if (nextSession.inviteUrl) {
-        window.open(nextSession.inviteUrl, "_blank", "noopener,noreferrer");
+        if (popup && !popup.closed) {
+          popup.location.href = nextSession.inviteUrl;
+        } else {
+          window.location.assign(nextSession.inviteUrl);
+          toast.info("新規タブがブロックされたため、このタブで Discord 招待ページを開きました");
+        }
+      } else {
+        popup?.close();
+        toast.error("inviteUrl を取得できませんでした");
       }
     } catch (error) {
+      popup?.close();
       console.error("Failed to create Discord install session", error);
       toast.error("Discord install session の作成に失敗しました");
     } finally {
@@ -124,7 +134,7 @@ export function DiscordConnectControl({ workspaceId }: DiscordConnectControlProp
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger className="inline-flex shrink-0 items-center justify-center border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs font-medium gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
         <Bot className="w-3.5 h-3.5" />
-        Discord
+        DISCORD BOT
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-lg">

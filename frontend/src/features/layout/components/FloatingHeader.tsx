@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useRunContextStore } from '@/features/context/store/run-context-store';
 import { workspaceService, type WorkspaceData } from '@/features/workspace/services/workspace-service';
 import { AddMemberControl } from '@/features/workspace/components/AddMemberControl';
+import { DiscordConnectControl } from '@/features/workspace/components/DiscordConnectControl';
 import { FolderKanban, LayoutGrid, Globe, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserAvatar } from './UserAvatar';
@@ -169,6 +170,7 @@ export function FloatingHeader() {
                                     }
                                 </button>
                             )}
+                            {isOwner && <DiscordConnectControl workspaceId={workspaceId} />}
                             {isOwner && <AddMemberControl workspaceId={workspaceId} />}
                         </>
                     )}

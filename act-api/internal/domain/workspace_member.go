@@ -7,18 +7,18 @@ type WorkspaceUser struct {
 }
 
 type DiscordInstallCandidate struct {
-	GuildID   string `json:"guild_id"`
-	GuildName string `json:"guild_name"`
+	GuildID   string `json:"guildId"`
+	GuildName string `json:"guildName"`
 	Source    string `json:"source"`
-	JoinedAt  int64  `json:"joined_at,omitempty"`
+	JoinedAt  int64  `json:"joinedAt,omitempty"`
 }
 
 type DiscordInstallSession struct {
-	SessionID       string                    `json:"session_id"`
-	WorkspaceID     string                    `json:"workspace_id"`
+	SessionID       string                    `json:"sessionId"`
+	WorkspaceID     string                    `json:"workspaceId"`
 	Status          string                    `json:"status"`
-	SelectedGuildID string                    `json:"selected_guild_id,omitempty"`
-	InviteURL       string                    `json:"invite_url,omitempty"`
-	ExpiresAt       int64                     `json:"expires_at,omitempty"`
+	SelectedGuildID string                    `json:"selectedGuildId,omitempty"`
+	InviteURL       string                    `json:"inviteUrl,omitempty"`
+	ExpiresAt       int64                     `json:"expiresAt,omitempty"`
 	Candidates      []DiscordInstallCandidate `json:"candidates,omitempty"`
 }

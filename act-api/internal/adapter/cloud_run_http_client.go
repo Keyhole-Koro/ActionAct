@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -32,6 +33,14 @@ func (t *idTokenTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func NewCloudRunServiceHTTPClient(ctx context.Context, audience string, timeout time.Duration) (*http.Client, error) {
+	// If the audience starts with http://, it's a local development environment (e.g. emulator).
+	// Skip authentication to avoid needing Google Application Default Credentials.
+	if strings.HasPrefix(audience, "http://") {
+		return &http.Client{
+			Timeout: timeout,
+		}, nil
+	}
+
 	ts, err := idtoken.NewTokenSource(ctx, audience)
 	if err != nil {
 		return nil, err
