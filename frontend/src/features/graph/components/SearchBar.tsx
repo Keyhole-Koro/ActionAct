@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, X, Zap, FileText, Brain, MessageSquare } from 'lucide-react';
+import { Search, X, Zap, FileText, Brain, MessageSquare, Bot } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { useGraphStore } from '@/features/graph/store';
 import { CAMERA_CONFIG } from '@/services/camera/cameraService';
@@ -162,6 +162,7 @@ export function SearchBar() {
                                         <div className="flex items-center gap-2 min-w-0">
                                             {kind === 'topic' ? <Zap className="h-3.5 w-3.5 text-amber-500" /> :
                                              kind === 'act' ? <Brain className="h-3.5 w-3.5 text-indigo-500" /> :
+                                             kind === 'agent_act' ? <Bot className="h-3.5 w-3.5 text-cyan-600" /> :
                                              kind === 'input' ? <FileText className="h-3.5 w-3.5 text-emerald-500" /> :
                                              <MessageSquare className="h-3.5 w-3.5 text-slate-400" />}
                                             <span className="truncate text-sm font-bold text-slate-700">{safeStr(data.label)}</span>
@@ -170,6 +171,7 @@ export function SearchBar() {
                                             'rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider',
                                             kind === 'topic' ? 'bg-amber-100 text-amber-700' :
                                             kind === 'act' ? 'bg-indigo-100 text-indigo-700' :
+                                            kind === 'agent_act' ? 'bg-cyan-100 text-cyan-700' :
                                             'bg-slate-100 text-slate-500',
                                         ].join(' ')}>{kind}</span>
                                     </div>

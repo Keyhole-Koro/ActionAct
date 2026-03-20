@@ -62,6 +62,10 @@ function toTopicNode(nodeId: string, data: DocumentData): TopicNode {
     id: nodeId,
     title: resolvedTitle,
     kind: readString(data.kind) ?? "act",
+    status: readString(data.status) === "running" || readString(data.status) === "completed" || readString(data.status) === "failed"
+      ? readString(data.status) as "running" | "completed" | "failed"
+      : undefined,
+    agentRole: readString(data.agentRole) === "search" ? "search" : undefined,
     createdBy: readString(data.createdBy) === "user" ? "user" : readString(data.createdBy) === "agent" ? "agent" : undefined,
     authorUid: readString(data.authorUid),
     topicId: readString(data.topicId),
@@ -103,7 +107,7 @@ export const actDraftService = {
   async saveDraftSnapshot(
     workspaceId: string,
     nodeId: string,
-    draft: { title?: string; kind?: string; contentMd?: string; thoughtMd?: string; referencedNodeIds?: string[]; createdBy: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
+    draft: { title?: string; kind?: string; status?: 'running' | 'completed' | 'failed'; agentRole?: 'search'; contentMd?: string; thoughtMd?: string; referencedNodeIds?: string[]; createdBy: 'user' | 'agent'; authorUid?: string; parentId?: string; topicId?: string; isManualPosition?: boolean; positionX?: number; positionY?: number },
   ) {
     await setDoc(
       draftDoc(workspaceId, nodeId),
@@ -112,6 +116,8 @@ export const actDraftService = {
         topicId: draft.topicId ?? '',
         title: draft.title ?? "",
         kind: draft.kind ?? "act",
+        ...(draft.status !== undefined ? { status: draft.status } : {}),
+        ...(draft.agentRole !== undefined ? { agentRole: draft.agentRole } : {}),
         createdBy: draft.createdBy,
         ...(draft.authorUid !== undefined ? { authorUid: draft.authorUid } : {}),
         contentMd: draft.contentMd ?? "",
@@ -137,6 +143,8 @@ export const actDraftService = {
       topicId: patch.data?.topicId ?? '',
       title: patch.data?.label ?? queryText,
       kind: patch.data?.kind ?? "act",
+      ...(patch.data?.status !== undefined ? { status: patch.data.status } : {}),
+      ...(patch.data?.agentRole !== undefined ? { agentRole: patch.data.agentRole } : {}),
       createdBy: patch.data?.createdBy ?? "agent",
       ...(authorUid !== undefined ? { authorUid } : {}),
       referencedNodeIds: patch.data?.referencedNodeIds ?? [],

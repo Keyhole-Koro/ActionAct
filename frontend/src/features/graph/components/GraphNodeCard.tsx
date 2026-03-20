@@ -38,6 +38,7 @@ const actTypeConfig: Record<string, { bar: string; dot: string; accent: string; 
     investigate: { bar: 'bg-emerald-500', dot: 'bg-emerald-500', accent: 'text-emerald-600', ring: 'ring-emerald-500/35', ringActive: 'ring-emerald-500/80', ringDescendant: 'ring-emerald-400/50', bgTint: 'bg-emerald-50/50', topGrad: 'from-emerald-400 via-teal-300 to-emerald-400' },
     consult:     { bar: 'bg-amber-500',   dot: 'bg-amber-500',   accent: 'text-amber-600',   ring: 'ring-amber-500/35',   ringActive: 'ring-amber-500/80',   ringDescendant: 'ring-amber-400/50',   bgTint: 'bg-amber-50/50',   topGrad: 'from-amber-400 via-yellow-300 to-amber-400' },
     act:         { bar: 'bg-violet-500',  dot: 'bg-violet-500',  accent: 'text-violet-600',  ring: 'ring-violet-500/35',  ringActive: 'ring-violet-500/80',  ringDescendant: 'ring-violet-400/50',  bgTint: 'bg-violet-50/50',  topGrad: 'from-violet-400 via-purple-300 to-violet-400' },
+    agent_act:   { bar: 'bg-cyan-500',    dot: 'bg-cyan-500',    accent: 'text-cyan-700',    ring: 'ring-cyan-500/35',    ringActive: 'ring-cyan-500/80',    ringDescendant: 'ring-cyan-400/50',    bgTint: 'bg-cyan-50/50',    topGrad: 'from-cyan-400 via-sky-300 to-cyan-400' },
 };
 
 // Per-author color palette for user-created act nodes
@@ -66,6 +67,7 @@ const typeConfig: Record<string, { gradient: string; accent: string; glow: strin
     investigate: { gradient: 'from-emerald-500/10 via-teal-500/5 to-transparent', accent: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
     note: { gradient: 'from-amber-500/10 via-yellow-500/5 to-transparent', accent: 'text-amber-500', glow: 'shadow-amber-500/20' },
     act: { gradient: 'from-blue-500/10 via-indigo-500/5 to-transparent', accent: 'text-blue-500', glow: 'shadow-blue-500/20' },
+    agent_act: { gradient: 'from-cyan-500/10 via-sky-500/5 to-transparent', accent: 'text-cyan-600', glow: 'shadow-cyan-500/20' },
     suggestion: { gradient: 'from-violet-500/10 via-purple-500/5 to-transparent', accent: 'text-violet-500', glow: 'shadow-violet-500/20' },
     topic: { gradient: 'from-blue-500/20 via-cyan-500/10 to-transparent', accent: 'text-blue-600', glow: 'shadow-blue-500/25' },
     cluster: { gradient: 'from-teal-500/20 via-emerald-500/10 to-transparent', accent: 'text-teal-600', glow: 'shadow-teal-500/25' },
@@ -93,8 +95,10 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const [editValue, setEditValue] = useState(data.label);
     const [followupValue, setFollowupValue] = useState('');
     const [isUploadingMedia, setIsUploadingMedia] = useState(false);
-    const isActNode = data.kind === 'act';
-    const isDraftAct = isActNode && actStage === 'draft';
+    const isPrimaryActNode = data.kind === 'act';
+    const isAgentActNode = data.kind === 'agent_act';
+    const isActNode = isPrimaryActNode || isAgentActNode;
+    const isDraftAct = isPrimaryActNode && actStage === 'draft';
     const nodeDepth = typeof data.radialDepth === 'number' ? data.radialDepth : 0;
     const activeRelation = data.activeRelation as 'self' | 'descendant' | null | undefined;
 
@@ -147,7 +151,7 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
     const usedTools = Array.isArray(data.usedTools) ? data.usedTools : [];
     const usedSources = Array.isArray(data.usedSources) ? data.usedSources : [];
     const hasRunTrace = usedContextNodeIds.length > 0 || usedTools.length > 0 || usedSources.length > 0;
-    const canSubmitFollowup = isActNode
+    const canSubmitFollowup = isPrimaryActNode
         && isExpanded
         && typeof data.onRunAction === 'function'
         && !isNodeStreaming;
@@ -920,6 +924,23 @@ export function GraphNodeCard({ id, type, data, selected, isConnectable, sourceP
                                             You
                                         </span>
                                     )
+                                )}
+                                {isExpanded && isAgentActNode && data.agentRole === 'search' && (
+                                    <span className={`inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium text-cyan-700`}>
+                                        <Globe className="h-3 w-3" />
+                                        Search
+                                    </span>
+                                )}
+                                {isExpanded && isAgentActNode && data.status && (
+                                    <span className={`inline-flex items-center rounded-full border ${isActNode ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'} font-medium ${
+                                        data.status === 'running'
+                                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                            : data.status === 'completed'
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                : 'border-rose-200 bg-rose-50 text-rose-700'
+                                    }`}>
+                                        {data.status}
+                                    </span>
                                 )}
                                 {(data.detailHtml || data.contentMd) && (
                                     <span className={`inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/50 ${isActNode ? 'px-1 py-0.5' : 'px-1.5 py-0.5'} text-slate-500`}>

@@ -50,6 +50,8 @@ interface GraphState {
     addOrUpdateActNode: (nodeId: string, payload: {
         label?: string;
         kind?: string;
+        status?: 'running' | 'completed' | 'failed';
+        agentRole?: 'search';
         hasStartedRun?: boolean;
         parentId?: string;
         contentMd?: string;
@@ -131,6 +133,21 @@ function buildReferenceEdges(targetNodeId: string, referencedNodeIds: string[]):
             animated: true,
             style: { stroke: '#888', strokeDasharray: '5,5' },
         }));
+}
+
+function buildHierarchyEdge(parentId: string, childId: string): Edge {
+    return {
+        id: `edge-act-${parentId}-${childId}`,
+        source: parentId,
+        target: childId,
+    };
+}
+
+function syncActHierarchyEdges(actEdges: Edge[], nodeId: string, parentId?: string) {
+    const preservedEdges = actEdges.filter((edge) => !(edge.target === nodeId && edge.id.startsWith('edge-act-')));
+    return parentId
+        ? [...preservedEdges, buildHierarchyEdge(parentId, nodeId)]
+        : preservedEdges;
 }
 
 function syncActReferenceEdges(actEdges: Edge[], targetNodeId: string, referencedNodeIds: string[]) {
@@ -413,6 +430,10 @@ export const useGraphStore = create<GraphState>((set) => ({
                 : (Array.isArray(exists.data?.referencedNodeIds)
                     ? exists.data.referencedNodeIds.filter((value): value is string => typeof value === 'string')
                     : []);
+            const nextParentId = payload.parentId !== undefined
+                ? payload.parentId
+                : (typeof exists.data?.parentId === 'string' ? exists.data.parentId : undefined);
+            const edgesWithHierarchy = syncActHierarchyEdges(state.actEdges, nodeId, nextParentId);
             return {
                 actNodes: state.actNodes.map(n =>
                     n.id === nodeId
@@ -422,6 +443,8 @@ export const useGraphStore = create<GraphState>((set) => ({
                                 ...n.data,
                                 ...(payload.label !== undefined ? { label: payload.label } : {}),
                                 ...(payload.kind !== undefined ? { kind: payload.kind } : {}),
+                                ...(payload.status !== undefined ? { status: payload.status } : {}),
+                                ...(payload.agentRole !== undefined ? { agentRole: payload.agentRole } : {}),
                                 ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                                 ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
                                 ...(payload.contentMd !== undefined ? { contentMd: payload.contentMd } : {}),
@@ -437,7 +460,7 @@ export const useGraphStore = create<GraphState>((set) => ({
                         }
                         : n
                 ),
-                actEdges: syncActReferenceEdges(state.actEdges, nodeId, nextReferencedNodeIds),
+                actEdges: syncActReferenceEdges(edgesWithHierarchy, nodeId, nextReferencedNodeIds),
                 // Update recency even on updates from agent to keep it visible while streaming
                 nodeLastUsedAt: { ...state.nodeLastUsedAt, [nodeId]: now },
             };
@@ -454,6 +477,8 @@ export const useGraphStore = create<GraphState>((set) => ({
                 createdBy: payload.createdBy ?? 'agent',
                 ...(payload.authorUid !== undefined ? { authorUid: payload.authorUid } : {}),
                 kind: payload.kind ?? 'act',
+                ...(payload.status !== undefined ? { status: payload.status } : {}),
+                ...(payload.agentRole !== undefined ? { agentRole: payload.agentRole } : {}),
                 ...(payload.hasStartedRun !== undefined ? { hasStartedRun: payload.hasStartedRun } : {}),
                 referencedNodeIds: payload.referencedNodeIds ?? [],
                 contentMd: payload.contentMd ?? '',
@@ -466,7 +491,8 @@ export const useGraphStore = create<GraphState>((set) => ({
             }
         };
 
-        const newEdges = syncActReferenceEdges(state.actEdges, nodeId, payload.referencedNodeIds ?? []);
+        const withHierarchy = syncActHierarchyEdges(state.actEdges, nodeId, payload.parentId);
+        const newEdges = syncActReferenceEdges(withHierarchy, nodeId, payload.referencedNodeIds ?? []);
         const shouldLinkToFirstActNode = state.actNodes.length > 0
             && (payload.referencedNodeIds?.length ?? 0) === 0
             && state.selectedNodeIds.length === 0;

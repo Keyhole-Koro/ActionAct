@@ -96,7 +96,9 @@ export function useGraphSubscriptions({
                             ? existingActNodeById.get(node.id)?.data?.label as string
                             : node.title)
                         : node.title,
-                    kind: 'act',
+                    kind: node.kind ?? 'act',
+                    ...(node.status ? { status: node.status } : {}),
+                    ...(node.agentRole ? { agentRole: node.agentRole } : {}),
                     contentMd: node.contentMd,
                     thoughtMd: node.thoughtMd,
                     contextSummary: node.contextSummary,
@@ -128,13 +130,20 @@ export function useGraphSubscriptions({
                 const referencedNodeIds = Array.isArray(node.data?.referencedNodeIds)
                     ? node.data.referencedNodeIds.filter((value): value is string => typeof value === 'string' && value !== node.id)
                     : [];
-                return referencedNodeIds.map((sourceId) => ({
+                const referenceEdges = referencedNodeIds.map((sourceId) => ({
                     id: `edge-ctx-${sourceId}-${node.id}`,
                     source: sourceId,
                     target: node.id,
                     animated: true,
                     style: { stroke: '#888', strokeDasharray: '5,5' },
                 }));
+                const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
+                const hierarchyEdges = parentId ? [{
+                    id: `edge-act-${parentId}-${node.id}`,
+                    source: parentId,
+                    target: node.id,
+                }] : [];
+                return [...referenceEdges, ...hierarchyEdges];
             });
             setActGraph(nextActNodes as unknown as GraphNodeBase[], nextActEdges);
         });

@@ -23,6 +23,8 @@ type Box = {
 const GLOBAL_X_OFFSET = 220;
 // Horizontal gap between depth levels (depth=0, depth=1, depth=2, …)
 const COLUMN_GAP = 320;
+const ATTACHED_ROOT_GAP = 180;
+const AGENT_CHILD_GAP = 180;
 // Vertical gap between sibling subtrees within a tree
 const SIBLING_GAP = 24;
 // Vertical gap between separate trees
@@ -64,6 +66,10 @@ function buildActKey(actNodes: GraphNodeBase[]): string {
 
 function isRenderableCoordinate(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 20000;
+}
+
+function getChildGap(child: GraphNodeBase): number {
+    return child.data?.kind === 'agent_act' ? AGENT_CHILD_GAP : COLUMN_GAP;
 }
 
 export function projectActOverlay({
@@ -145,7 +151,7 @@ export function projectActOverlay({
         const fixedParent = parentId ? fixedById.get(parentId) : undefined;
         if (fixedParent) {
             const pd = getNodeDimensions(fixedParent, expandedSet.has(fixedParent.id));
-            baseXPerRoot.set(root.id, fixedParent.position.x + pd.width + COLUMN_GAP);
+            baseXPerRoot.set(root.id, fixedParent.position.x + pd.width + ATTACHED_ROOT_GAP);
         } else {
             baseXPerRoot.set(root.id, globalBaseX);
         }
@@ -304,10 +310,50 @@ export function projectActOverlay({
         assignY(root.id, treeOriginY.get(root.id) ?? 0);
     }
 
+    const posXMap = new Map<string, number>();
+    const assignX = (nodeId: string): number => {
+        const cached = posXMap.get(nodeId);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const node = nodeById.get(nodeId);
+        if (!node) {
+            posXMap.set(nodeId, globalBaseX);
+            return globalBaseX;
+        }
+
+        const parentId = typeof node.data?.parentId === 'string' ? node.data.parentId : undefined;
+        if (parentId && floatIds.has(parentId)) {
+            const parentNode = nodeById.get(parentId);
+            const parentX = assignX(parentId);
+            const nextX = parentX + getChildGap(node);
+            posXMap.set(nodeId, nextX);
+            return nextX;
+        }
+
+        if (parentId) {
+            const fixedParent = fixedById.get(parentId);
+            if (fixedParent) {
+                const fixedDimensions = getNodeDimensions(fixedParent, expandedSet.has(fixedParent.id));
+                const nextX = fixedParent.position.x + fixedDimensions.width + getChildGap(node);
+                posXMap.set(nodeId, nextX);
+                return nextX;
+            }
+        }
+
+        const rootId = rootOfNode.get(nodeId);
+        const nextX = rootId != null ? (baseXPerRoot.get(rootId) ?? globalBaseX) : globalBaseX;
+        posXMap.set(nodeId, nextX);
+        return nextX;
+    };
+
     // ── Emit positioned nodes ─────────────────────────────────────────────────
     const positionedFloat: GraphNodeBase[] = floatNodes.map((node) => {
         const preserveExistingPosition =
-            node.data?.overlayPositioned === true
+            node.data?.kind !== 'agent_act'
+            && typeof node.data?.parentId !== 'string'
+            && node.data?.overlayPositioned === true
             && isRenderableCoordinate(node.position?.x)
             && isRenderableCoordinate(node.position?.y);
 
@@ -317,13 +363,10 @@ export function projectActOverlay({
                 data: { ...node.data, overlayPositioned: true },
             };
         }
-
-        const rootId = rootOfNode.get(node.id);
-        const nodeBaseX = rootId != null ? (baseXPerRoot.get(rootId) ?? globalBaseX) : globalBaseX;
         return {
             ...node,
             position: {
-                x: nodeBaseX + (depthMap.get(node.id) ?? 0) * COLUMN_GAP,
+                x: assignX(node.id),
                 y: posYMap.get(node.id) ?? 0,
             },
             data: { ...node.data, overlayPositioned: true },

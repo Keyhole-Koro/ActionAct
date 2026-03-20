@@ -9,6 +9,8 @@ export async function upsertActNodeDraft(
     payload: {
         label?: string;
         kind?: string;
+        status?: 'running' | 'completed' | 'failed';
+        agentRole?: 'search';
         parentId?: string;
         referencedNodeIds?: string[];
         createdBy?: 'user' | 'agent';
@@ -27,6 +29,8 @@ export async function upsertActNodeDraft(
     await actDraftService.saveDraftSnapshot(workspaceId, nodeId, {
         title: payload.label ?? (node.data?.label as string),
         kind: payload.kind ?? (node.data?.kind as string),
+        status: payload.status ?? (node.data?.status as 'running' | 'completed' | 'failed' | undefined),
+        agentRole: payload.agentRole ?? (node.data?.agentRole as 'search' | undefined),
         createdBy: payload.createdBy ?? (node.data?.createdBy as 'user' | 'agent'),
         authorUid: payload.authorUid ?? (node.data?.authorUid as string),
         contentMd: payload.contentMd ?? (node.data?.contentMd as string),

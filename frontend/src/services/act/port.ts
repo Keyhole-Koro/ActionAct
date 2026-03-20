@@ -4,6 +4,8 @@ export interface PatchOp {
     data?: Partial<{
         label: string;
         kind: string;
+        status: 'running' | 'completed' | 'failed';
+        agentRole: 'search';
         topicId: string;
         parentId: string;
         contentMd: string;

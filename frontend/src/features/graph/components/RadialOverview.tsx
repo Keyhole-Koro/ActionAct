@@ -27,7 +27,7 @@ type Segment = {
     hue: number;
 };
 
-const INNER_RADIUS = 72;
+const INNER_RADIUS = 56;
 const RING_THICKNESS = 78;
 const RING_GAP = 10;
 const ROOT_HUES = [198, 256, 148, 34, 320, 82, 12, 228];
@@ -314,6 +314,48 @@ export function RadialOverview({
         viewport.scrollTop += event.deltaY * SCROLL_SPEED;
     };
 
+    const handleViewportMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+        const viewport = viewportRef.current;
+        if (!viewport) {
+            return;
+        }
+
+        const rect = viewport.getBoundingClientRect();
+        const localX = event.clientX - rect.left;
+        const localY = event.clientY - rect.top;
+        const edgeRatio = 0.18;
+        const edgeWidth = rect.width * edgeRatio;
+        const edgeHeight = rect.height * edgeRatio;
+
+        let deltaX = 0;
+        let deltaY = 0;
+
+        if (localX < edgeWidth) {
+            deltaX = -((edgeWidth - localX) / edgeWidth);
+        } else if (localX > rect.width - edgeWidth) {
+            deltaX = (localX - (rect.width - edgeWidth)) / edgeWidth;
+        }
+
+        if (localY < edgeHeight) {
+            deltaY = -((edgeHeight - localY) / edgeHeight);
+        } else if (localY > rect.height - edgeHeight) {
+            deltaY = (localY - (rect.height - edgeHeight)) / edgeHeight;
+        }
+
+        if (deltaX === 0 && deltaY === 0) {
+            viewportTargetRef.current = null;
+            return;
+        }
+
+        const maxPanStep = 220;
+        const targetX = viewport.scrollLeft + (deltaX * maxPanStep);
+        const targetY = viewport.scrollTop + (deltaY * maxPanStep);
+        focusViewportOnPoint(
+            targetX + (viewport.clientWidth / 2),
+            targetY + (viewport.clientHeight / 2),
+        );
+    };
+
     const focusViewportOnPoint = (x: number, y: number) => {
         const viewport = viewportRef.current;
         if (!viewport) {
@@ -371,6 +413,7 @@ export function RadialOverview({
             ref={viewportRef}
             className="relative h-full w-full overflow-auto rounded-[28px] bg-slate-50"
             onMouseLeave={releaseHover}
+            onMouseMove={handleViewportMouseMove}
             onWheel={handleWheel}
         >
             <div
@@ -414,7 +457,6 @@ export function RadialOverview({
                                 className="cursor-pointer transition-all duration-500 ease-out hover:brightness-95"
                                 onMouseEnter={() => {
                                     lockHover(segment.node.id);
-                                    focusViewportOnPoint(segmentCenterPoint.x, segmentCenterPoint.y);
                                 }}
                                 onClick={(e) => {
                                     if (e.detail === 2) {
@@ -479,7 +521,6 @@ export function RadialOverview({
                             style={{ left: labelPoint.x, top: labelPoint.y }}
                             onMouseEnter={() => {
                                 lockHover(segment.node.id);
-                                focusViewportOnPoint(labelPoint.x, labelPoint.y);
                             }}
                             onFocus={() => lockHover(segment.node.id)}
                             onBlur={releaseHover}

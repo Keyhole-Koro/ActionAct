@@ -22,6 +22,8 @@ export type BaseNodeData = {
     inputId?: string;
     label: string;
     kind?: string;
+    status?: 'running' | 'completed' | 'failed';
+    agentRole?: 'search';
     actions?: GraphNodeAction[];
     contentMd?: string;
     thoughtMd?: string;
@@ -43,7 +45,7 @@ export type PersistedNodeData = BaseNodeData & {
 };
 
 export type ActNodeData = BaseNodeData & {
-    kind: 'act';
+    kind: 'act' | 'agent_act' | 'suggestion';
 };
 
 export type GraphNodeBaseData = PersistedNodeData | ActNodeData;

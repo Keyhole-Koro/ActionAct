@@ -11,6 +11,8 @@ export interface TopicNode {
     inputId?: string;
     title: string;
     kind?: string;
+    status?: 'running' | 'completed' | 'failed';
+    agentRole?: 'search';
     createdBy?: 'user' | 'agent';
     authorUid?: string;
     parentId?: string;

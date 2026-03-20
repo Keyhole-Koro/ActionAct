@@ -27,6 +27,25 @@ export type StartActRunResult = {
   cancel: () => void;
 };
 
+function deriveAgentRole(kind: unknown): "search" | undefined {
+  return kind === "agent_act" ? "search" : undefined;
+}
+
+function finalizeAgentNodes(nodeIds: Iterable<string>, status: "completed" | "failed") {
+  const store = useGraphStore.getState();
+  const actNodesById = new Map(store.actNodes.map((node) => [node.id, node]));
+  for (const nodeId of nodeIds) {
+    const node = actNodesById.get(nodeId);
+    if (!node || node.data?.kind !== "agent_act") {
+      continue;
+    }
+    store.addOrUpdateActNode(nodeId, {
+      status,
+      agentRole: "search",
+    });
+  }
+}
+
 function compactText(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") {
     return null;
@@ -147,6 +166,10 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
         await actDraftService.saveDraftSnapshot(effectiveWorkspaceId, nodeId, {
           title: typeof node.data?.label === "string" ? node.data.label : query,
           kind: typeof node.data?.kind === "string" ? node.data.kind : "act",
+          status: node.data?.status === "running" || node.data?.status === "completed" || node.data?.status === "failed"
+            ? node.data.status
+            : undefined,
+          agentRole: node.data?.agentRole === "search" ? "search" : deriveAgentRole(node.data?.kind),
           createdBy: node.data?.createdBy === "user" ? "user" : "agent",
           authorUid: typeof node.data?.authorUid === "string" ? node.data.authorUid : undefined,
           contentMd: typeof node.data?.contentMd === "string" ? node.data.contentMd : "",
@@ -197,6 +220,8 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
             patch.data.label ??
             (existingNode ? undefined : query),
           kind: patch.data.kind ?? "act",
+          status: patch.data.status ?? ((patch.data.kind ?? existingNode?.data?.kind) === "agent_act" ? "running" : undefined),
+          agentRole: patch.data.agentRole ?? deriveAgentRole(patch.data.kind ?? existingNode?.data?.kind),
           createdBy: resolvedCreatedBy,
           ...(resolvedCreatedBy === 'user' && currentUserUid ? { authorUid: currentUserUid } : {}),
           referencedNodeIds:
@@ -261,11 +286,13 @@ export function startActRun({ targetNodeId, query, workspaceId, options, trigger
       }
     },
     async () => {
+      finalizeAgentNodes(touchedNodeIds, "completed");
       await persistTouchedNodes();
       useGraphStore.getState().clearStreamingNodes([...touchedNodeIds]);
       useGraphStore.getState().setStreamRunning(false);
     },
     (error) => {
+      finalizeAgentNodes(touchedNodeIds, "failed");
       void persistTouchedNodes();
       console.error("Stream error:", error);
       useGraphStore.getState().clearStreamingNodes([...touchedNodeIds]);
