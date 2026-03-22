@@ -55,9 +55,6 @@ export function RadialOverview({
     const hoverLockRef = useRef<string | null>(null);
 
     const lockHover = (nodeId: string) => {
-        if (hoverLockRef.current !== null && hoverLockRef.current !== nodeId) {
-            return;
-        }
         hoverLockRef.current = nodeId;
         setHoveredNodeId(nodeId);
         onHoverNode?.(nodeId);

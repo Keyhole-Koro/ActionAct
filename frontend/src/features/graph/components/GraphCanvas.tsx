@@ -45,6 +45,7 @@ import { useGraphDisplayNodes } from '../hooks/useGraphDisplayNodes';
 import { useGraphDisplayEdges } from '../hooks/useGraphDisplayEdges';
 import { useGraphCamera } from '../hooks/useGraphCamera';
 import { useGraphInteractions } from '../hooks/useGraphInteractions';
+import { createPersistedGraphMockHundred } from '../mocks/persistedGraphMockHundred';
 
 // Isolated component so useViewport() only re-renders cursors, not GraphCanvas
 function MultiplayerCursors({ otherCursors }: { otherCursors: PresenceUser[] }) {
@@ -170,7 +171,22 @@ export function GraphCanvas() {
 
     // ── Hooks ────────────────────────────────────────────────────────────────
 
-    useGraphSubscriptions({ effectiveWorkspaceId: usePersistedGraphMock ? 'ws-mock-public' : workspaceId, setPersistedGraph, setActGraph });
+    useGraphSubscriptions({
+        effectiveWorkspaceId: usePersistedGraphMock ? undefined : workspaceId,
+        setPersistedGraph,
+        setActGraph
+    });
+
+    React.useEffect(() => {
+        if (usePersistedGraphMock) {
+            clearAllFocus();
+            setSelectedNodes([]);
+            setActiveNode(null);
+            const mock = createPersistedGraphMockHundred('topic-mock-1');
+            setPersistedGraph(mock.nodes as Node<PersistedNodeData>[], mock.edges);
+            setActGraph([], []);
+        }
+    }, [usePersistedGraphMock, setPersistedGraph, setActGraph, clearAllFocus, setSelectedNodes, setActiveNode]);
 
     const {
         recentClickedNodeIds,
