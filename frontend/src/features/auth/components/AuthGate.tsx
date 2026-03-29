@@ -19,6 +19,7 @@ type AuthGateProps = {
 };
 
 export function AuthGate({ children }: AuthGateProps) {
+
   const { user, loading, error, isAuthenticated } = useRequireAuth();
   const params = useParams<{ id: string }>();
   const router = useRouter();

@@ -1,149 +1,188 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { FolderKanban, Plus, ArrowRight, Globe, Clock, Database, FileText } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import {
+    FolderKanban, Plus, Star, Trash2, Clock, Calendar,
+    CheckSquare, Square, ArrowUpDown, Search,
+} from "lucide-react";
 
 import { LoginButton } from "@/features/auth/components/LoginButton";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
 import { UserAvatar } from "@/features/layout/components/UserAvatar";
 import { createWorkspace } from "@/features/workspace/services/create-workspace";
 import { listUserWorkspaces } from "@/features/workspace/services/list-workspaces";
-import { listPublicWorkspaces } from "@/features/workspace/services/list-public-workspaces";
-import { type WorkspaceData } from "@/features/workspace/services/workspace-service";
+import { type WorkspaceData, workspaceService } from "@/features/workspace/services/workspace-service";
+import { Sidebar } from "@/features/dashboard/components/Sidebar";
+import { LayoutToggle, type Layout } from "@/features/dashboard/components/LayoutToggle";
+import { useFavoritesLimit } from "@/features/dashboard/hooks/useFavoritesLimit";
+import { useDashboardPreferences } from "@/features/dashboard/hooks/useDashboardPreferences";
+import { useWorkspaceSelection } from "@/features/dashboard/hooks/useWorkspaceSelection";
+import { useLanguage } from "@/features/dashboard/hooks/useLanguage";
+import { formatDate, sortWorkspaces } from "@/features/dashboard/utils";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-function formatRelativeTime(millis?: number): string {
-    if (!millis) return "Never";
-    const diff = Date.now() - millis;
-    const mins = Math.floor(diff / 60000);
-    const hours = Math.floor(mins / 60);
-    const days = Math.floor(hours / 24);
+// ─── i18n ────────────────────────────────────────────────────
 
-    if (mins < 1) return "Just now";
-    if (mins < 60) return `${mins}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
-}
+const dict = {
+    ja: {
+        title: "My Workspaces",
+        subtitle: "ワークスペースを選んで開く",
+        searchPlaceholder: "ワークスペースを検索...",
+        newWorkspace: "新規ワークスペース",
+        creating: "作成中...",
+        noWorkspaces: "ワークスペースがありません",
+        noWorkspacesHint: "はじめてのワークスペースを作成しましょう",
+        favorites: "お気に入り",
+        noFavorites: "お気に入りがありません",
+        noFavoritesHint: "カードの ★ をクリックして追加しましょう",
+        allWorkspaces: "すべてのワークスペース",
+        selectAll: "すべて選択",
+        selectedCount: (n: number) => `${n} 件選択中`,
+        moveToTrash: "ゴミ箱へ移動",
+        moving: "移動中...",
+        cancel: "キャンセル",
+        select: "選択",
+        showMore: (n: number) => `他 ${n} 件を表示`,
+        collapse: "折りたたむ",
+        lastViewed: "最終閲覧",
+        createdAt: "作成日",
+        newest: "新しい順",
+        oldest: "古い順",
+        lastViewedLabel: "最終閲覧:",
+        createdLabel: "作成:",
+    },
+    en: {
+        title: "My Workspaces",
+        subtitle: "Select a workspace to open",
+        searchPlaceholder: "Search workspaces...",
+        newWorkspace: "New Workspace",
+        creating: "Creating...",
+        noWorkspaces: "No workspaces yet",
+        noWorkspacesHint: "Create your first workspace to get started",
+        favorites: "Favorites",
+        noFavorites: "No favorites yet",
+        noFavoritesHint: "Click ★ on a card to add it here",
+        allWorkspaces: "All Workspaces",
+        selectAll: "Select All",
+        selectedCount: (n: number) => `${n} selected`,
+        moveToTrash: "Move to Trash",
+        moving: "Moving...",
+        cancel: "Cancel",
+        select: "Select",
+        showMore: (n: number) => `Show ${n} more`,
+        collapse: "Collapse",
+        lastViewed: "Last viewed",
+        createdAt: "Created",
+        newest: "Newest",
+        oldest: "Oldest",
+        lastViewedLabel: "Viewed:",
+        createdLabel: "Created:",
+    },
+} as const;
 
-function WorkspaceGrid({
-    workspaces,
-    onSelect,
-    showPublicBadge = false,
-}: {
-    workspaces: WorkspaceData[];
-    onSelect: (ws: WorkspaceData) => void;
-    showPublicBadge?: boolean;
-}) {
-    return (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {workspaces.map((ws) => (
-                <button
-                    key={ws.id}
-                    onClick={() => onSelect(ws)}
-                    className="group flex flex-col rounded-xl border bg-card p-5 text-left hover:border-primary/40 hover:shadow-md transition-all duration-300"
-                >
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                            <FolderKanban className="h-5 w-5 text-primary" />
-                        </div>
-                        {showPublicBadge && (
-                            <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                <Globe className="h-3 w-3" />
-                                Public
-                            </div>
-                        )}
-                    </div>
+type Tx = typeof dict[keyof typeof dict];
 
-                    <div className="mb-3">
-                        <h3 className="font-semibold text-base line-clamp-1">{ws.name}</h3>
-                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5 opacity-60">
-                            {ws.id}
-                        </p>
-                    </div>
+// ─── ページコンポーネント ─────────────────────────────────────
 
-                    {/* Preview Text */}
-                    <div className="mb-5 flex-1">
-                        {ws.latestNodeSummary ? (
-                            <div className="flex gap-2">
-                                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/50" />
-                                <p className="text-xs text-muted-foreground line-clamp-2 italic leading-relaxed">
-                                    "{ws.latestNodeSummary}"
-                                </p>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-muted-foreground/40 italic">
-                                No activity recorded yet.
-                            </p>
-                        )}
-                    </div>
-
-                    {/* Stats Footer */}
-                    <div className="flex items-center justify-between border-t pt-4 mt-auto">
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
-                                <Database className="h-3 w-3 opacity-70" />
-                                {ws.nodeCount ?? 0}
-                            </div>
-                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
-                                <Clock className="h-3 w-3 opacity-70" />
-                                {formatRelativeTime(ws.updatedAt)}
-                            </div>
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
-                    </div>
-                </button>
-            ))}
-        </div>
-    );
-}
-
-function DashboardContent() {
+export default function DashboardPage() {
     const { user, loading, isAuthenticated } = useRequireAuth();
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const usePersistedGraphMock = searchParams.get('graphMock') === '1';
-    const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
-    const [sharedWorkspaces, setSharedWorkspaces] = useState<WorkspaceData[]>([]);
-    const [publicWorkspaces, setPublicWorkspaces] = useState<WorkspaceData[]>([]);
-    const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
-    const [loadingPublic, setLoadingPublic] = useState(false);
-    const [creating, setCreating] = useState(false);
-    const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-    const [publicWorkspaceError, setPublicWorkspaceError] = useState<string | null>(null);
+    const lang = useLanguage();
+    const tx = dict[lang];
 
-    useEffect(() => {
+    // サーバーサイドでは volatile な UI 状態のみ
+    const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
+    const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+
+    // ページリロード・ルート切り替えを跨いで永続化される表示設定
+    const { prefs, update } = useDashboardPreferences();
+    const { sortKey, sortDir, layoutFav, layoutAll, showAllFavorites } = prefs;
+
+    const { limit: favoritesLimit } = useFavoritesLimit();
+    const {
+        isSelectionMode,
+        setIsSelectionMode,
+        selectedIds,
+        toggleSelect,
+        selectAll,
+        clearSelection,
+    } = useWorkspaceSelection();
+
+    // ─── データ取得 ─────────────────────────────────────────
+
+    const fetchWorkspaces = () => {
         if (!user) return;
         setLoadingWorkspaces(true);
-        setWorkspaceError(null);
         listUserWorkspaces(user.uid)
-            .then((all) => {
-                const owned = all.filter((ws) => ws.createdBy === user.uid);
-                const shared = all.filter((ws) => ws.createdBy !== user.uid);
-                setWorkspaces(owned);
-                setSharedWorkspaces(shared);
-            })
-            .catch((error) => {
-                console.error(error);
-                setWorkspaceError(error instanceof Error ? error.message : "Failed to load workspaces");
-            })
+            .then(setWorkspaces)
+            .catch(console.error)
             .finally(() => setLoadingWorkspaces(false));
+    };
 
-        setLoadingPublic(true);
-        setPublicWorkspaceError(null);
-        listPublicWorkspaces()
-            .then((all) => {
-                // Exclude workspaces the user is already a member of (shown in My Workspaces)
-                setPublicWorkspaces(all);
-            })
-            .catch((error) => {
-                console.error(error);
-                setPublicWorkspaceError(error instanceof Error ? error.message : "Failed to load public workspaces");
-            })
-            .finally(() => setLoadingPublic(false));
+    useEffect(() => {
+        fetchWorkspaces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
+    // ─── 派生データ ─────────────────────────────────────────
+
+    const sorted = useMemo(() => {
+        const filtered = searchTerm
+            ? workspaces.filter((ws) =>
+                  (ws.name || "").toLowerCase().includes(searchTerm.toLowerCase()),
+              )
+            : workspaces;
+        return sortWorkspaces(filtered, sortKey, sortDir);
+    }, [workspaces, searchTerm, sortKey, sortDir]);
+
+    const favorites = sorted.filter((ws) => ws.isFavorite);
+    const others = sorted.filter((ws) => !ws.isFavorite);
+
+    // ─── ハンドラ ───────────────────────────────────────────
+
     const handleSelect = (ws: WorkspaceData) => {
+        if (isSelectionMode) {
+            toggleSelect(ws.id);
+            return;
+        }
         router.push(`/workspace/${ws.id}`);
+    };
+
+    const handleToggleFavorite = async (e: React.MouseEvent, ws: WorkspaceData) => {
+        e.stopPropagation();
+        await workspaceService.toggleFavorite(ws.id, !ws.isFavorite);
+        setWorkspaces((prev) =>
+            prev.map((w) => (w.id === ws.id ? { ...w, isFavorite: !w.isFavorite } : w)),
+        );
+    };
+
+    const handleMoveToTrash = async (e: React.MouseEvent, ws: WorkspaceData) => {
+        e.stopPropagation();
+        if (!confirm(`「${ws.name}」をゴミ箱に移動しますか？`)) return;
+        await workspaceService.deleteWorkspace(ws.id);
+        setWorkspaces((prev) => prev.filter((w) => w.id !== ws.id));
+    };
+
+    const handleBulkMoveToTrash = async () => {
+        if (selectedIds.size === 0 || isProcessing) return;
+        if (!confirm(`${selectedIds.size} 件をゴミ箱に移動しますか？`)) return;
+        setIsProcessing(true);
+        try {
+            const ids = Array.from(selectedIds);
+            setWorkspaces((prev) => prev.filter((w) => !selectedIds.has(w.id)));
+            await Promise.all(ids.map((id) => workspaceService.deleteWorkspace(id)));
+            clearSelection();
+        } catch (error) {
+            console.error("Bulk trash error:", error);
+            fetchWorkspaces();
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleCreate = async () => {
@@ -155,12 +194,14 @@ function DashboardContent() {
                 email: user.email,
                 displayName: user.displayName,
             });
-            router.push(`/workspace/${result.workspaceId}`);
+            router.push(`/workspace/${result.workspaceId}?topicId=${result.topicId}`);
         } catch (error) {
             console.error("Failed to create workspace", error);
             setCreating(false);
         }
     };
+
+    // ─── 認証ガード ─────────────────────────────────────────
 
     if (loading) {
         return (
@@ -181,107 +222,454 @@ function DashboardContent() {
         );
     }
 
+    // ─── レンダリング ────────────────────────────────────────
+
+    const sharedCardProps = {
+        isSelectionMode,
+        selectedIds,
+        onSelect: handleSelect,
+        onToggleFavorite: handleToggleFavorite,
+        onMoveToTrash: handleMoveToTrash,
+        tx,
+    };
+
     return (
-        <div className="min-h-screen bg-background">
-            <header className="border-b bg-background/95 backdrop-blur-sm sticky top-0 z-10">
-                <div className="mx-auto max-w-4xl px-6 h-14 flex items-center justify-between">
-                    <span className="text-base font-semibold tracking-tight">Act</span>
-                    <UserAvatar
-                        className="h-8 w-8 rounded-full"
-                        dropdownSide="bottom"
-                        dropdownAlign="end"
-                    />
-                </div>
-            </header>
-            <div className="mx-auto max-w-4xl px-6 py-12">
-                <div className="mb-8 flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold">Workspaces</h1>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            Select a workspace to open
-                        </p>
+        <div className="flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900">
+            <Sidebar />
+
+            <main className="flex-1 flex flex-col bg-white overflow-hidden">
+                {/* ヘッダー：検索 / 選択 / 新規作成 / アバター */}
+                <header className="h-16 border-b flex items-center justify-between px-8 shrink-0 gap-4">
+                    <div className="relative w-full max-w-xs">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder={tx.searchPlaceholder}
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-1.5 bg-slate-100 rounded-lg text-sm outline-none focus:ring-2 ring-blue-500/20"
+                        />
                     </div>
-                    {!usePersistedGraphMock && (
+
+                    <div className="flex items-center gap-3 shrink-0">
+                        {isSelectionMode ? (
+                            <SelectionToolbar
+                                tx={tx}
+                                selectedCount={selectedIds.size}
+                                isProcessing={isProcessing}
+                                onSelectAll={() => selectAll(workspaces.map((ws) => ws.id))}
+                                onMoveToTrash={handleBulkMoveToTrash}
+                                onCancel={clearSelection}
+                            />
+                        ) : (
+                            <Button
+                                onClick={() => setIsSelectionMode(true)}
+                                variant="ghost"
+                                className="h-9 px-4 text-slate-500 hover:text-blue-600 flex items-center shrink-0"
+                            >
+                                <CheckSquare className="h-4 w-4 mr-2" />
+                                {tx.select}
+                            </Button>
+                        )}
+                        <div className="h-4 w-px bg-slate-200 shrink-0" />
                         <button
                             onClick={() => void handleCreate()}
                             disabled={creating}
-                            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
                         >
                             <Plus className="h-4 w-4" />
-                            {creating ? "Creating..." : "New Workspace"}
+                            {creating ? tx.creating : tx.newWorkspace}
                         </button>
-                    )}
-                </div>
+                        <div className="h-4 w-px bg-slate-200 shrink-0" />
+                        <UserAvatar
+                            className="h-8 w-8 rounded-full border shadow-sm shrink-0"
+                            dropdownSide="bottom"
+                            dropdownAlign="end"
+                        />
+                    </div>
+                </header>
 
-                <div className="space-y-12">
-                    {/* Owned Workspaces */}
-                    <section>
-                        <div className="mb-4">
-                            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">My Workspaces</h2>
+                {/* メインコンテンツ */}
+                <div className="flex-1 overflow-y-auto p-8">
+                    <div className="mx-auto max-w-5xl">
+                        {/* タイトル + ソートコントロール */}
+                        <div className="mb-8 flex items-center justify-between">
+                            <div>
+                                <h1 className="text-xl font-bold">{tx.title}</h1>
+                                <p className="mt-1 text-sm text-slate-500">{tx.subtitle}</p>
+                            </div>
+                            <SortControls
+                                sortKey={sortKey}
+                                sortDir={sortDir}
+                                onSortKeyChange={(v) => update("sortKey", v)}
+                                onSortDirChange={(v) => update("sortDir", v)}
+                                tx={tx}
+                            />
                         </div>
+
                         {loadingWorkspaces ? (
-                            <div className="text-sm text-muted-foreground">Loading workspaces...</div>
-                        ) : workspaceError ? (
-                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                                Failed to load workspaces: {workspaceError}
-                            </div>
+                            <div className="text-sm text-slate-400">Loading workspaces...</div>
                         ) : workspaces.length === 0 ? (
-                            <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-12 text-center">
-                                <FolderKanban className="h-10 w-10 text-muted-foreground" />
-                                <div>
-                                    <p className="font-medium text-sm">No workspaces yet</p>
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                        Create your first workspace to get started
-                                    </p>
-                                </div>
-                            </div>
+                            <EmptyState tx={tx} />
                         ) : (
-                            <WorkspaceGrid workspaces={workspaces} onSelect={handleSelect} />
-                        )}
-                    </section>
+                            <div className="space-y-10">
+                                {/* お気に入りセクション */}
+                                <section>
+                                    <div className="mb-3 flex items-center justify-between">
+                                        <h2 className="flex items-center gap-2 text-sm font-bold text-slate-500 uppercase tracking-wide">
+                                            <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                                            {tx.favorites}
+                                        </h2>
+                                        {favorites.length > 0 && (
+                                            <LayoutToggle
+                                                value={layoutFav}
+                                                onChange={(v) => update("layoutFav", v)}
+                                            />
+                                        )}
+                                    </div>
+                                    {favorites.length === 0 ? (
+                                        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-8 text-center bg-slate-50">
+                                            <Star className="h-7 w-7 text-slate-200" />
+                                            <p className="text-sm font-bold text-slate-400">{tx.noFavorites}</p>
+                                            <p className="text-xs text-slate-300">{tx.noFavoritesHint}</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <WorkspaceList
+                                                workspaces={
+                                                    showAllFavorites
+                                                        ? favorites
+                                                        : favorites.slice(0, favoritesLimit)
+                                                }
+                                                layout={layoutFav}
+                                                {...sharedCardProps}
+                                            />
+                                            {favorites.length > favoritesLimit && (
+                                                <button
+                                                    onClick={() =>
+                                                        update("showAllFavorites", !showAllFavorites)
+                                                    }
+                                                    className="mt-3 text-xs font-medium text-slate-400 hover:text-blue-600 transition-colors"
+                                                >
+                                                    {showAllFavorites
+                                                        ? tx.collapse
+                                                        : tx.showMore(favorites.length - favoritesLimit)}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </section>
 
-                    {/* Shared Workspaces */}
-                    {sharedWorkspaces.length > 0 && (
-                        <section>
-                            <div className="mb-4">
-                                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Shared with me</h2>
+                                {/* すべてのワークスペースセクション */}
+                                <section>
+                                    <div className="mb-3 flex items-center justify-between">
+                                        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide">
+                                            {tx.allWorkspaces}
+                                        </h2>
+                                        <LayoutToggle
+                                            value={layoutAll}
+                                            onChange={(v) => update("layoutAll", v)}
+                                        />
+                                    </div>
+                                    <WorkspaceList workspaces={others} layout={layoutAll} {...sharedCardProps} />
+                                </section>
                             </div>
-                            <WorkspaceGrid workspaces={sharedWorkspaces} onSelect={handleSelect} />
-                        </section>
-                    )}
-
-                    {/* Public Workspaces */}
-                    <section>
-                        <div className="mb-4 flex items-center gap-2">
-                            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Public Explore</h2>
-                            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                        </div>
-                        {loadingPublic ? (
-                            <div className="text-sm text-muted-foreground">Loading public workspaces...</div>
-                        ) : publicWorkspaceError ? (
-                            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                                Failed to load public workspaces: {publicWorkspaceError}
-                            </div>
-                        ) : publicWorkspaces.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No public workspaces available.</p>
-                        ) : (
-                            <WorkspaceGrid workspaces={publicWorkspaces} onSelect={handleSelect} showPublicBadge />
                         )}
-                    </section>
+                    </div>
                 </div>
+            </main>
+        </div>
+    );
+}
+
+// ─── サブコンポーネント ───────────────────────────────────────
+
+type SortKey = "createdAt" | "lastAccessedAt";
+type SortDir = "desc" | "asc";
+
+function SortControls({
+    sortKey,
+    sortDir,
+    onSortKeyChange,
+    onSortDirChange,
+    tx,
+}: {
+    sortKey: SortKey;
+    sortDir: SortDir;
+    onSortKeyChange: (v: SortKey) => void;
+    onSortDirChange: (v: SortDir) => void;
+    tx: Tx;
+}) {
+    return (
+        <div className="flex items-center gap-1 rounded-lg border bg-slate-50 p-1 text-xs">
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-slate-400" />
+            <select
+                value={sortKey}
+                onChange={(e) => onSortKeyChange(e.target.value as SortKey)}
+                className="bg-transparent text-slate-600 outline-none cursor-pointer pr-1"
+            >
+                <option value="lastAccessedAt">{tx.lastViewed}</option>
+                <option value="createdAt">{tx.createdAt}</option>
+            </select>
+            <select
+                value={sortDir}
+                onChange={(e) => onSortDirChange(e.target.value as SortDir)}
+                className="bg-transparent text-slate-600 outline-none cursor-pointer pr-1"
+            >
+                <option value="desc">{tx.newest}</option>
+                <option value="asc">{tx.oldest}</option>
+            </select>
+        </div>
+    );
+}
+
+function SelectionToolbar({
+    tx,
+    selectedCount,
+    isProcessing,
+    onSelectAll,
+    onMoveToTrash,
+    onCancel,
+}: {
+    tx: Tx;
+    selectedCount: number;
+    isProcessing: boolean;
+    onSelectAll: () => void;
+    onMoveToTrash: () => void;
+    onCancel: () => void;
+}) {
+    return (
+        <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-200">
+            <Button
+                variant="ghost"
+                size="sm"
+                disabled={isProcessing}
+                onClick={onSelectAll}
+                className="text-[11px] font-bold text-blue-600 px-2 hover:bg-blue-50"
+            >
+                {tx.selectAll}
+            </Button>
+            <span className="text-xs font-bold text-slate-400 whitespace-nowrap px-2 border-l pl-3">
+                {tx.selectedCount(selectedCount)}
+            </span>
+            <Button
+                onClick={onMoveToTrash}
+                disabled={selectedCount === 0 || isProcessing}
+                className="bg-red-50 text-red-600 hover:bg-red-100 border-none h-9 px-4 rounded-lg flex items-center shrink-0 font-bold"
+            >
+                <Trash2 className="h-4 w-4 mr-2" />
+                {isProcessing ? tx.moving : tx.moveToTrash}
+            </Button>
+            <Button
+                onClick={onCancel}
+                variant="ghost"
+                disabled={isProcessing}
+                className="h-9 px-4 text-slate-500 shrink-0"
+            >
+                {tx.cancel}
+            </Button>
+        </div>
+    );
+}
+
+function EmptyState({ tx }: { tx: Tx }) {
+    return (
+        <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed p-12 text-center bg-slate-50">
+            <FolderKanban className="h-10 w-10 text-slate-300" />
+            <div>
+                <p className="font-bold text-slate-600">{tx.noWorkspaces}</p>
+                <p className="mt-1 text-sm text-slate-400">{tx.noWorkspacesHint}</p>
             </div>
         </div>
     );
 }
 
-export default function DashboardPage() {
-    return (
-        <Suspense fallback={
-            <div className="flex h-screen w-full items-center justify-center text-sm text-muted-foreground">
-                Loading...
+// ─── ワークスペースカード ─────────────────────────────────────
+
+type CardProps = {
+    workspaces: WorkspaceData[];
+    layout: Layout;
+    isSelectionMode: boolean;
+    selectedIds: Set<string>;
+    onSelect: (ws: WorkspaceData) => void;
+    onToggleFavorite: (e: React.MouseEvent, ws: WorkspaceData) => void;
+    onMoveToTrash: (e: React.MouseEvent, ws: WorkspaceData) => void;
+    tx: Tx;
+};
+
+function WorkspaceList(props: CardProps) {
+    const { workspaces, layout } = props;
+    if (layout === "grid") {
+        return (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {workspaces.map((ws) => (
+                    <GridCard key={ws.id} ws={ws} {...props} />
+                ))}
             </div>
-        }>
-            <DashboardContent />
-        </Suspense>
+        );
+    }
+    return (
+        <div className="rounded-2xl border divide-y overflow-hidden shadow-sm">
+            {workspaces.map((ws) => (
+                <ListRow key={ws.id} ws={ws} {...props} />
+            ))}
+        </div>
+    );
+}
+
+function GridCard({
+    ws,
+    isSelectionMode,
+    selectedIds,
+    onSelect,
+    onToggleFavorite,
+    onMoveToTrash,
+    tx,
+}: CardProps & { ws: WorkspaceData }) {
+    const createdAt = formatDate(ws.createdAt);
+    const lastAccessedAt = formatDate(ws.lastAccessedAt);
+    const isSelected = selectedIds.has(ws.id);
+
+    return (
+        <div
+            onClick={() => onSelect(ws)}
+            className={cn(
+                "group relative flex flex-col rounded-xl border bg-white p-4 text-left transition-colors shadow-sm cursor-pointer",
+                isSelected ? "border-blue-400 bg-blue-50/50" : "hover:border-blue-300 hover:bg-slate-50",
+            )}
+        >
+            <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                    {isSelectionMode ? (
+                        <div className="shrink-0">
+                            {isSelected
+                                ? <CheckSquare className="h-5 w-5 text-blue-600" />
+                                : <Square className="h-5 w-5 text-slate-300" />}
+                        </div>
+                    ) : (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 shrink-0">
+                            <FolderKanban className="h-4 w-4 text-blue-600" />
+                        </div>
+                    )}
+                    <p className="text-sm font-bold text-slate-700 truncate">{ws.name}</p>
+                </div>
+                {!isSelectionMode && (
+                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                            onClick={(e) => onToggleFavorite(e, ws)}
+                            className={cn(
+                                "p-1.5 rounded-lg transition-colors",
+                                ws.isFavorite
+                                    ? "text-amber-400 opacity-100"
+                                    : "text-slate-400 hover:text-amber-400",
+                            )}
+                        >
+                            <Star className={cn("h-4 w-4", ws.isFavorite && "fill-amber-400")} />
+                        </button>
+                        <button
+                            onClick={(e) => onMoveToTrash(e, ws)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
+            </div>
+            {(createdAt || lastAccessedAt) && (
+                <div className={cn("mt-3 flex flex-col gap-1", isSelectionMode ? "pl-8" : "pl-12")}>
+                    {lastAccessedAt && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <Clock className="h-3 w-3 shrink-0" />
+                            <span>{tx.lastViewedLabel} {lastAccessedAt}</span>
+                        </div>
+                    )}
+                    {createdAt && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <Calendar className="h-3 w-3 shrink-0" />
+                            <span>{tx.createdLabel} {createdAt}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+            {!isSelectionMode && ws.isFavorite && (
+                <Star className="absolute top-3 right-3 h-3.5 w-3.5 text-amber-400 fill-amber-400 group-hover:opacity-0 transition-opacity" />
+            )}
+        </div>
+    );
+}
+
+function ListRow({
+    ws,
+    isSelectionMode,
+    selectedIds,
+    onSelect,
+    onToggleFavorite,
+    onMoveToTrash,
+    tx,
+}: CardProps & { ws: WorkspaceData }) {
+    const createdAt = formatDate(ws.createdAt);
+    const lastAccessedAt = formatDate(ws.lastAccessedAt);
+    const isSelected = selectedIds.has(ws.id);
+
+    return (
+        <div
+            onClick={() => onSelect(ws)}
+            className={cn(
+                "flex items-center justify-between px-5 py-3.5 transition-colors group bg-white",
+                isSelected ? "bg-blue-50/50" : "hover:bg-slate-50 cursor-pointer",
+            )}
+        >
+            <div className="flex items-center gap-4 min-w-0 flex-1">
+                {isSelectionMode ? (
+                    <div className="shrink-0">
+                        {isSelected
+                            ? <CheckSquare className="h-5 w-5 text-blue-600" />
+                            : <Square className="h-5 w-5 text-slate-300" />}
+                    </div>
+                ) : (
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                        <FolderKanban className="h-4 w-4 text-blue-600" />
+                    </div>
+                )}
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-700 truncate">{ws.name}</p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                        {lastAccessedAt && (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                {tx.lastViewedLabel} {lastAccessedAt}
+                            </span>
+                        )}
+                        {createdAt && (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                                <Calendar className="h-3 w-3 shrink-0" />
+                                {tx.createdLabel} {createdAt}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+            {!isSelectionMode && (
+                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        onClick={(e) => onToggleFavorite(e, ws)}
+                        className={cn(
+                            "p-1.5 rounded-lg transition-colors",
+                            ws.isFavorite
+                                ? "text-amber-400"
+                                : "text-slate-300 hover:text-amber-400",
+                        )}
+                    >
+                        <Star className={cn("h-4 w-4", ws.isFavorite && "fill-amber-400")} />
+                    </button>
+                    <button
+                        onClick={(e) => onMoveToTrash(e, ws)}
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 transition-colors"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
